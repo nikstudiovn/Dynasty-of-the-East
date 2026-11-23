@@ -343,7 +343,7 @@
     .hud-pill { padding: 5px 8px; gap: 6px; font-size: 11.5px; }
     .opt-row { grid-template-columns: 1fr; }
   }
-.hud-pill::-webkit-scrollbar, .quick-bar::-webkit-scrollbar { display: none; } @media (max-height: 520px) { .top-hud { top: max(4px, env(safe-area-inset-top)); padding: 0 4px; gap: 4px; } .hud-pill { padding: 3px 8px; gap: 6px; font-size: 11px; } .cmd-dock { padding: 4px 6px; gap: 6px; } .quick-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; } #sel-portrait { width: 32px; height: 32px; } } </style>
+.hud-pill::-webkit-scrollbar, .quick-bar::-webkit-scrollbar { display: none; } @media (max-height: 520px) { .top-hud { flex-wrap: nowrap; gap: 4px; top: 4px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; } .hud-pill { padding: 3px 7px; font-size: 11px; gap: 5px; } .icon-btn { padding: 3px 6px; font-size: 11px; white-space: nowrap; } .bottom-hud { bottom: 4px; gap: 6px; } .cmd-dock { padding: 4px 6px; gap: 3px; } .quick-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; } #sel-portrait { width: 28px; height: 28px; } .mini-btn { padding: 2px 5px; font-size: 10.5px; } .act-btn { padding: 3px 6px; min-width: 76px; font-size: 11px; } #minimapCanvas { width: 84px; height: 56px; } } </style>
 </head>
 <body>
 <div id="game-wrap">
@@ -1244,7 +1244,7 @@
     for (const b of state.buildings) drawables.push({ depth: b.tx + b.ty + b.size, fn: () => drawBuilding(b) });
     for (const u of state.units) if (!u.garrisoned) drawables.push({ depth: u.x + u.y, fn: () => drawUnit(u) });
     drawables.sort((a, b) => a.depth - b.depth);
-    for (const d of drawables) d.fn();
+    for (const d of drawables) { try { d.fn(); } catch (err) { console.error(err); } }
 
     for (const p of state.projectiles) {
       const curX = p.sx + (p.tx - p.sx) * p.t;
