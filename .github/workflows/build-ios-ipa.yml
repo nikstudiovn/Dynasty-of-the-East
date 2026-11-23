@@ -62,7 +62,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             clean build
           mkdir -p build/Payload
-          cp -R build/DerivedData/Build/Products/Release-iphoneos/PixelDynasty.app build/Payload/
+          cp -R "build/DerivedData/Build/Products/Release-iphoneos/Pixel Dynasty.app" build/Payload/
           cd build && zip -qr PixelDynasty-unsigned.ipa Payload
 
       - name: Upload unsigned IPA artifact
