@@ -1,0 +1,73 @@
+name: Build iOS IPA (Pixel Dynasty)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "Build mode: unsigned (sideload test) or testflight (App Store signed)"
+        required: true
+        default: "unsigned"
+        type: choice
+        options:
+          - unsigned
+          - testflight
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build web bundle
+        working-directory: web
+        run: |
+          npm install
+          npm run build
+
+      - name: Sync web bundle into iOS app
+        run: |
+          rm -rf ios/PixelDynasty/WebBundle/*
+          cp -R web/dist/* ios/PixelDynasty/WebBundle/
+
+      - name: Install XcodeGen & generate Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build unsigned IPA
+        if: ${{ inputs.build_mode != 'testflight' }}
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project PixelDynasty.xcodeproj \
+            -scheme PixelDynasty \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+          mkdir -p build/Payload
+          cp -R build/DerivedData/Build/Products/Release-iphoneos/PixelDynasty.app build/Payload/
+          cd build && zip -qr PixelDynasty-unsigned.ipa Payload
+
+      - name: Upload unsigned IPA artifact
+        if: ${{ inputs.build_mode != 'testflight' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixelDynasty-unsigned-ipa
+          path: ios/build/PixelDynasty-unsigned.ipa
