@@ -1,31 +1,1853 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Pixel Dynasty — Triều Đại Pixel</title>
-  <style>
-    html, body, #app {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #1C1614;
-      touch-action: none;
-      -webkit-user-select: none;
-      user-select: none;
-    }
-    canvas {
-      display: block;
-      image-rendering: pixelated;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Pixel Dynasty — Triều Đại Pixel (Sprint 3)</title>
+<style>
+  :root {
+    --bg: #120E0C;
+    --panel: rgba(24, 19, 16, 0.94);
+    --panel-border: #5C4738;
+    --gold: #F5B841;
+    --crimson: #C82828;
+    --jade: #1F9D7A;
+    --ink: #FAF5EC;
+    --mute: #BFB2A2;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    touch-action: none;
+  }
+
+  #game-wrap {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    cursor: grab;
+  }
+
+  #gameCanvas.dragging { cursor: grabbing; }
+  #gameCanvas.build-mode, #gameCanvas.select-mode { cursor: crosshair; }
+
+  /* Top HUD */
+  .top-hud {
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 10;
+    flex-wrap: wrap;
+  }
+
+  .hud-pill {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel);
+    border: 1.5px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 6px 12px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .res-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .dot-food { background: #EAB308; }
+  .dot-wood { background: #22C55E; }
+  .dot-gold { background: #F59E0B; }
+  .dot-stone { background: #94A3B8; }
+  .dot-pop { background: #EF4444; }
+
+  .age-badge { color: var(--gold); font-weight: 700; white-space: nowrap; }
+  .faction-pill { color: #FCA5A5; font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+  .icon-btn {
+    pointer-events: auto;
+    background: var(--panel);
+    color: var(--ink);
+    border: 1.5px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .icon-btn:hover { background: #2C221D; border-color: var(--gold); }
+  .icon-btn.active { background: var(--crimson); border-color: var(--gold); color: #FFF; }
+
+  .top-right { display: flex; gap: 6px; align-items: center; }
+
+  #toast {
+    position: absolute;
+    top: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(24, 19, 16, 0.95);
+    border: 1.5px solid var(--gold);
+    color: var(--gold);
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    z-index: 20;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  /* Bottom Bar */
+  .bottom-hud {
+    position: absolute;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10px;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .minimap-box {
+    pointer-events: auto;
+    background: var(--panel);
+    border: 1.5px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+    flex-shrink: 0;
+  }
+
+  #minimapCanvas {
+    display: block;
+    width: 132px;
+    height: 88px;
+    border-radius: 6px;
+    background: #0D110C;
+    cursor: pointer;
+  }
+
+  .cmd-dock {
+    pointer-events: auto;
+    flex: 1;
+    max-width: 820px;
+    background: var(--panel);
+    border: 1.5px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 8px 10px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .cmd-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--mute);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 5px;
+    flex-wrap: wrap;
+  }
+
+  .cmd-title { color: var(--ink); font-weight: 700; }
+
+  .cmd-buttons {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .act-btn {
+    flex-shrink: 0;
+    background: #271F1B;
+    color: var(--ink);
+    border: 1.5px solid #4F3E33;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 96px;
+  }
+  .act-btn:hover:not(:disabled) { border-color: var(--gold); background: #332721; }
+  .act-btn.selected { border-color: var(--gold); background: #5C1D1D; }
+  .act-btn:disabled { opacity: 0.42; cursor: not-allowed; }
+  .act-cost { font-size: 10.5px; font-weight: 500; color: var(--gold); }
+
+  .quick-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mini-btn {
+    background: #2A221E;
+    color: var(--ink);
+    border: 1px solid #594639;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mini-btn:hover { border-color: var(--gold); }
+  .mini-btn.active { background: var(--crimson); border-color: var(--gold); color: #FFF; }
+
+  /* Setup / Victory Modal */
+  #modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(12, 9, 8, 0.84);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    padding: 14px;
+    overflow-y: auto;
+  }
+  #modal.hidden { display: none; }
+
+  .modal-card {
+    background: #1D1714;
+    border: 2px solid var(--gold);
+    border-radius: 14px;
+    padding: 20px 22px;
+    max-width: 540px;
+    width: 100%;
+    box-shadow: 0 18px 46px rgba(0, 0, 0, 0.75);
+  }
+
+  .modal-card h1 {
+    font-size: 24px;
+    color: var(--gold);
+    text-align: center;
+    letter-spacing: 0.03em;
+  }
+
+  .modal-sub {
+    font-size: 13px;
+    color: var(--mute);
+    text-align: center;
+    margin: 4px 0 14px;
+  }
+
+  .setup-group { margin-bottom: 12px; }
+  .setup-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .opt-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .opt-btn {
+    background: #14100E;
+    color: var(--ink);
+    border: 1.5px solid #44362D;
+    border-radius: 8px;
+    padding: 8px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+  }
+  .opt-btn small {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--mute);
+    margin-top: 3px;
+    line-height: 1.3;
+  }
+  .opt-btn.active { border-color: var(--gold); background: #3A1C19; }
+
+  .modal-tips {
+    background: #14100E;
+    border: 1px solid #3D3028;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: #E2D8CC;
+    line-height: 1.55;
+    margin-bottom: 14px;
+  }
+
+  .primary-btn {
+    background: var(--crimson);
+    color: #FFF;
+    border: 1.5px solid var(--gold);
+    border-radius: 10px;
+    padding: 11px 24px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+  }
+  .primary-btn:hover { background: #DF3030; }
+
+  @media (max-width: 680px) {
+    .minimap-box { display: none; }
+    .hud-pill { padding: 5px 8px; gap: 6px; font-size: 11.5px; }
+    .opt-row { grid-template-columns: 1fr; }
+  }
+</style>
 </head>
 <body>
-  <div id="app"></div>
-  <script type="module" src="/src/main.ts"></script>
+<div id="game-wrap">
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- TOP HUD -->
+  <div class="top-hud">
+    <div class="hud-pill">
+      <span class="faction-pill" id="hud-faction">Đại Việt</span>
+      <span class="age-badge" id="hud-age">Đời 1 · Khai Hoang</span>
+      <span class="res-item" title="Thực (Lúa)"><span class="dot dot-food"></span><span id="res-food">200</span></span>
+      <span class="res-item" title="Gỗ (Tre)"><span class="dot dot-wood"></span><span id="res-wood">200</span></span>
+      <span class="res-item" title="Vàng"><span class="dot dot-gold"></span><span id="res-gold">50</span></span>
+      <span class="res-item" title="Đá"><span class="dot dot-stone"></span><span id="res-stone">50</span></span>
+      <span class="res-item" title="Dân số"><span class="dot dot-pop"></span><span id="res-pop">5/10</span></span>
+    </div>
+    <div class="top-right">
+      <button class="icon-btn" id="btn-box-select" title="Kéo khung chọn nhiều quân (hoặc giữ Shift + kéo)">Kéo chọn: Tắt</button>
+      <button class="icon-btn" id="btn-zoom-out" title="Thu nhỏ">−</button>
+      <button class="icon-btn" id="btn-zoom-in" title="Phóng to">+</button>
+      <button class="icon-btn" id="btn-sound" title="Bật/Tắt âm thanh">Âm: Bật</button>
+      <button class="icon-btn" id="btn-restart" title="Cài đặt & Chơi lại">Chơi lại</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- BOTTOM HUD -->
+  <div class="bottom-hud">
+    <div class="minimap-box">
+      <canvas id="minimapCanvas" width="132" height="88"></canvas>
+    </div>
+
+    <div class="cmd-dock">
+      <div class="cmd-header">
+        <span class="cmd-title" id="sel-title">Đình Làng · Đại Việt</span>
+        <div class="quick-bar">
+          <button class="mini-btn" id="btn-idle-vil">Dân rảnh</button>
+          <button class="mini-btn" id="btn-all-army">Toàn quân</button>
+          <button class="mini-btn" id="btn-focus-tc">Về Đình</button>
+        </div>
+      </div>
+      <div class="cmd-buttons" id="cmd-buttons"></div>
+    </div>
+  </div>
+
+  <!-- SETUP / RESULT MODAL -->
+  <div id="modal">
+    <div class="modal-card">
+      <h1 id="modal-title">PIXEL DYNASTY · SPRINT 3</h1>
+      <p class="modal-sub" id="modal-sub">Kéo khung chọn quân · Vọng Lâu tự bắn · Lò Rèn Công/Giáp · Hoàng Thành Đời 4</p>
+
+      <div id="setup-panel">
+        <div class="setup-group">
+          <span class="setup-label">1. Chọn nền văn minh Á Đông</span>
+          <div class="opt-row" id="opt-faction">
+            <button class="opt-btn active" data-val="dai_viet">Đại Việt<small>Tượng Binh · +15% Lúa/Tre</small></button>
+            <button class="opt-btn" data-val="trung_nguyen">Trung Nguyên<small>Nỏ Liên Châu · -15% Lên đời</small></button>
+            <button class="opt-btn" data-val="bac_cuong">Bắc Cương<small>Thiết Kỵ Xạ · Kỵ +10% tốc</small></button>
+          </div>
+        </div>
+
+        <div class="setup-group">
+          <span class="setup-label">2. Chế độ Skirmish (Số lượng AI đối thủ)</span>
+          <div class="opt-row" id="opt-mode">
+            <button class="opt-btn active" data-val="1">1 vs 1<small>1 Đình Làng địch</small></button>
+            <button class="opt-btn" data-val="2">1 vs 2<small>2 phe AI hợp sức</small></button>
+            <button class="opt-btn" data-val="3">1 vs 3<small>3 góc vây công</small></button>
+          </div>
+        </div>
+
+        <div class="setup-group">
+          <span class="setup-label">3. Độ khó AI</span>
+          <div class="opt-row" id="opt-diff">
+            <button class="opt-btn" data-val="easy">Tân binh<small>Đợt thưa, dễ thở</small></button>
+            <button class="opt-btn active" data-val="normal">Chiến thuật<small>Cân bằng 10–15p</small></button>
+            <button class="opt-btn" data-val="hard">Áp đảo<small>Đẩy quân liên tục</small></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-tips" id="modal-tips">
+        <strong>Mới ở Sprint 3:</strong> Bấm <strong>Kéo chọn</strong> (hoặc giữ <code>Shift</code> + kéo) để quét khung chọn nhanh cụm quân. Xây <strong>Vọng Lâu</strong> (Đời 2) bắn tên tự động, <strong>Lò Rèn Cổ</strong> nâng cấp Công/Giáp tới cấp 3 và <strong>Hoàng Thành</strong> (Đời 4) bắn loạt 3 tên!
+      </div>
+      <button class="primary-btn" id="btn-start">Xuất Quân Ngay</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // =========================================================================
+  // 1. CONSTANTS, FACTIONS & COMPLETE EAST ASIAN ROSTER (v0.3)
+  // =========================================================================
+  const MAP_N = 26;
+  const TILE_W = 52;
+  const TILE_H = 26;
+
+  const FACTIONS = {
+    dai_viet: {
+      name: "Đại Việt",
+      color: "#DC2626",
+      trim: "#F59E0B",
+      foodWoodMult: 1.15,
+      vilSpeedMult: 1.1,
+      ageCostMult: 1.0,
+      techCostMult: 1.0,
+      towerRangeBonus: 0,
+      cavSpeedMult: 1.0,
+      uniqueUnit: "war_elephant"
+    },
+    trung_nguyen: {
+      name: "Trung Nguyên",
+      color: "#0F766E",
+      trim: "#FACC15",
+      foodWoodMult: 1.0,
+      vilSpeedMult: 1.0,
+      ageCostMult: 0.85,
+      techCostMult: 0.85,
+      towerRangeBonus: 1,
+      cavSpeedMult: 1.0,
+      uniqueUnit: "chuko_nu"
+    },
+    bac_cuong: {
+      name: "Bắc Cương",
+      color: "#1D4ED8",
+      trim: "#E2E8F0",
+      foodWoodMult: 1.0,
+      vilSpeedMult: 1.0,
+      ageCostMult: 1.0,
+      techCostMult: 1.0,
+      towerRangeBonus: 0,
+      cavSpeedMult: 1.1,
+      uniqueUnit: "horse_archer"
+    }
+  };
+
+  const AI_COLORS = ["#2563EB", "#9333EA", "#EA580C"];
+
+  const AGES = [
+    { age: 1, name: "Đời 1 · Khai Hoang", cost: { food: 0, wood: 0, gold: 0, stone: 0 } },
+    { age: 2, name: "Đời 2 · Phong Kiến", cost: { food: 250, wood: 0, gold: 0, stone: 0 } },
+    { age: 3, name: "Đời 3 · Vương Triều", cost: { food: 400, wood: 0, gold: 200, stone: 0 } },
+    { age: 4, name: "Đời 4 · Đế Quốc", cost: { food: 600, wood: 0, gold: 400, stone: 200 } }
+  ];
+
+  const UNIT_DEFS = {
+    villager: { name: "Dân Làng", hp: 40, atk: 4, range: 1.1, vision: 5, speed: 2.1, cost: { food: 50, wood: 0, gold: 0, stone: 0 }, age: 1, role: "eco" },
+    swordsman: { name: "Đao Binh", hp: 75, atk: 9, range: 1.15, vision: 5, speed: 2.0, cost: { food: 50, wood: 0, gold: 15, stone: 0 }, age: 1, role: "infantry" },
+    spearman: { name: "Trường Thương", hp: 70, atk: 8, range: 1.25, vision: 5, speed: 2.1, cost: { food: 35, wood: 25, gold: 0, stone: 0 }, age: 2, role: "infantry", bonusElephant: 1.6, bonusCav: 1.5 },
+    archer: { name: "Cung Thủ", hp: 50, atk: 8, range: 5.2, vision: 7, speed: 1.9, cost: { food: 0, wood: 25, gold: 35, stone: 0 }, age: 2, role: "ranged", proj: "arrow", bonusInf: 1.35 },
+    chuko_nu: { name: "Nỏ Liên Châu", hp: 65, atk: 5, burst: 3, range: 5.8, vision: 7, speed: 1.9, cost: { food: 0, wood: 30, gold: 40, stone: 0 }, age: 3, role: "ranged", proj: "bolt", bonusInf: 1.35, factionOnly: "trung_nguyen" },
+    cavalry: { name: "Kỵ Binh", hp: 120, atk: 12, range: 1.2, vision: 6, speed: 2.75, cost: { food: 60, wood: 0, gold: 60, stone: 0 }, age: 3, role: "cavalry", bonusRanged: 1.4, bonusSiege: 1.4 },
+    horse_archer: { name: "Thiết Kỵ Xạ", hp: 90, atk: 10, range: 5.0, vision: 7, speed: 2.65, cost: { food: 0, wood: 45, gold: 55, stone: 0 }, age: 3, role: "cavalry", proj: "arrow", bonusInf: 1.25, factionOnly: "bac_cuong" },
+    war_elephant: { name: "Tượng Binh", hp: 300, atk: 22, range: 1.3, vision: 6, speed: 1.55, cost: { food: 110, wood: 0, gold: 80, stone: 0 }, age: 3, role: "elephant", splash: 1.6, bonusBuilding: 2.0, factionOnly: "dai_viet" },
+    catapult: { name: "Pháo Thạch", hp: 130, atk: 38, range: 7.8, vision: 8, speed: 1.2, cost: { food: 0, wood: 140, gold: 110, stone: 0 }, age: 3, role: "siege", proj: "boulder", splash: 2.1, bonusBuilding: 2.5 }
+  };
+
+  const BLDG_DEFS = {
+    town_center: { name: "Đình Làng", size: 2, hp: 1400, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
+    house: { name: "Nhà Ngói", size: 1, hp: 400, vision: 4, cost: { food: 0, wood: 35, gold: 0, stone: 0 }, pop: 10, age: 1 },
+    depot: { name: "Kho Lẫm", size: 1, hp: 450, vision: 4, cost: { food: 0, wood: 65, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    farm: { name: "Ruộng Lúa", size: 1, hp: 300, vision: 3, cost: { food: 0, wood: 45, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    barracks: { name: "Doanh Trại", size: 2, hp: 850, vision: 5, cost: { food: 0, wood: 120, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    archery_range: { name: "Trường Bắn", size: 2, hp: 800, vision: 5, cost: { food: 0, wood: 130, gold: 0, stone: 0 }, pop: 0, age: 2 },
+    watch_tower: { name: "Vọng Lâu", size: 1, hp: 750, vision: 9, atk: 10, range: 7, burst: 1, cost: { food: 0, wood: 40, gold: 0, stone: 90 }, pop: 0, age: 2 },
+    blacksmith: { name: "Lò Rèn Cổ", size: 2, hp: 900, vision: 5, cost: { food: 0, wood: 110, gold: 0, stone: 0 }, pop: 0, age: 2 },
+    stable: { name: "Trại Ngựa/Voi", size: 2, hp: 950, vision: 5, cost: { food: 0, wood: 150, gold: 0, stone: 0 }, pop: 0, age: 3 },
+    siege_workshop: { name: "Xưởng Khí Giới", size: 2, hp: 1000, vision: 5, cost: { food: 0, wood: 180, gold: 0, stone: 0 }, pop: 0, age: 3 },
+    imperial_citadel: { name: "Hoàng Thành", size: 2, hp: 3200, vision: 11, atk: 16, range: 8.5, burst: 3, cost: { food: 0, wood: 0, gold: 0, stone: 450 }, pop: 10, age: 4 }
+  };
+
+  const setup = { faction: "dai_viet", aiCount: 1, difficulty: "normal" };
+
+  // =========================================================================
+  // 2. SYNTHESIZED AUDIO
+  // =========================================================================
+  let audioCtx = null;
+  let soundOn = true;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+
+  function playTone(freq, dur = 0.11, type = "triangle", vol = 0.07) {
+    if (!soundOn || !audioCtx) return;
+    try {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    } catch (_) {}
+  }
+
+  const sfxClick = () => playTone(523.25, 0.05, "triangle", 0.05);
+  const sfxBuild = () => { playTone(220, 0.08, "square", 0.05); setTimeout(() => playTone(329.63, 0.12, "triangle", 0.06), 70); };
+  const sfxTrain = () => { playTone(392, 0.08, "triangle", 0.06); setTimeout(() => playTone(523.25, 0.13, "triangle", 0.06), 85); };
+  const sfxForge = () => { playTone(660, 0.07, "square", 0.05); setTimeout(() => playTone(880, 0.16, "triangle", 0.07), 80); };
+  const sfxBow = () => playTone(760 + Math.random() * 80, 0.05, "sine", 0.032);
+  const sfxBoom = () => playTone(95, 0.22, "sawtooth", 0.08);
+  const sfxHit = () => playTone(155 + Math.random() * 45, 0.05, "sawtooth", 0.035);
+  const sfxAgeUp = () => [293.66, 392.0, 440.0, 587.33].forEach((f, i) => setTimeout(() => playTone(f, 0.22, "triangle", 0.08), i * 90));
+
+  // =========================================================================
+  // 3. STATE, MAP, FOG OF WAR & BOX SELECT
+  // =========================================================================
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const miniCanvas = document.getElementById("minimapCanvas");
+  const mctx = miniCanvas.getContext("2d");
+
+  let state = null;
+  let nextId = 1;
+  let rafId = null;
+  let lastTime = 0;
+
+  const cam = { x: 0, y: 0, zoom: 1.0 };
+  let isDragging = false;
+  let pointerDownPos = { x: 0, y: 0 };
+  let lastPointer = { x: 0, y: 0 };
+  let hoverTile = null;
+
+  // Sprint 3: Box/Lasso Selection state
+  let boxSelectMode = false;
+  let selectionBox = null; // { x1, y1, x2, y2 } in screen coords
+
+  function screenToTile(sx, sy) {
+    const wx = (sx - canvas.width / 2) / cam.zoom + cam.x;
+    const wy = (sy - canvas.height / 2) / cam.zoom + cam.y;
+    const tx = Math.floor((wx / (TILE_W / 2) + wy / (TILE_H / 2)) / 2);
+    const ty = Math.floor((wy / (TILE_H / 2) - wx / (TILE_W / 2)) / 2);
+    return { tx, ty };
+  }
+
+  function worldToScreen(wx, wy) {
+    return {
+      x: (wx - cam.x) * cam.zoom + canvas.width / 2,
+      y: (wy - cam.y) * cam.zoom + canvas.height / 2
+    };
+  }
+
+  function showToast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove("show"), 2300);
+  }
+
+  function setBoxSelectMode(enabled) {
+    boxSelectMode = enabled;
+    const btn = document.getElementById("btn-box-select");
+    btn.textContent = enabled ? "Kéo chọn: Bật" : "Kéo chọn: Tắt";
+    btn.classList.toggle("active", enabled);
+    canvas.classList.toggle("select-mode", enabled);
+  }
+
+  function initGame() {
+    nextId = 1;
+    const grid = [];
+    const fog = [];
+    for (let y = 0; y < MAP_N; y++) {
+      const row = [], frow = [];
+      for (let x = 0; x < MAP_N; x++) {
+        row.push({ terrain: "grass", res: null, resAmt: 0 });
+        frow.push(0);
+      }
+      grid.push(row);
+      fog.push(frow);
+    }
+
+    for (let y = 11; y <= 14; y++) {
+      for (let x = 11; x <= 14; x++) {
+        if ((x === 11 || x === 14) && (y === 11 || y === 14)) continue;
+        grid[y][x].terrain = "water";
+      }
+    }
+
+    const placeRes = (coords, type, amt) => {
+      coords.forEach(([x, y]) => {
+        if (x >= 0 && y >= 0 && x < MAP_N && y < MAP_N && grid[y][x].terrain === "grass") {
+          grid[y][x].res = type;
+          grid[y][x].resAmt = amt;
+        }
+      });
+    };
+
+    // Player resources
+    placeRes([[1,5],[2,5],[1,6],[2,6],[3,6],[6,1],[7,1],[7,2],[8,2]], "wood", 260);
+    placeRes([[5,4],[6,4],[5,5]], "food", 280);
+    placeRes([[2,8],[3,8],[8,4],[8,5]], "gold", 380);
+    placeRes([[1,9],[2,9],[9,2],[10,2]], "stone", 360);
+
+    // Mid-map contested gold/stone
+    placeRes([[10,15],[15,10],[12,8],[8,12]], "gold", 420);
+    placeRes([[16,12],[12,16],[15,15]], "stone", 380);
+
+    // AI corner forests
+    placeRes([[22,19],[23,19],[22,20],[18,23],[19,23]], "wood", 250);
+    placeRes([[19,2],[20,2],[21,2],[23,5],[23,6]], "wood", 250);
+    placeRes([[2,19],[2,20],[5,23],[6,23]], "wood", 250);
+
+    state = {
+      running: true,
+      gameOver: false,
+      faction: FACTIONS[setup.faction],
+      factionId: setup.faction,
+      aiCount: setup.aiCount,
+      difficulty: setup.difficulty,
+      grid,
+      fog,
+      resources: { food: 200, wood: 200, gold: 50, stone: 100 },
+      age: 1,
+      upgrades: { attack: 0, armor: 0 }, // Blacksmith upgrades 0..3
+      buildings: [],
+      units: [],
+      projectiles: [],
+      floats: [],
+      selectedIds: [],
+      selectedBuildingId: null,
+      buildMode: null,
+      aiTimer: 0,
+      aiWave: 0
+    };
+
+    const ptc = spawnBuilding("player", "town_center", 3, 2, 0);
+    for (let i = 0; i < 5; i++) {
+      spawnUnit("player", "villager", 2.4 + (i % 3) * 0.75, 4.5 + Math.floor(i / 3) * 0.7, 0);
+    }
+
+    const aiCorners = [
+      { tx: 21, ty: 21, idx: 0 },
+      { tx: 21, ty: 2, idx: 1 },
+      { tx: 2, ty: 21, idx: 2 }
+    ];
+
+    for (let i = 0; i < setup.aiCount; i++) {
+      const c = aiCorners[i];
+      spawnBuilding("enemy", "town_center", c.tx, c.ty, c.idx);
+      const gx = c.tx < 12 ? c.tx + 2.5 : c.tx - 0.8;
+      const gy = c.ty < 12 ? c.ty + 2.5 : c.ty - 0.8;
+      spawnUnit("enemy", "swordsman", gx, gy, c.idx);
+      spawnUnit("enemy", "archer", gx + 0.6, gy - 0.4, c.idx);
+    }
+
+    state.selectedBuildingId = ptc.id;
+    cam.x = (4 - 3) * (TILE_W / 2);
+    cam.y = (4 + 3) * (TILE_H / 2);
+    setBoxSelectMode(false);
+
+    recomputeFog();
+    updateHud();
+    renderCommandDock();
+  }
+
+  function spawnBuilding(team, type, tx, ty, aiIndex = 0) {
+    const def = BLDG_DEFS[type];
+    const b = { id: nextId++, team, aiIndex, type, tx, ty, size: def.size, hp: def.hp, maxHp: def.hp, atkCooldown: 0 };
+    state.buildings.push(b);
+    for (let dy = 0; dy < def.size; dy++) {
+      for (let dx = 0; dx < def.size; dx++) {
+        if (state.grid[ty + dy]?.[tx + dx]) {
+          state.grid[ty + dy][tx + dx].res = null;
+          state.grid[ty + dy][tx + dx].resAmt = 0;
+        }
+      }
+    }
+    return b;
+  }
+
+  function spawnUnit(team, type, x, y, aiIndex = 0) {
+    const def = UNIT_DEFS[type];
+    const u = {
+      id: nextId++,
+      team,
+      aiIndex,
+      type,
+      x,
+      y,
+      hp: def.hp,
+      maxHp: def.hp,
+      path: [],
+      task: "idle",
+      targetTile: null,
+      targetEntityId: null,
+      carryType: null,
+      carryAmt: 0,
+      atkCooldown: 0,
+      gatherTick: 0
+    };
+    state.units.push(u);
+    return u;
+  }
+
+  function recomputeFog() {
+    for (let y = 0; y < MAP_N; y++) {
+      for (let x = 0; x < MAP_N; x++) {
+        if (state.fog[y][x] === 2) state.fog[y][x] = 1;
+      }
+    }
+    const reveal = (cx, cy, r) => {
+      const r2 = r * r;
+      const minY = Math.max(0, Math.floor(cy - r));
+      const maxY = Math.min(MAP_N - 1, Math.ceil(cy + r));
+      const minX = Math.max(0, Math.floor(cx - r));
+      const maxX = Math.min(MAP_N - 1, Math.ceil(cx + r));
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2) state.fog[y][x] = 2;
+        }
+      }
+    };
+    for (const b of state.buildings) {
+      if (b.team === "player") reveal(b.tx + b.size / 2, b.ty + b.size / 2, BLDG_DEFS[b.type].vision);
+    }
+    for (const u of state.units) {
+      if (u.team === "player") reveal(u.x, u.y, UNIT_DEFS[u.type].vision);
+    }
+  }
+
+  function addFloat(x, y, text, color = "#F5B841") {
+    state.floats.push({ x, y, text, color, life: 1.05 });
+  }
+
+  function getPopStats(team) {
+    const pop = state.units.filter(u => u.team === team).length;
+    const cap = Math.min(70, state.buildings.filter(b => b.team === team).reduce((s, b) => s + (BLDG_DEFS[b.type].pop || 0), 0));
+    return { pop, cap };
+  }
+
+  function adjustedCost(cost, mult) {
+    return {
+      food: Math.round((cost.food || 0) * mult),
+      wood: Math.round((cost.wood || 0) * mult),
+      gold: Math.round((cost.gold || 0) * mult),
+      stone: Math.round((cost.stone || 0) * mult)
+    };
+  }
+
+  function formatCost(c) {
+    return [c.food ? `${c.food}T` : "", c.wood ? `${c.wood}G` : "", c.gold ? `${c.gold}V` : "", c.stone ? `${c.stone}Đ` : ""].filter(Boolean).join(" ");
+  }
+
+  function canAfford(cost) {
+    return (
+      state.resources.food >= (cost.food || 0) &&
+      state.resources.wood >= (cost.wood || 0) &&
+      state.resources.gold >= (cost.gold || 0) &&
+      state.resources.stone >= (cost.stone || 0)
+    );
+  }
+
+  function spend(cost) {
+    state.resources.food -= cost.food || 0;
+    state.resources.wood -= cost.wood || 0;
+    state.resources.gold -= cost.gold || 0;
+    state.resources.stone -= cost.stone || 0;
+  }
+
+  // =========================================================================
+  // 4. A* PATHFINDING
+  // =========================================================================
+  function isTileBlocked(tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= MAP_N || ty >= MAP_N) return true;
+    if (state.grid[ty][tx].terrain === "water") return true;
+    for (const b of state.buildings) {
+      if (b.type === "farm") continue;
+      if (tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size) return true;
+    }
+    return false;
+  }
+
+  function findPath(sx, sy, gx, gy) {
+    const startX = Math.max(0, Math.min(MAP_N - 1, Math.floor(sx)));
+    const startY = Math.max(0, Math.min(MAP_N - 1, Math.floor(sy)));
+    let goalX = Math.max(0, Math.min(MAP_N - 1, Math.floor(gx)));
+    let goalY = Math.max(0, Math.min(MAP_N - 1, Math.floor(gy)));
+
+    if (isTileBlocked(goalX, goalY)) {
+      let best = null, bestD = 999;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = goalX + dx, ny = goalY + dy;
+          if (!isTileBlocked(nx, ny)) {
+            const d = Math.hypot(nx - startX, ny - startY);
+            if (d < bestD) { bestD = d; best = { x: nx, y: ny }; }
+          }
+        }
+      }
+      if (!best) return [];
+      goalX = best.x; goalY = best.y;
+    }
+
+    const key = (x, y) => `${x},${y}`;
+    const open = [{ x: startX, y: startY, g: 0, f: Math.hypot(goalX - startX, goalY - startY) }];
+    const cameFrom = new Map();
+    const gScore = new Map([[key(startX, startY), 0]]);
+    const closed = new Set();
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+    let iter = 0;
+    while (open.length > 0 && iter++ < 480) {
+      open.sort((a, b) => a.f - b.f);
+      const cur = open.shift();
+      const ck = key(cur.x, cur.y);
+      if (cur.x === goalX && cur.y === goalY) {
+        const path = [];
+        let k = ck;
+        while (cameFrom.has(k)) {
+          const [px, py] = k.split(",").map(Number);
+          path.unshift({ x: px + 0.5, y: py + 0.5 });
+          k = cameFrom.get(k);
+        }
+        return path;
+      }
+      closed.add(ck);
+      for (const [dx, dy] of dirs) {
+        const nx = cur.x + dx, ny = cur.y + dy, nk = key(nx, ny);
+        if (closed.has(nk) || isTileBlocked(nx, ny)) continue;
+        const tentG = cur.g + (dx !== 0 && dy !== 0 ? 1.414 : 1);
+        if (tentG < (gScore.get(nk) ?? 1e9)) {
+          cameFrom.set(nk, ck);
+          gScore.set(nk, tentG);
+          open.push({ x: nx, y: ny, g: tentG, f: tentG + Math.hypot(goalX - nx, goalY - ny) });
+        }
+      }
+    }
+    return [{ x: goalX + 0.5, y: goalY + 0.5 }];
+  }
+
+  // =========================================================================
+  // 5. SIMULATION (Auto-firing Towers/Citadels, Blacksmith Armor, Combat)
+  // =========================================================================
+  function findDropoff(team, x, y) {
+    let best = null, bestD = 999;
+    for (const b of state.buildings) {
+      if (b.team === team && (b.type === "town_center" || b.type === "depot")) {
+        const d = Math.hypot(b.tx + b.size / 2 - x, b.ty + b.size / 2 - y);
+        if (d < bestD) { bestD = d; best = b; }
+      }
+    }
+    return best;
+  }
+
+  function findNearestResource(type, x, y) {
+    let best = null, bestD = 999;
+    for (let ty = 0; ty < MAP_N; ty++) {
+      for (let tx = 0; tx < MAP_N; tx++) {
+        if (state.grid[ty][tx].res === type && state.grid[ty][tx].resAmt > 0) {
+          const d = Math.hypot(tx - x, ty - y);
+          if (d < bestD) { bestD = d; best = { tx, ty }; }
+        }
+      }
+    }
+    return best;
+  }
+
+  function applyDamage(attacker, target, isBldg, baseDmg) {
+    const def = attacker && UNIT_DEFS[attacker.type] ? UNIT_DEFS[attacker.type] : null;
+    let dmg = baseDmg;
+    if (def) {
+      if (isBldg && def.bonusBuilding) dmg = Math.round(dmg * def.bonusBuilding);
+      if (!isBldg) {
+        const tRole = UNIT_DEFS[target.type].role;
+        if (tRole === "elephant" && def.bonusElephant) dmg = Math.round(dmg * def.bonusElephant);
+        if (tRole === "cavalry" && def.bonusCav) dmg = Math.round(dmg * def.bonusCav);
+        if (tRole === "infantry" && def.bonusInf) dmg = Math.round(dmg * def.bonusInf);
+        if (tRole === "ranged" && def.bonusRanged) dmg = Math.round(dmg * def.bonusRanged);
+        if (tRole === "siege" && def.bonusSiege) dmg = Math.round(dmg * def.bonusSiege);
+      }
+    }
+    // Blacksmith Armor mitigation for player units
+    if (!isBldg && target.team === "player") {
+      dmg = Math.max(2, dmg - state.upgrades.armor * 2);
+    }
+
+    target.hp -= dmg;
+    const tx = isBldg ? target.tx + target.size / 2 : target.x;
+    const ty = isBldg ? target.ty + target.size / 2 : target.y;
+    addFloat(tx, ty - 0.5, `-${dmg}`, "#EF4444");
+
+    if (def && def.splash) {
+      for (const other of state.units) {
+        if (other.team !== attacker.team && other.id !== target.id && Math.hypot(other.x - tx, other.y - ty) <= def.splash) {
+          other.hp -= Math.round(dmg * 0.55);
+        }
+      }
+    }
+  }
+
+  let fogTick = 0;
+
+  function stepSimulation(dt) {
+    if (!state.running || state.gameOver) return;
+
+    fogTick += dt;
+    if (fogTick >= 0.25) { fogTick = 0; recomputeFog(); }
+
+    for (let i = state.floats.length - 1; i >= 0; i--) {
+      state.floats[i].life -= dt;
+      state.floats[i].y -= dt * 0.45;
+      if (state.floats[i].life <= 0) state.floats.splice(i, 1);
+    }
+
+    // Defensive Buildings Auto-Fire (Vọng Lâu, Hoàng Thành, Đình Làng)
+    for (const b of state.buildings) {
+      const bdef = BLDG_DEFS[b.type];
+      if (!bdef.atk) continue;
+      if (b.atkCooldown > 0) { b.atkCooldown -= dt; continue; }
+      const bx = b.tx + b.size / 2;
+      const by = b.ty + b.size / 2;
+      const bonusR = (b.team === "player" && b.type === "watch_tower") ? state.faction.towerRangeBonus : 0;
+      const maxRange = bdef.range + bonusR;
+
+      let target = null, bestD = maxRange;
+      for (const u of state.units) {
+        if (u.team !== b.team && u.hp > 0) {
+          const d = Math.hypot(u.x - bx, u.y - by);
+          if (d <= bestD) { bestD = d; target = u; }
+        }
+      }
+      if (target) {
+        b.atkCooldown = b.type === "imperial_citadel" ? 1.0 : 1.15;
+        const shots = bdef.burst || 1;
+        const dmg = bdef.atk + (b.team === "player" ? state.upgrades.attack * 2 : 0);
+        for (let s = 0; s < shots; s++) {
+          setTimeout(() => {
+            if (!state || state.gameOver) return;
+            state.projectiles.push({
+              kind: b.type === "imperial_citadel" ? "bolt" : "arrow",
+              sx: bx, sy: by, tx: target.x, ty: target.y,
+              t: 0, speed: 3.6, dmg, targetId: target.id, attacker: null
+            });
+            sfxBow();
+          }, s * 95);
+        }
+      }
+    }
+
+    // Projectiles
+    for (let i = state.projectiles.length - 1; i >= 0; i--) {
+      const p = state.projectiles[i];
+      p.t += dt * p.speed;
+      if (p.t >= 1) {
+        const tUnit = state.units.find(u => u.id === p.targetId && u.hp > 0);
+        const tBldg = state.buildings.find(b => b.id === p.targetId && b.hp > 0);
+        const target = tUnit || tBldg;
+        if (target) {
+          applyDamage(p.attacker, target, Boolean(tBldg), p.dmg);
+          if (p.kind === "boulder") sfxBoom(); else sfxHit();
+        }
+        state.projectiles.splice(i, 1);
+      }
+    }
+
+    // Units
+    for (const u of state.units) {
+      const def = UNIT_DEFS[u.type];
+      if (u.atkCooldown > 0) u.atkCooldown -= dt;
+
+      if (u.type !== "villager" && !u.targetEntityId && u.path.length === 0) {
+        let near = null, nearD = Math.max(5.5, def.range + 1.2);
+        for (const other of state.units) {
+          if (other.team !== u.team && other.hp > 0) {
+            const d = Math.hypot(other.x - u.x, other.y - u.y);
+            if (d < nearD) { nearD = d; near = other; }
+          }
+        }
+        if (!near) {
+          for (const b of state.buildings) {
+            if (b.team !== u.team && b.hp > 0) {
+              const d = Math.hypot(b.tx + b.size / 2 - u.x, b.ty + b.size / 2 - u.y);
+              if (d < nearD + 1.5) { nearD = d; near = b; }
+            }
+          }
+        }
+        if (near) { u.task = "attack"; u.targetEntityId = near.id; }
+      }
+
+      if (u.path.length > 0) {
+        const next = u.path[0];
+        const dx = next.x - u.x, dy = next.y - u.y, dist = Math.hypot(dx, dy);
+        let mult = 1.0;
+        if (u.team === "player" && u.type === "villager") mult = state.faction.vilSpeedMult;
+        if (u.team === "player" && def.role === "cavalry") mult = state.faction.cavSpeedMult;
+        const step = def.speed * mult * dt;
+        if (dist <= step) { u.x = next.x; u.y = next.y; u.path.shift(); }
+        else { u.x += (dx / dist) * step; u.y += (dy / dist) * step; }
+        continue;
+      }
+
+      if (u.type === "villager" && u.task === "gather" && u.targetTile) {
+        const { tx, ty } = u.targetTile;
+        const cell = state.grid[ty]?.[tx];
+        const farmBldg = state.buildings.find(b => b.type === "farm" && b.tx === tx && b.ty === ty);
+        const resType = farmBldg ? "food" : cell?.res;
+        const hasRes = farmBldg || (cell && cell.resAmt > 0);
+        if (!hasRes) {
+          const nextNode = findNearestResource(u.carryType || "wood", u.x, u.y);
+          if (nextNode) { u.targetTile = nextNode; u.path = findPath(u.x, u.y, nextNode.tx, nextNode.ty); }
+          else u.task = "idle";
+          continue;
+        }
+        if (Math.hypot(tx + 0.5 - u.x, ty + 0.5 - u.y) > 1.55) {
+          u.path = findPath(u.x, u.y, tx, ty);
+        } else {
+          const boost = (resType === "food" || resType === "wood") ? state.faction.foodWoodMult : 1.0;
+          u.gatherTick += dt * boost;
+          if (u.gatherTick >= 0.78) {
+            u.gatherTick = 0;
+            u.carryType = resType;
+            u.carryAmt += 5;
+            if (!farmBldg && cell) {
+              cell.resAmt -= 5;
+              if (cell.resAmt <= 0) { cell.res = null; cell.resAmt = 0; }
+            }
+            if (u.carryAmt >= 15) {
+              const drop = findDropoff(u.team, u.x, u.y);
+              if (drop) { u.task = "return"; u.path = findPath(u.x, u.y, drop.tx + drop.size / 2, drop.ty + drop.size / 2); }
+            }
+          }
+        }
+      } else if (u.type === "villager" && u.task === "return") {
+        if (u.team === "player" && u.carryType && u.carryAmt > 0) {
+          state.resources[u.carryType] += u.carryAmt;
+          addFloat(u.x, u.y - 0.6, `+${u.carryAmt}`, "#F5B841");
+          updateHud();
+        }
+        u.carryAmt = 0;
+        if (u.targetTile) { u.task = "gather"; u.path = findPath(u.x, u.y, u.targetTile.tx, u.targetTile.ty); }
+        else u.task = "idle";
+      }
+
+      if (u.task === "attack" && u.targetEntityId) {
+        const tUnit = state.units.find(e => e.id === u.targetEntityId && e.hp > 0);
+        const tBldg = state.buildings.find(b => b.id === u.targetEntityId && b.hp > 0);
+        const target = tUnit || tBldg;
+        if (!target) { u.task = "idle"; u.targetEntityId = null; continue; }
+        const tx = tUnit ? tUnit.x : tBldg.tx + tBldg.size / 2;
+        const ty = tUnit ? tUnit.y : tBldg.ty + tBldg.size / 2;
+        const reach = def.range + (tBldg ? tBldg.size * 0.55 : 0.35);
+        if (Math.hypot(tx - u.x, ty - u.y) > reach) {
+          u.path = findPath(u.x, u.y, tx, ty);
+        } else if (u.atkCooldown <= 0) {
+          u.atkCooldown = def.proj === "boulder" ? 2.1 : 1.0;
+          const forgeAtk = u.team === "player" ? state.upgrades.attack * 2 : 0;
+          const dmg = def.atk + forgeAtk + (u.team === "player" ? (state.age - 1) : 0);
+          if (def.proj) {
+            const shots = def.burst || 1;
+            for (let s = 0; s < shots; s++) {
+              setTimeout(() => {
+                if (!state || state.gameOver) return;
+                state.projectiles.push({
+                  kind: def.proj,
+                  sx: u.x, sy: u.y, tx, ty,
+                  t: 0, speed: def.proj === "boulder" ? 1.5 : 3.2, dmg, targetId: target.id, attacker: u
+                });
+                if (def.proj === "boulder") sfxBoom(); else sfxBow();
+              }, s * 110);
+            }
+          } else {
+            applyDamage(u, target, Boolean(tBldg), dmg);
+            sfxHit();
+          }
+        }
+      }
+    }
+
+    // Separation
+    for (let i = 0; i < state.units.length; i++) {
+      for (let j = i + 1; j < state.units.length; j++) {
+        const a = state.units[i], b = state.units[j];
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+        if (d > 0.001 && d < 0.45) {
+          const push = (0.45 - d) * 0.24;
+          a.x -= (dx / d) * push; a.y -= (dy / d) * push;
+          b.x += (dx / d) * push; b.y += (dy / d) * push;
+        }
+      }
+    }
+
+    state.units = state.units.filter(u => u.hp > 0);
+    state.buildings = state.buildings.filter(b => b.hp > 0);
+    state.selectedIds = state.selectedIds.filter(id => state.units.some(u => u.id === id));
+
+    const playerTc = state.buildings.find(b => b.team === "player" && b.type === "town_center");
+    const enemyTcs = state.buildings.filter(b => b.team === "enemy" && b.type === "town_center");
+    if (enemyTcs.length === 0) endGame(true);
+    else if (!playerTc) endGame(false);
+
+    // Multi-AI Skirmish Waves
+    const waveInterval = state.difficulty === "easy" ? 36 : state.difficulty === "hard" ? 20 : 28;
+    state.aiTimer += dt;
+    if (state.aiTimer >= waveInterval && enemyTcs.length > 0) {
+      state.aiTimer = 0;
+      state.aiWave += 1;
+      const perBase = state.difficulty === "hard" ? Math.min(3, 1 + Math.floor(state.aiWave / 2)) : Math.min(2, 1 + Math.floor(state.aiWave / 3));
+      for (const etc of enemyTcs) {
+        for (let k = 0; k < perBase; k++) {
+          const pool = state.aiWave >= 4 ? ["swordsman", "archer", "cavalry", "catapult"] : state.aiWave >= 2 ? ["swordsman", "spearman", "archer"] : ["swordsman", "archer"];
+          const pick = pool[(state.aiWave + k + etc.aiIndex) % pool.length];
+          const sx = etc.tx < 12 ? etc.tx + 2.4 : etc.tx - 0.6;
+          const sy = etc.ty < 12 ? etc.ty + 2.4 : etc.ty - 0.6;
+          const u = spawnUnit("enemy", pick, sx + k * 0.4, sy, etc.aiIndex);
+          if (playerTc) {
+            u.task = "attack";
+            u.targetEntityId = playerTc.id;
+            u.path = findPath(u.x, u.y, playerTc.tx + 1, playerTc.ty + 1);
+          }
+        }
+      }
+      showToast(`Cảnh báo: ${enemyTcs.length} phe AI xuất kích đợt ${state.aiWave}!`);
+    }
+  }
+
+  function endGame(victory) {
+    state.gameOver = true;
+    const modal = document.getElementById("modal");
+    document.getElementById("setup-panel").style.display = "none";
+    document.getElementById("modal-title").textContent = victory ? "THỐNG NHẤT THIÊN HẠ!" : "ĐÌNH LÀNG THẤT THỦ";
+    document.getElementById("modal-sub").textContent = victory
+      ? `Phe ${state.faction.name} đã đánh bại toàn bộ ${state.aiCount} phe AI!`
+      : "Đình Làng đã bị hạ. Hãy dựng Vọng Lâu và nâng cấp Lò Rèn sớm!";
+    document.getElementById("modal-tips").innerHTML =
+      `<strong>Tổng kết trận đấu:</strong><br/>• Thời kỳ: <strong>${AGES[state.age - 1].name}</strong><br/>• Lò Rèn: <strong>Công +${state.upgrades.attack * 2} · Giáp +${state.upgrades.armor * 2}</strong><br/>• Quân còn lại: <strong>${state.units.filter(u => u.team === "player").length}</strong>`;
+    document.getElementById("btn-start").textContent = "Mở Menu Trận Mới";
+    modal.classList.remove("hidden");
+  }
+
+  // =========================================================================
+  // 6. RENDERER (Watch Tower, Blacksmith Forge, Imperial Citadel, Box Select)
+  // =========================================================================
+  function drawDiamond(x, y, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + TILE_W / 2, y + TILE_H / 2);
+    ctx.lineTo(x, y + TILE_H);
+    ctx.lineTo(x - TILE_W / 2, y + TILE_H / 2);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+  }
+
+  function drawResource(x, y, type) {
+    if (type === "wood") {
+      [[-7, 2, 17], [-1, 4, 21], [5, 1, 18], [9, 4, 14]].forEach(([ox, oy, h]) => {
+        ctx.fillStyle = "#166534"; ctx.fillRect(Math.round(x + ox), Math.round(y + 10 + oy - h), 3, h);
+        ctx.fillStyle = "#4ADE80"; ctx.fillRect(Math.round(x + ox - 3), Math.round(y + 8 + oy - h), 8, 4);
+      });
+    } else if (type === "food") {
+      ctx.fillStyle = "#A16207"; ctx.fillRect(x - 10, y + 6, 20, 7);
+      ctx.fillStyle = "#FACC15"; for (let i = -8; i <= 8; i += 4) ctx.fillRect(x + i, y + 3, 2, 6);
+    } else if (type === "gold") {
+      ctx.fillStyle = "#57534E"; ctx.fillRect(x - 10, y + 5, 20, 9);
+      ctx.fillStyle = "#F59E0B"; ctx.fillRect(x - 6, y + 3, 6, 6);
+      ctx.fillStyle = "#FDE047"; ctx.fillRect(x + 2, y + 6, 5, 5);
+    } else if (type === "stone") {
+      ctx.fillStyle = "#64748B"; ctx.fillRect(x - 10, y + 5, 20, 9);
+      ctx.fillStyle = "#CBD5E1"; ctx.fillRect(x - 7, y + 3, 10, 6);
+    }
+  }
+
+  function drawBuilding(b) {
+    const fState = state.fog[Math.min(MAP_N - 1, b.ty)]?.[Math.min(MAP_N - 1, b.tx)] ?? 0;
+    if (b.team === "enemy" && fState === 0) return;
+
+    const cx = (b.tx + b.size / 2 - (b.ty + b.size / 2)) * (TILE_W / 2);
+    const cy = (b.tx + b.size / 2 + (b.ty + b.size / 2)) * (TILE_H / 2);
+    const roofColor = b.team === "player" ? state.faction.color : AI_COLORS[b.aiIndex % AI_COLORS.length];
+    const trimColor = b.team === "player" ? state.faction.trim : "#CBD5E1";
+
+    if (b.type === "farm") {
+      drawDiamond(cx, cy - TILE_H / 2, "#854D0E", "#CA8A04");
+      ctx.fillStyle = "#EAB308"; ctx.fillRect(cx - 11, cy - 2, 22, 3); ctx.fillRect(cx - 7, cy + 3, 14, 3);
+      return;
+    }
+
+    ctx.save();
+    if (b.team === "enemy" && fState === 1) ctx.globalAlpha = 0.55;
+
+    if (b.type === "watch_tower") {
+      // Tall East Asian Watch Tower (Vọng Lâu)
+      ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(cx - 10, cy + 3, 22, 8);
+      ctx.fillStyle = "#94A3B8"; ctx.fillRect(cx - 10, cy - 32, 20, 38);
+      ctx.fillStyle = "#475569"; ctx.fillRect(cx - 4, cy - 22, 8, 8);
+      ctx.fillStyle = roofColor;
+      ctx.beginPath(); ctx.moveTo(cx - 17, cy - 31); ctx.lineTo(cx, cy - 48); ctx.lineTo(cx + 17, cy - 31); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = trimColor; ctx.fillRect(cx - 18, cy - 33, 5, 3); ctx.fillRect(cx + 13, cy - 33, 5, 3);
+    } else if (b.type === "imperial_citadel") {
+      // Grand Double-Tiered Imperial Citadel (Hoàng Thành Đời 4)
+      ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(cx - 32, cy + 4, 68, 12);
+      ctx.fillStyle = "#94A3B8"; ctx.fillRect(cx - 30, cy - 24, 60, 32);
+      ctx.fillStyle = roofColor;
+      ctx.beginPath(); ctx.moveTo(cx - 38, cy - 22); ctx.lineTo(cx, cy - 42); ctx.lineTo(cx + 38, cy - 22); ctx.closePath(); ctx.fill();
+      // Upper golden pavilion
+      ctx.fillStyle = "#F5F0E6"; ctx.fillRect(cx - 16, cy - 44, 32, 16);
+      ctx.fillStyle = "#D97706";
+      ctx.beginPath(); ctx.moveTo(cx - 24, cy - 42); ctx.lineTo(cx, cy - 60); ctx.lineTo(cx + 24, cy - 42); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 8, cy - 61, 16, 3);
+    } else {
+      const w = b.size === 2 ? 50 : 28;
+      const h = b.size === 2 ? 28 : 17;
+      ctx.fillStyle = "rgba(0,0,0,0.28)"; ctx.fillRect(cx - w / 2 + 4, cy + 4, w, 9);
+      ctx.fillStyle = "#D6CFC2"; ctx.fillRect(cx - w / 2, cy - h + 8, w, h);
+      ctx.fillStyle = roofColor;
+      ctx.fillRect(cx - w / 2 + 3, cy - h + 10, 4, h - 4);
+      ctx.fillRect(cx + w / 2 - 7, cy - h + 10, 4, h - 4);
+
+      if (b.type === "blacksmith") {
+        // Glowing forge hearth
+        ctx.fillStyle = "#F97316"; ctx.fillRect(cx - 7, cy - 8, 14, 10);
+        ctx.fillStyle = "#FDE047"; ctx.fillRect(cx - 4, cy - 5, 8, 6);
+      }
+
+      ctx.fillStyle = roofColor;
+      ctx.beginPath(); ctx.moveTo(cx - w / 2 - 8, cy - h + 10); ctx.lineTo(cx, cy - h - 14); ctx.lineTo(cx + w / 2 + 8, cy - h + 10); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = trimColor;
+      ctx.fillRect(cx - w / 2 - 9, cy - h + 7, 6, 3);
+      ctx.fillRect(cx + w / 2 + 3, cy - h + 7, 6, 3);
+      ctx.fillRect(cx - 9, cy - h - 14, 18, 3);
+    }
+
+    if (state.selectedBuildingId === b.id) {
+      const pad = b.type === "imperial_citadel" ? 36 : b.size === 2 ? 28 : 18;
+      ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2;
+      ctx.strokeRect(cx - pad, cy - 54, pad * 2, 66);
+    }
+    if (b.hp < b.maxHp) {
+      ctx.fillStyle = "#111"; ctx.fillRect(cx - 18, cy - 58, 36, 4);
+      ctx.fillStyle = b.team === "player" ? "#22C55E" : "#EF4444";
+      ctx.fillRect(cx - 18, cy - 58, 36 * Math.max(0, b.hp / b.maxHp), 4);
+    }
+    ctx.restore();
+  }
+
+  function drawUnit(u) {
+    const ux = Math.max(0, Math.min(MAP_N - 1, Math.floor(u.x)));
+    const uy = Math.max(0, Math.min(MAP_N - 1, Math.floor(u.y)));
+    if (u.team === "enemy" && state.fog[uy][ux] < 2) return;
+
+    const wx = (u.x - u.y) * (TILE_W / 2);
+    const wy = (u.x + u.y) * (TILE_H / 2);
+    const isSel = state.selectedIds.includes(u.id);
+    const teamCol = u.team === "player" ? state.faction.color : AI_COLORS[u.aiIndex % AI_COLORS.length];
+
+    if (isSel) {
+      ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(wx, wy + 2, u.type === "war_elephant" || u.type === "catapult" ? 15 : 9, u.type === "war_elephant" || u.type === "catapult" ? 7.5 : 4.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.32)"; ctx.fillRect(wx - 6, wy, 12, 4);
+
+    if (u.type === "war_elephant") {
+      ctx.fillStyle = "#78716C"; ctx.fillRect(wx - 12, wy - 15, 24, 14); ctx.fillRect(wx - 15, wy - 11, 6, 9);
+      ctx.fillStyle = "#FEF3C7"; ctx.fillRect(wx - 16, wy - 5, 5, 2);
+      ctx.fillStyle = teamCol; ctx.fillRect(wx - 8, wy - 19, 16, 8);
+      ctx.fillStyle = "#F59E0B"; ctx.fillRect(wx - 8, wy - 20, 16, 2);
+    } else if (u.type === "catapult") {
+      ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 11, wy - 9, 22, 8);
+      ctx.fillStyle = "#451A03"; ctx.fillRect(wx - 9, wy - 3, 5, 5); ctx.fillRect(wx + 4, wy - 3, 5, 5);
+      ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 2, wy - 19, 4, 13);
+      ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx - 4, wy - 22, 6, 5);
+      ctx.fillStyle = teamCol; ctx.fillRect(wx + 5, wy - 14, 5, 5);
+    } else if (u.type === "cavalry" || u.type === "horse_archer") {
+      ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 9, wy - 9, 18, 8);
+      ctx.fillStyle = teamCol; ctx.fillRect(wx - 4, wy - 17, 8, 9);
+      ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx - 3, wy - 21, 6, 4);
+      if (u.type === "horse_archer") { ctx.fillStyle = "#FACC15"; ctx.fillRect(wx + 5, wy - 16, 2, 7); }
+    } else if (u.type === "villager") {
+      ctx.fillStyle = teamCol; ctx.fillRect(wx - 4, wy - 10, 8, 9);
+      ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 14, 6, 4);
+      ctx.fillStyle = "#D9B36C";
+      ctx.beginPath(); ctx.moveTo(wx - 7, wy - 13); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 7, wy - 13); ctx.closePath(); ctx.fill();
+    } else if (u.type === "archer" || u.type === "chuko_nu") {
+      ctx.fillStyle = teamCol; ctx.fillRect(wx - 4, wy - 11, 8, 10);
+      ctx.fillStyle = u.type === "chuko_nu" ? "#FACC15" : "#374151"; ctx.fillRect(wx - 4, wy - 16, 8, 5);
+      ctx.fillStyle = "#92400E"; ctx.fillRect(wx + 4, wy - 12, 5, 3);
+    } else {
+      ctx.fillStyle = teamCol; ctx.fillRect(wx - 4, wy - 11, 8, 10);
+      ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx - 3, wy - 16, 6, 5);
+      if (u.type === "spearman") {
+        ctx.fillStyle = "#92400E"; ctx.fillRect(wx + 5, wy - 22, 2, 20);
+        ctx.fillStyle = "#F8FAFC"; ctx.fillRect(wx + 5, wy - 25, 2, 4);
+      } else {
+        ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 4, wy - 14, 2, 9);
+      }
+    }
+
+    if (u.hp < u.maxHp) {
+      ctx.fillStyle = "#111"; ctx.fillRect(wx - 9, wy - 26, 18, 3);
+      ctx.fillStyle = u.team === "player" ? "#22C55E" : "#EF4444";
+      ctx.fillRect(wx - 9, wy - 26, 18 * Math.max(0, u.hp / u.maxHp), 3);
+    }
+  }
+
+  function render() {
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#120E0C";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(cam.zoom, cam.zoom);
+    ctx.translate(-cam.x, -cam.y);
+
+    for (let y = 0; y < MAP_N; y++) {
+      for (let x = 0; x < MAP_N; x++) {
+        const f = state.fog[y][x];
+        const wx = (x - y) * (TILE_W / 2);
+        const wy = (x + y) * (TILE_H / 2);
+        if (f === 0) { drawDiamond(wx, wy, "#0B0D0B", "rgba(255,255,255,0.03)"); continue; }
+        const cell = state.grid[y][x];
+        let fill = (x + y) % 2 === 0 ? "#4D7C0F" : "#45700E";
+        if (cell.terrain === "water") fill = "#0F766E";
+        else if (cell.res === "food") fill = "#65A30D";
+        drawDiamond(wx, wy, fill, "rgba(20, 35, 10, 0.25)");
+        if (cell.res) drawResource(wx, wy, cell.res);
+        if (f === 1) drawDiamond(wx, wy, "rgba(10, 12, 10, 0.52)", null);
+      }
+    }
+
+    if (state.buildMode && hoverTile) {
+      const def = BLDG_DEFS[state.buildMode];
+      const valid = canPlaceBuilding(hoverTile.tx, hoverTile.ty, def.size);
+      for (let dy = 0; dy < def.size; dy++) {
+        for (let dx = 0; dx < def.size; dx++) {
+          const wx = (hoverTile.tx + dx - (hoverTile.ty + dy)) * (TILE_W / 2);
+          const wy = (hoverTile.tx + dx + (hoverTile.ty + dy)) * (TILE_H / 2);
+          drawDiamond(wx, wy, valid ? "rgba(34,197,94,0.55)" : "rgba(239,68,68,0.55)", "#FFF");
+        }
+      }
+    }
+
+    const drawables = [];
+    for (const b of state.buildings) drawables.push({ depth: b.tx + b.ty + b.size, fn: () => drawBuilding(b) });
+    for (const u of state.units) drawables.push({ depth: u.x + u.y, fn: () => drawUnit(u) });
+    drawables.sort((a, b) => a.depth - b.depth);
+    for (const d of drawables) d.fn();
+
+    for (const p of state.projectiles) {
+      const curX = p.sx + (p.tx - p.sx) * p.t;
+      const curY = p.sy + (p.ty - p.sy) * p.t;
+      const wx = (curX - curY) * (TILE_W / 2);
+      const wy = (curX + curY) * (TILE_H / 2);
+      const arc = Math.sin(p.t * Math.PI) * (p.kind === "boulder" ? 42 : 16);
+      if (p.kind === "boulder") {
+        ctx.fillStyle = "#CBD5E1"; ctx.beginPath(); ctx.arc(wx, wy - 10 - arc, 5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.fillStyle = p.kind === "bolt" ? "#FACC15" : "#FEF3C7"; ctx.fillRect(wx - 2, wy - 12 - arc, 5, 2);
+      }
+    }
+
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    for (const f of state.floats) {
+      const wx = (f.x - f.y) * (TILE_W / 2);
+      const wy = (f.x + f.y) * (TILE_H / 2);
+      ctx.fillStyle = f.color; ctx.fillText(f.text, wx, wy - 14);
+    }
+
+    ctx.restore();
+
+    // Screen-space Selection Box overlay (Sprint 3)
+    if (selectionBox) {
+      const rx = Math.min(selectionBox.x1, selectionBox.x2);
+      const ry = Math.min(selectionBox.y1, selectionBox.y2);
+      const rw = Math.abs(selectionBox.x2 - selectionBox.x1);
+      const rh = Math.abs(selectionBox.y2 - selectionBox.y1);
+      ctx.fillStyle = "rgba(245, 184, 65, 0.16)";
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.strokeStyle = "#F5B841";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(rx, ry, rw, rh);
+    }
+
+    renderMinimap();
+  }
+
+  function renderMinimap() {
+    mctx.fillStyle = "#0B0D0B";
+    mctx.fillRect(0, 0, miniCanvas.width, miniCanvas.height);
+    const sx = miniCanvas.width / MAP_N;
+    const sy = miniCanvas.height / MAP_N;
+    for (let y = 0; y < MAP_N; y++) {
+      for (let x = 0; x < MAP_N; x++) {
+        const f = state.fog[y][x];
+        if (f === 0) continue;
+        const c = state.grid[y][x];
+        mctx.fillStyle = c.terrain === "water" ? "#0F766E" : c.res === "wood" ? "#166534" : c.res === "gold" ? "#F59E0B" : "#2D4715";
+        mctx.fillRect(x * sx, y * sy, sx + 0.5, sy + 0.5);
+        if (f === 1) { mctx.fillStyle = "rgba(0,0,0,0.45)"; mctx.fillRect(x * sx, y * sy, sx + 0.5, sy + 0.5); }
+      }
+    }
+    for (const b of state.buildings) {
+      if (b.team === "enemy" && state.fog[b.ty]?.[b.tx] === 0) continue;
+      mctx.fillStyle = b.team === "player" ? "#EF4444" : AI_COLORS[b.aiIndex % AI_COLORS.length];
+      mctx.fillRect(b.tx * sx, b.ty * sy, b.size * sx + 1, b.size * sy + 1);
+    }
+    for (const u of state.units) {
+      const ux = Math.max(0, Math.min(MAP_N - 1, Math.floor(u.x)));
+      const uy = Math.max(0, Math.min(MAP_N - 1, Math.floor(u.y)));
+      if (u.team === "enemy" && state.fog[uy][ux] < 2) continue;
+      mctx.fillStyle = u.team === "player" ? "#FACC15" : "#93C5FD";
+      mctx.fillRect(u.x * sx, u.y * sy, 2.5, 2.5);
+    }
+  }
+
+  // =========================================================================
+  // 7. HUD & COMMAND DOCK (Blacksmith + Watch Tower + Imperial Citadel)
+  // =========================================================================
+  function updateHud() {
+    document.getElementById("hud-faction").textContent = `${state.faction.name} (1v${state.aiCount})`;
+    document.getElementById("hud-age").textContent = AGES[state.age - 1].name;
+    document.getElementById("res-food").textContent = state.resources.food;
+    document.getElementById("res-wood").textContent = state.resources.wood;
+    document.getElementById("res-gold").textContent = state.resources.gold;
+    document.getElementById("res-stone").textContent = state.resources.stone;
+    const { pop, cap } = getPopStats("player");
+    document.getElementById("res-pop").textContent = `${pop}/${cap}`;
+  }
+
+  function researchUpgrade(kind) {
+    const cur = state.upgrades[kind];
+    if (cur >= 3) return;
+    const reqAge = cur + 2; // tier 1 -> Age 2, tier 2 -> Age 3, tier 3 -> Age 4
+    if (state.age < reqAge) { showToast(`Cần lên Đời ${reqAge} để rèn cấp ${cur + 1}!`); return; }
+    const base = { food: 100 * (cur + 1), wood: 0, gold: 80 * (cur + 1), stone: 0 };
+    const cost = adjustedCost(base, state.faction.techCostMult);
+    if (!canAfford(cost)) { showToast("Chưa đủ tài nguyên nâng cấp!"); return; }
+    spend(cost);
+    state.upgrades[kind] += 1;
+    sfxForge();
+    showToast(kind === "attack" ? `Lò Rèn: +2 Công toàn quân (Cấp ${state.upgrades.attack}/3)!` : `Lò Rèn: +2 Giáp toàn quân (Cấp ${state.upgrades.armor}/3)!`);
+    updateHud();
+    renderCommandDock();
+  }
+
+  function renderCommandDock() {
+    const wrap = document.getElementById("cmd-buttons");
+    const title = document.getElementById("sel-title");
+    wrap.innerHTML = "";
+
+    const addBtn = (label, costTxt, enabled, active, onClick) => {
+      const btn = document.createElement("button");
+      btn.className = "act-btn" + (active ? " selected" : "");
+      btn.disabled = !enabled;
+      btn.innerHTML = `<span>${label}</span><span class="act-cost">${costTxt}</span>`;
+      btn.addEventListener("click", () => { ensureAudio(); onClick(); });
+      wrap.appendChild(btn);
+    };
+
+    const selBldg = state.buildings.find(b => b.id === state.selectedBuildingId);
+    const selUnits = state.units.filter(u => state.selectedIds.includes(u.id));
+
+    if (selBldg && selBldg.team === "player") {
+      const bName = BLDG_DEFS[selBldg.type].name;
+      title.textContent = `${bName} (HP ${selBldg.hp}/${selBldg.maxHp}) · Công+${state.upgrades.attack * 2} Giáp+${state.upgrades.armor * 2}`;
+      const { pop, cap } = getPopStats("player");
+
+      if (selBldg.type === "town_center") {
+        addBtn("Sinh Dân Làng", "50 Thực", pop < cap && canAfford(UNIT_DEFS.villager.cost), false, () => trainFrom(selBldg, "villager"));
+        if (state.age < 4) {
+          const next = AGES[state.age];
+          const c = adjustedCost(next.cost, state.faction.ageCostMult);
+          addBtn(`Lên ${next.name.split(" · ")[1]}`, formatCost(c), canAfford(c), false, () => advanceAge());
+        }
+      } else if (selBldg.type === "barracks") {
+        addBtn("Đao Binh", "50T 15V", pop < cap && canAfford(UNIT_DEFS.swordsman.cost), false, () => trainFrom(selBldg, "swordsman"));
+        addBtn("Trường Thương", state.age >= 2 ? "35T 25G" : "Cần Đời 2", state.age >= 2 && pop < cap && canAfford(UNIT_DEFS.spearman.cost), false, () => trainFrom(selBldg, "spearman"));
+      } else if (selBldg.type === "archery_range") {
+        addBtn("Cung Thủ", "25G 35V", pop < cap && canAfford(UNIT_DEFS.archer.cost), false, () => trainFrom(selBldg, "archer"));
+        if (state.factionId === "trung_nguyen") {
+          addBtn("Nỏ Liên Châu", state.age >= 3 ? "30G 40V" : "Cần Đời 3", state.age >= 3 && pop < cap && canAfford(UNIT_DEFS.chuko_nu.cost), false, () => trainFrom(selBldg, "chuko_nu"));
+        }
+      } else if (selBldg.type === "blacksmith") {
+        const atkLv = state.upgrades.attack;
+        const armLv = state.upgrades.armor;
+        if (atkLv < 3) {
+          const c = adjustedCost({ food: 100 * (atkLv + 1), gold: 80 * (atkLv + 1) }, state.faction.techCostMult);
+          addBtn(`Rèn Công Cấp ${atkLv + 1}`, state.age >= atkLv + 2 ? formatCost(c) : `Cần Đời ${atkLv + 2}`, state.age >= atkLv + 2 && canAfford(c), false, () => researchUpgrade("attack"));
+        } else {
+          addBtn("Công Tối Đa (+6)", "Đã xong", false, false, () => {});
+        }
+        if (armLv < 3) {
+          const c = adjustedCost({ food: 100 * (armLv + 1), gold: 80 * (armLv + 1) }, state.faction.techCostMult);
+          addBtn(`Rèn Giáp Cấp ${armLv + 1}`, state.age >= armLv + 2 ? formatCost(c) : `Cần Đời ${armLv + 2}`, state.age >= armLv + 2 && canAfford(c), false, () => researchUpgrade("armor"));
+        } else {
+          addBtn("Giáp Tối Đa (+6)", "Đã xong", false, false, () => {});
+        }
+      } else if (selBldg.type === "stable") {
+        addBtn("Kỵ Binh", "60T 60V", pop < cap && canAfford(UNIT_DEFS.cavalry.cost), false, () => trainFrom(selBldg, "cavalry"));
+        if (state.factionId === "dai_viet") addBtn("Tượng Binh", "110T 80V", pop < cap && canAfford(UNIT_DEFS.war_elephant.cost), false, () => trainFrom(selBldg, "war_elephant"));
+        else if (state.factionId === "bac_cuong") addBtn("Thiết Kỵ Xạ", "45G 55V", pop < cap && canAfford(UNIT_DEFS.horse_archer.cost), false, () => trainFrom(selBldg, "horse_archer"));
+      } else if (selBldg.type === "siege_workshop") {
+        addBtn("Pháo Thạch", "140G 110V", pop < cap && canAfford(UNIT_DEFS.catapult.cost), false, () => trainFrom(selBldg, "catapult"));
+      } else if (selBldg.type === "imperial_citadel") {
+        const uKey = state.faction.uniqueUnit;
+        const uDef = UNIT_DEFS[uKey];
+        addBtn(uDef.name, formatCost(uDef.cost), pop < cap && canAfford(uDef.cost), false, () => trainFrom(selBldg, uKey));
+      }
+      return;
+    }
+
+    if (selUnits.length > 0) {
+      const hasVil = selUnits.some(u => u.type === "villager");
+      title.textContent = `Đang chọn ${selUnits.length} đơn vị${hasVil ? " (chạm tài nguyên hoặc xây nhà)" : " (chạm địch đánh / kéo khung chọn cụm)"}`;
+      if (hasVil) {
+        for (const key of ["house", "depot", "farm", "barracks", "archery_range", "watch_tower", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
+          const d = BLDG_DEFS[key];
+          const okAge = state.age >= d.age;
+          addBtn(
+            `Xây ${d.name}`,
+            okAge ? formatCost(d.cost) : `Cần Đời ${d.age}`,
+            okAge && canAfford(d.cost),
+            state.buildMode === key,
+            () => {
+              state.buildMode = state.buildMode === key ? null : key;
+              canvas.classList.toggle("build-mode", Boolean(state.buildMode));
+              if (state.buildMode) { setBoxSelectMode(false); showToast(`Chạm ô cỏ đã mở tầm nhìn để đặt ${d.name}`); }
+              renderCommandDock();
+            }
+          );
+        }
+      }
+      return;
+    }
+    title.textContent = "Chạm Đình Làng, Dân Làng hoặc bật Kéo chọn để quét cụm quân";
+  }
+
+  function trainFrom(bldg, unitType) {
+    const def = UNIT_DEFS[unitType];
+    const { pop, cap } = getPopStats("player");
+    if (pop >= cap) { showToast("Đầy dân số — hãy xây thêm Nhà Ngói!"); return; }
+    if (!canAfford(def.cost)) { showToast("Chưa đủ tài nguyên!"); return; }
+    spend(def.cost);
+    spawnUnit("player", unitType, bldg.tx + bldg.size * 0.5, bldg.ty + bldg.size + 0.35, 0);
+    sfxTrain();
+    showToast(`Đã chiêu mộ ${def.name}`);
+    updateHud();
+    renderCommandDock();
+  }
+
+  function advanceAge() {
+    if (state.age >= 4) return;
+    const next = AGES[state.age];
+    const cost = adjustedCost(next.cost, state.faction.ageCostMult);
+    if (!canAfford(cost)) { showToast("Chưa đủ tài nguyên lên đời!"); return; }
+    spend(cost);
+    state.age += 1;
+    sfxAgeUp();
+    showToast(`Đã tiến lên ${next.name}!`);
+    updateHud();
+    renderCommandDock();
+  }
+
+  function canPlaceBuilding(tx, ty, size) {
+    for (let dy = 0; dy < size; dy++) {
+      for (let dx = 0; dx < size; dx++) {
+        if (isTileBlocked(tx + dx, ty + dy)) return false;
+        if ((state.fog[ty + dy]?.[tx + dx] ?? 0) === 0) return false;
+      }
+    }
+    return true;
+  }
+
+  // =========================================================================
+  // 8. INPUT HANDLERS (Box Select + Pan + Contextual Tap)
+  // =========================================================================
+  function bindOptionRow(id, onPick) {
+    const row = document.getElementById(id);
+    row.querySelectorAll(".opt-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        ensureAudio(); sfxClick();
+        row.querySelectorAll(".opt-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        onPick(btn.dataset.val);
+      });
+    });
+  }
+
+  bindOptionRow("opt-faction", v => { setup.faction = v; });
+  bindOptionRow("opt-mode", v => { setup.aiCount = Number(v); });
+  bindOptionRow("opt-diff", v => { setup.difficulty = v; });
+
+  function finishBoxSelect(box) {
+    const minX = Math.min(box.x1, box.x2), maxX = Math.max(box.x1, box.x2);
+    const minY = Math.min(box.y1, box.y2), maxY = Math.max(box.y1, box.y2);
+    const picked = [];
+    for (const u of state.units) {
+      if (u.team !== "player") continue;
+      const wx = (u.x - u.y) * (TILE_W / 2);
+      const wy = (u.x + u.y) * (TILE_H / 2);
+      const sp = worldToScreen(wx, wy);
+      if (sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY) picked.push(u.id);
+    }
+    if (picked.length > 0) {
+      state.selectedIds = picked;
+      state.selectedBuildingId = null;
+      sfxClick();
+      showToast(`Đã chọn cụm ${picked.length} đơn vị!`);
+      renderCommandDock();
+    } else {
+      showToast("Không có quân ta trong khung chọn.");
+    }
+    setBoxSelectMode(false);
+  }
+
+  function handleTap(clientX, clientY) {
+    ensureAudio();
+    const rect = canvas.getBoundingClientRect();
+    const { tx, ty } = screenToTile(clientX - rect.left, clientY - rect.top);
+
+    if (state.buildMode) {
+      const def = BLDG_DEFS[state.buildMode];
+      if (!canPlaceBuilding(tx, ty, def.size)) { showToast("Chọn ô cỏ trống đã mở sương mù!"); return; }
+      if (!canAfford(def.cost)) {
+        showToast("Chưa đủ tài nguyên!");
+        state.buildMode = null; canvas.classList.remove("build-mode"); renderCommandDock(); return;
+      }
+      spend(def.cost);
+      const b = spawnBuilding("player", state.buildMode, tx, ty, 0);
+      sfxBuild(); recomputeFog();
+      showToast(`Đã xây xong ${def.name}`);
+      state.buildMode = null; canvas.classList.remove("build-mode");
+      state.selectedBuildingId = b.id; state.selectedIds = [];
+      updateHud(); renderCommandDock();
+      return;
+    }
+
+    const tappedEnemyUnit = state.units.find(u => u.team === "enemy" && Math.hypot(u.x - (tx + 0.5), u.y - (ty + 0.5)) < 1.15);
+    const tappedEnemyBldg = state.buildings.find(b => b.team === "enemy" && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
+    const enemyTarget = tappedEnemyUnit || tappedEnemyBldg;
+
+    if (enemyTarget && state.selectedIds.length > 0) {
+      for (const u of state.units.filter(x => state.selectedIds.includes(x.id))) {
+        u.task = "attack"; u.targetEntityId = enemyTarget.id;
+        u.path = findPath(u.x, u.y, tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + 1, tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + 1);
+      }
+      sfxClick(); showToast("Đã ra lệnh tấn công!"); return;
+    }
+
+    const tappedOwnUnit = state.units.find(u => u.team === "player" && Math.hypot(u.x - (tx + 0.5), u.y - (ty + 0.5)) < 0.95);
+    if (tappedOwnUnit) {
+      state.selectedIds = [tappedOwnUnit.id]; state.selectedBuildingId = null;
+      sfxClick(); renderCommandDock(); return;
+    }
+
+    const tappedOwnBldg = state.buildings.find(b => b.team === "player" && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
+    const selVils = state.units.filter(u => state.selectedIds.includes(u.id) && u.type === "villager");
+    if (tappedOwnBldg && !(tappedOwnBldg.type === "farm" && selVils.length > 0)) {
+      state.selectedBuildingId = tappedOwnBldg.id; state.selectedIds = [];
+      sfxClick(); renderCommandDock(); return;
+    }
+
+    if (state.selectedIds.length > 0 && tx >= 0 && ty >= 0 && tx < MAP_N && ty < MAP_N) {
+      const cell = state.grid[ty][tx];
+      const isFarm = tappedOwnBldg && tappedOwnBldg.type === "farm";
+      if ((cell.res || isFarm) && selVils.length > 0) {
+        for (const v of selVils) { v.task = "gather"; v.targetTile = { tx, ty }; v.path = findPath(v.x, v.y, tx, ty); }
+        sfxClick(); showToast("Nông dân đang đi khai thác...");
+      } else if (!isTileBlocked(tx, ty)) {
+        for (const u of state.units.filter(x => state.selectedIds.includes(x.id))) {
+          u.task = "move"; u.targetEntityId = null; u.path = findPath(u.x, u.y, tx, ty);
+        }
+        sfxClick();
+      }
+    }
+  }
+
+  canvas.addEventListener("pointerdown", e => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    isDragging = true;
+    pointerDownPos = { x: e.clientX, y: e.clientY };
+    lastPointer = { x: e.clientX, y: e.clientY };
+    canvas.setPointerCapture(e.pointerId);
+    if (boxSelectMode || e.shiftKey) {
+      selectionBox = { x1: sx, y1: sy, x2: sx, y2: sy };
+    }
+  });
+
+  canvas.addEventListener("pointermove", e => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    hoverTile = screenToTile(sx, sy);
+    if (!isDragging) return;
+    if (selectionBox) {
+      selectionBox.x2 = sx;
+      selectionBox.y2 = sy;
+      return;
+    }
+    const dx = e.clientX - lastPointer.x, dy = e.clientY - lastPointer.y;
+    if (Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y) > 8) {
+      canvas.classList.add("dragging");
+      cam.x -= dx / cam.zoom; cam.y -= dy / cam.zoom;
+    }
+    lastPointer = { x: e.clientX, y: e.clientY };
+  });
+
+  canvas.addEventListener("pointerup", e => {
+    const moved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+    isDragging = false;
+    canvas.classList.remove("dragging");
+    if (selectionBox) {
+      const box = selectionBox;
+      selectionBox = null;
+      if (moved > 12) { finishBoxSelect(box); return; }
+      setBoxSelectMode(false);
+    }
+    if (moved <= 8) handleTap(e.clientX, e.clientY);
+  });
+
+  miniCanvas.addEventListener("pointerdown", e => {
+    const r = miniCanvas.getBoundingClientRect();
+    const tx = ((e.clientX - r.left) / r.width) * MAP_N;
+    const ty = ((e.clientY - r.top) / r.height) * MAP_N;
+    cam.x = (tx - ty) * (TILE_W / 2); cam.y = (tx + ty) * (TILE_H / 2);
+  });
+
+  document.getElementById("btn-box-select").addEventListener("click", () => {
+    ensureAudio();
+    sfxClick();
+    setBoxSelectMode(!boxSelectMode);
+    if (boxSelectMode) showToast("Kéo 1 ngón tay vẽ khung để chọn nhiều quân!");
+  });
+
+  document.getElementById("btn-zoom-in").addEventListener("click", () => { cam.zoom = Math.min(1.8, cam.zoom + 0.15); });
+  document.getElementById("btn-zoom-out").addEventListener("click", () => { cam.zoom = Math.max(0.6, cam.zoom - 0.15); });
+  document.getElementById("btn-sound").addEventListener("click", e => {
+    soundOn = !soundOn; e.target.textContent = soundOn ? "Âm: Bật" : "Âm: Tắt";
+  });
+  document.getElementById("btn-restart").addEventListener("click", () => {
+    document.getElementById("setup-panel").style.display = "block";
+    document.getElementById("modal-title").textContent = "PIXEL DYNASTY · SPRINT 3";
+    document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
+    document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
+    document.getElementById("modal").classList.remove("hidden");
+  });
+  document.getElementById("btn-start").addEventListener("click", () => {
+    ensureAudio();
+    if (state && state.gameOver && document.getElementById("setup-panel").style.display === "none") {
+      document.getElementById("setup-panel").style.display = "block";
+      document.getElementById("modal-title").textContent = "PIXEL DYNASTY · SPRINT 3";
+      document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
+      return;
+    }
+    document.getElementById("modal").classList.add("hidden");
+    initGame();
+    sfxAgeUp();
+  });
+
+  document.getElementById("btn-idle-vil").addEventListener("click", () => {
+    const idle = state.units.find(u => u.team === "player" && u.type === "villager" && u.task === "idle");
+    if (!idle) { showToast("Tất cả Nông dân đều đang làm việc!"); return; }
+    state.selectedIds = [idle.id]; state.selectedBuildingId = null;
+    cam.x = (idle.x - idle.y) * (TILE_W / 2); cam.y = (idle.x + idle.y) * (TILE_H / 2);
+    renderCommandDock();
+  });
+
+  document.getElementById("btn-all-army").addEventListener("click", () => {
+    const army = state.units.filter(u => u.team === "player" && u.type !== "villager");
+    if (army.length === 0) { showToast("Chưa có quân lính — hãy xây Doanh Trại hoặc Trường Bắn!"); return; }
+    state.selectedIds = army.map(u => u.id); state.selectedBuildingId = null;
+    renderCommandDock(); showToast(`Đã chọn ${army.length} binh sĩ!`);
+  });
+
+  document.getElementById("btn-focus-tc").addEventListener("click", () => {
+    const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center");
+    if (!tc) return;
+    state.selectedBuildingId = tc.id; state.selectedIds = [];
+    cam.x = (tc.tx + 1 - (tc.ty + 1)) * (TILE_W / 2); cam.y = (tc.tx + 1 + (tc.ty + 1)) * (TILE_H / 2);
+    renderCommandDock();
+  });
+
+  function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+
+  function loop(ts) {
+    const dt = Math.min(0.05, (ts - lastTime) / 1000 || 0.016);
+    lastTime = ts;
+    if (state) { stepSimulation(dt); render(); }
+    rafId = requestAnimationFrame(loop);
+  }
+
+  window.addEventListener("resize", resize);
+  window.onload = () => {
+    resize();
+    initGame();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(loop);
+  };
+})();
+</script>
 </body>
 </html>
