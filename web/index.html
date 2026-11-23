@@ -365,7 +365,7 @@
       <button class="icon-btn" id="btn-zoom-out" title="Thu nhỏ">−</button>
       <button class="icon-btn" id="btn-zoom-in" title="Phóng to">+</button>
       <button class="icon-btn" id="btn-music" title="Bật/Tắt nhạc nền Á Đông">Nhạc: Bật</button> <button class="icon-btn" id="btn-sound" title="Bật/Tắt âm thanh">Âm: Bật</button>
-      <button class="icon-btn" id="btn-restart" title="Cài đặt & Chơi lại">Chơi lại</button>
+     <button class="icon-btn" id="btn-save" title="Lưu ván đấu vào bộ nhớ máy">Lưu</button>  <button class="icon-btn" id="btn-restart" title="Cài đặt & Chơi lại">Chơi lại</button>
     </div>
   </div>
 
@@ -393,7 +393,7 @@
   <!-- SETUP / RESULT MODAL -->
   <div id="modal">
     <div class="modal-card">
-      <h1 id="modal-title">PIXEL DYNASTY · SPRINT 4A</h1>
+      <h1 id="modal-title">PIXEL DYNASTY · SPRINT 5</h1>
       <p class="modal-sub" id="modal-sub">Nhạc ngũ cung Á Đông · Nhóm Đạo quân 1-2-3 · Chuông Báo trú ẩn · AI tự xây & lên 4 Đời</p>
 
       <div id="setup-panel">
@@ -428,7 +428,7 @@
       <div class="modal-tips" id="modal-tips">
         <strong>Mới ở Sprint 3:</strong> Bấm <strong>Kéo chọn</strong> (hoặc giữ <code>Shift</code> + kéo) để quét khung chọn nhanh cụm quân. Xây <strong>Vọng Lâu</strong> (Đời 2) bắn tên tự động, <strong>Lò Rèn Cổ</strong> nâng cấp Công/Giáp tới cấp 3 và <strong>Hoàng Thành</strong> (Đời 4) bắn loạt 3 tên!
       </div>
-      <button class="primary-btn" id="btn-start">Xuất Quân Ngay</button>
+      <button class="primary-btn" id="btn-start">Xuất Quân Ngay</button> <button class="primary-btn" id="btn-load-save" style="display:none;margin-top:8px;background:#0F766E;">Tiếp tục ván đã lưu</button>
     </div>
   </div>
 </div>
@@ -666,7 +666,7 @@
       grid,
       fog,
       resources: { food: 200, wood: 200, gold: 50, stone: 100 },
-      age: 1,
+      age: 1, stats: { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 },
       upgrades: { attack: 0, armor: 0 }, // Blacksmith upgrades 0..3
       buildings: [],
       units: [],
@@ -947,7 +947,7 @@
   let fogTick = 0;
 
   function stepSimulation(dt) {
-    if (!state.running || state.gameOver) return;
+    if (!state.running || state.gameOver) return; if (state.stats) state.stats.elapsedSec += dt;
 
     fogTick += dt;
     if (fogTick >= 0.25) { fogTick = 0; recomputeFog(); }
@@ -1078,7 +1078,7 @@
         }
       } else if (u.type === "villager" && u.task === "return") {
         if (u.team === "player" && u.carryType && u.carryAmt > 0) {
-          state.resources[u.carryType] += u.carryAmt;
+          state.resources[u.carryType] += u.carryAmt; if (state.stats) state.stats.resourcesGathered += u.carryAmt;
           addFloat(u.x, u.y - 0.6, `+${u.carryAmt}`, "#F5B841");
           updateHud();
         }
@@ -1137,7 +1137,7 @@
       }
     }
 
-    state.units = state.units.filter(u => u.hp > 0);
+   for (const u of state.units) { if (u.team === "enemy" && u.hp <= 0 && state.stats) state.stats.enemiesKilled++; }  state.units = state.units.filter(u => u.hp > 0);
     state.buildings = state.buildings.filter(b => b.hp > 0);
     state.selectedIds = state.selectedIds.filter(id => state.units.some(u => u.id === id));
 
@@ -1181,8 +1181,8 @@
     document.getElementById("modal-sub").textContent = victory
       ? `Phe ${state.faction.name} đã đánh bại toàn bộ ${state.aiCount} phe AI!`
       : "Đình Làng đã bị hạ. Hãy dựng Vọng Lâu và nâng cấp Lò Rèn sớm!";
-    document.getElementById("modal-tips").innerHTML =
-      `<strong>Tổng kết trận đấu:</strong><br/>• Thời kỳ: <strong>${AGES[state.age - 1].name}</strong><br/>• Lò Rèn: <strong>Công +${state.upgrades.attack * 2} · Giáp +${state.upgrades.armor * 2}</strong><br/>• Quân còn lại: <strong>${state.units.filter(u => u.team === "player").length}</strong>`;
+    const stats = state.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }; const score = stats.enemiesKilled * 120 + stats.buildingsBuilt * 80 + stats.resourcesGathered + state.age * 500; const mins = String(Math.floor(stats.elapsedSec / 60)).padStart(2, "0"); const secs = String(Math.floor(stats.elapsedSec % 60)).padStart(2, "0"); document.getElementById("modal-tips").innerHTML = `<strong>Tổng kết trận đấu · ${AGES[state.age - 1].name}</strong><table style="width:100%;margin-top:6px;border-collapse:collapse;font-size:12px;"><tr><td style="padding:2px 0;opacity:0.85;">Điểm tổng kết</td><td style="text-align:right;font-weight:700;color:#FBBF24;">${score.toLocaleString()}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Thời gian</td><td style="text-align:right;font-weight:600;">${mins}:${secs}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Quân địch tiêu diệt</td><td style="text-align:right;font-weight:600;">${stats.enemiesKilled}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Quân đã chiêu mộ</td><td style="text-align:right;font-weight:600;">${stats.unitsTrained}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Công trình đã xây</td><td style="text-align:right;font-weight:600;">${stats.buildingsBuilt}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Tổng tài nguyên khai thác</td><td style="text-align:right;font-weight:600;">${stats.resourcesGathered}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Cấp Lò Rèn</td><td style="text-align:right;font-weight:600;">Công +${state.upgrades.attack * 2} · Giáp +${state.upgrades.armor * 2}</td></tr></table>`; /*
+      `<strong>Tổng kết trận đấu:</strong><br/>• Thời kỳ: <strong>${AGES[state.age - 1].name}</strong><br/>• Lò Rèn: <strong>Công +${state.upgrades.attack * 2} · Giáp +${state.upgrades.armor * 2}</strong><br/>• Quân còn lại: <strong>${state.units.filter(u => u.team === "player").length}</strong>`; */
     document.getElementById("btn-start").textContent = "Mở Menu Trận Mới";
     modal.classList.remove("hidden");
   }
@@ -1596,7 +1596,7 @@
     if (pop >= cap) { showToast("Đầy dân số — hãy xây thêm Nhà Ngói!"); return; }
     if (!canAfford(def.cost)) { showToast("Chưa đủ tài nguyên!"); return; }
     spend(def.cost);
-    spawnUnit("player", unitType, bldg.tx + bldg.size * 0.5, bldg.ty + bldg.size + 0.35, 0);
+    spawnUnit("player", unitType, bldg.tx + bldg.size * 0.5, bldg.ty + bldg.size + 0.35, 0); if (state.stats) state.stats.unitsTrained++;
     sfxTrain();
     showToast(`Đã chiêu mộ ${def.name}`);
     updateHud();
@@ -1682,7 +1682,7 @@
       }
       spend(def.cost);
       const b = spawnBuilding("player", state.buildMode, tx, ty, 0);
-      sfxBuild(); recomputeFog();
+      sfxBuild(); recomputeFog(); if (state.stats) state.stats.buildingsBuilt++;
       showToast(`Đã xây xong ${def.name}`);
       state.buildMode = null; canvas.classList.remove("build-mode");
       state.selectedBuildingId = b.id; state.selectedIds = [];
@@ -1794,16 +1794,16 @@
   }); document.getElementById("btn-music").addEventListener("click", e => { bgmOn = !bgmOn; e.target.textContent = bgmOn ? "Nhạc: Bật" : "Nhạc: Tắt"; if (bgmOn) { ensureAudio(); startBGM(); } });
   document.getElementById("btn-restart").addEventListener("click", () => {
     document.getElementById("setup-panel").style.display = "block";
-    document.getElementById("modal-title").textContent = "PIXEL DYNASTY · SPRINT 4A";
+    document.getElementById("modal-title").textContent = "PIXEL DYNASTY · SPRINT 5";
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
-    document.getElementById("modal").classList.remove("hidden");
-  });
+    document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, aiStates: state.aiStates, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("pixel_dynasty_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; ensureAudio(); state = { running: true, gameOver: false, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, aiStates: d.aiStates || [], garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedUnitIds: [], selectedBuildingId: null, buildMode: null, controlGroups: [[], [], []] }; recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
     if (state && state.gameOver && document.getElementById("setup-panel").style.display === "none") {
       document.getElementById("setup-panel").style.display = "block";
-      document.getElementById("modal-title").textContent = "PIXEL DYNASTY · SPRINT 4A";
+      document.getElementById("modal-title").textContent = "PIXEL DYNASTY · SPRINT 5";
       document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
       return;
     }
