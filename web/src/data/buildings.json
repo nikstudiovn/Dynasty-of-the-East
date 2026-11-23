@@ -1,0 +1,241 @@
+{
+  "version": "0.2.0",
+  "buildings": [
+    {
+      "id": "town_center",
+      "nameKey": "building.town_center",
+      "unlockAge": 1,
+      "footprint": [
+        4,
+        4
+      ],
+      "hp": 1800,
+      "buildTimeSec": 35,
+      "cost": {
+        "food": 0,
+        "wood": 250,
+        "gold": 0,
+        "stone": 100
+      },
+      "popBonus": 10,
+      "garrisonCap": 10,
+      "attack": 7,
+      "range": 6,
+      "trains": [
+        "villager"
+      ],
+      "acceptsResources": [
+        "food",
+        "wood",
+        "gold",
+        "stone"
+      ]
+    },
+    {
+      "id": "house",
+      "nameKey": "building.house",
+      "unlockAge": 1,
+      "footprint": [
+        2,
+        2
+      ],
+      "hp": 450,
+      "buildTimeSec": 8,
+      "cost": {
+        "food": 0,
+        "wood": 35,
+        "gold": 0,
+        "stone": 0
+      },
+      "popBonus": 10
+    },
+    {
+      "id": "depot",
+      "nameKey": "building.depot",
+      "unlockAge": 1,
+      "footprint": [
+        2,
+        2
+      ],
+      "hp": 500,
+      "buildTimeSec": 10,
+      "cost": {
+        "food": 0,
+        "wood": 65,
+        "gold": 0,
+        "stone": 0
+      },
+      "acceptsResources": [
+        "food",
+        "wood",
+        "gold",
+        "stone"
+      ],
+      "techBonus": {
+        "gatherRateMultiplier": 1.2
+      }
+    },
+    {
+      "id": "farm",
+      "nameKey": "building.farm",
+      "unlockAge": 1,
+      "footprint": [
+        2,
+        2
+      ],
+      "hp": 300,
+      "buildTimeSec": 6,
+      "cost": {
+        "food": 0,
+        "wood": 45,
+        "gold": 0,
+        "stone": 0
+      },
+      "foodSupply": 300,
+      "autoReseed": true
+    },
+    {
+      "id": "barracks",
+      "nameKey": "building.barracks",
+      "unlockAge": 1,
+      "footprint": [
+        3,
+        3
+      ],
+      "hp": 1000,
+      "buildTimeSec": 16,
+      "cost": {
+        "food": 0,
+        "wood": 120,
+        "gold": 0,
+        "stone": 0
+      },
+      "trains": [
+        "swordsman",
+        "spearman"
+      ]
+    },
+    {
+      "id": "archery_range",
+      "nameKey": "building.archery_range",
+      "unlockAge": 2,
+      "footprint": [
+        3,
+        3
+      ],
+      "hp": 900,
+      "buildTimeSec": 16,
+      "cost": {
+        "food": 0,
+        "wood": 130,
+        "gold": 0,
+        "stone": 0
+      },
+      "trains": [
+        "archer",
+        "chuko_nu"
+      ]
+    },
+    {
+      "id": "watch_tower",
+      "nameKey": "building.watch_tower",
+      "unlockAge": 2,
+      "footprint": [
+        2,
+        2
+      ],
+      "hp": 750,
+      "buildTimeSec": 18,
+      "cost": {
+        "food": 0,
+        "wood": 40,
+        "gold": 0,
+        "stone": 90
+      },
+      "attack": 9,
+      "range": 7,
+      "visionRadius": 9
+    },
+    {
+      "id": "blacksmith",
+      "nameKey": "building.blacksmith",
+      "unlockAge": 2,
+      "footprint": [
+        3,
+        3
+      ],
+      "hp": 950,
+      "buildTimeSec": 15,
+      "cost": {
+        "food": 0,
+        "wood": 110,
+        "gold": 0,
+        "stone": 0
+      },
+      "maxUpgradeTier": 3
+    },
+    {
+      "id": "stable",
+      "nameKey": "building.stable",
+      "unlockAge": 3,
+      "footprint": [
+        3,
+        3
+      ],
+      "hp": 1150,
+      "buildTimeSec": 18,
+      "cost": {
+        "food": 0,
+        "wood": 150,
+        "gold": 0,
+        "stone": 0
+      },
+      "trains": [
+        "cavalry",
+        "horse_archer",
+        "war_elephant"
+      ]
+    },
+    {
+      "id": "siege_workshop",
+      "nameKey": "building.siege_workshop",
+      "unlockAge": 3,
+      "footprint": [
+        3,
+        3
+      ],
+      "hp": 1200,
+      "buildTimeSec": 22,
+      "cost": {
+        "food": 0,
+        "wood": 180,
+        "gold": 0,
+        "stone": 0
+      },
+      "trains": [
+        "catapult"
+      ]
+    },
+    {
+      "id": "imperial_citadel",
+      "nameKey": "building.imperial_citadel",
+      "unlockAge": 4,
+      "footprint": [
+        4,
+        4
+      ],
+      "hp": 3200,
+      "buildTimeSec": 40,
+      "cost": {
+        "food": 0,
+        "wood": 0,
+        "gold": 0,
+        "stone": 450
+      },
+      "attack": 16,
+      "burstCount": 3,
+      "range": 8,
+      "visionRadius": 11
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "version": "0.2.0",
+  "matchConfig": {
+    "tickRateHz": 20,
+    "targetDurationMin": 12,
+    "maxPopulation": 70,
+    "startingVillagers": 5,
+    "startingResources": {
+      "food": 200,
+      "wood": 200,
+      "gold": 50,
+      "stone": 50
+    }
+  },
+  "ages": [
+    {
+      "age": 1,
+      "id": "age_1_khai_hoang",
+      "nameKey": "age.1",
+      "cost": {
+        "food": 0,
+        "wood": 0,
+        "gold": 0,
+        "stone": 0
+      },
+      "researchSec": 0
+    },
+    {
+      "age": 2,
+      "id": "age_2_phong_kien",
+      "nameKey": "age.2",
+      "cost": {
+        "food": 250,
+        "wood": 0,
+        "gold": 0,
+        "stone": 0
+      },
+      "researchSec": 25
+    },
+    {
+      "age": 3,
+      "id": "age_3_vuong_trieu",
+      "nameKey": "age.3",
+      "cost": {
+        "food": 400,
+        "wood": 0,
+        "gold": 200,
+        "stone": 0
+      },
+      "researchSec": 35
+    },
+    {
+      "age": 4,
+      "id": "age_4_de_quoc",
+      "nameKey": "age.4",
+      "cost": {
+        "food": 600,
+        "wood": 0,
+        "gold": 400,
+        "stone": 200
+      },
+      "researchSec": 45
+    }
+  ],
+  "factions": [
+    {
+      "id": "dai_viet",
+      "nameKey": "faction.dai_viet",
+      "bannerColors": [
+        "#B91C1C",
+        "#F59E0B"
+      ],
+      "uniqueUnitId": "war_elephant",
+      "bonuses": {
+        "foodGatherMultiplier": 1.15,
+        "woodGatherMultiplier": 1.15,
+        "villagerSpeedMultiplier": 1.1
+      }
+    },
+    {
+      "id": "trung_nguyen",
+      "nameKey": "faction.trung_nguyen",
+      "bannerColors": [
+        "#0F766E",
+        "#1C1917"
+      ],
+      "uniqueUnitId": "chuko_nu",
+      "bonuses": {
+        "ageUpCostMultiplier": 0.85,
+        "techCostMultiplier": 0.85,
+        "towerRangeBonus": 1
+      }
+    },
+    {
+      "id": "bac_cuong",
+      "nameKey": "faction.bac_cuong",
+      "bannerColors": [
+        "#1D4ED8",
+        "#CBD5E1"
+      ],
+      "uniqueUnitId": "horse_archer",
+      "bonuses": {
+        "stableTrainSpeedMultiplier": 1.2,
+        "cavalrySpeedMultiplier": 1.1
+      }
+    }
+  ]
+}
