@@ -1,0 +1,51 @@
+name: Cleanup Old Actions Runs
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_latest:
+        description: "Số lượt chạy mới nhất giữ lại cho mỗi workflow (0 = xóa sạch các lượt đã xong)"
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_LATEST: ${{ inputs.keep_latest }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          KEEP="${KEEP_LATEST:-1}"
+          echo "Cleaning up old runs in $REPO (keeping latest $KEEP per workflow, preserving current run $CURRENT_RUN_ID)..."
+
+          WORKFLOW_IDS=$(gh api --paginate "repos/$REPO/actions/workflows" --jq '.workflows[].id')
+          DELETED=0
+
+          for WF_ID in $WORKFLOW_IDS; do
+            RUN_IDS=$(gh api --paginate "repos/$REPO/actions/workflows/$WF_ID/runs?per_page=100" \
+              --jq '.workflow_runs[] | select(.status == "completed") | .id')
+
+            COUNT=0
+            for RUN_ID in $RUN_IDS; do
+              if [ "$RUN_ID" = "$CURRENT_RUN_ID" ]; then
+                continue
+              fi
+              COUNT=$((COUNT + 1))
+              if [ "$COUNT" -le "$KEEP" ]; then
+                continue
+              fi
+              echo "Deleting run #$RUN_ID (workflow $WF_ID)..."
+              gh api -X DELETE "repos/$REPO/actions/runs/$RUN_ID" >/dev/null 2>&1 || true
+              DELETED=$((DELETED + 1))
+            done
+          done
+
+          echo "Done! Deleted $DELETED old workflow runs."
