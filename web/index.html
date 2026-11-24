@@ -466,7 +466,11 @@
   </div>
 </div>
 
-<script>
+<script type="module">
+import "./src/ui/hudTheme.css";
+import { initBattleHud } from "./src/ui/battleHud";
+
+const updateBattleHud = initBattleHud();
 (() => {
   // =========================================================================
   // 1. CONSTANTS, FACTIONS & COMPLETE EAST ASIAN ROSTER (v0.3)
@@ -1475,10 +1479,7 @@
       mctx.fillStyle = u.team === "player" ? "#FACC15" : "#93C5FD";
       mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2.5, 2.5);
     }
-    // current view centre (48×48 is big — keeps you oriented)
-    const vx = (cam.y / (TILE_H / 2) + cam.x / (TILE_W / 2)) / 2, vy = (cam.y / (TILE_H / 2) - cam.x / (TILE_W / 2)) / 2;
-    mctx.strokeStyle = "rgba(255,255,255,0.85)"; mctx.lineWidth = 1;
-    mctx.strokeRect(vx * sx - 6 * sx, vy * sy - 4 * sy, 12 * sx, 8 * sy);
+    updateBattleHud(state, cam, R3D);
   }
 
   // =========================================================================
