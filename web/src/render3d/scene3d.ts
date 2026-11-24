@@ -1,5 +1,8 @@
 // Pixel Dynasty 3D — WebGL2 renderer, golden-hour lighting and the 45° perspective RTS camera.
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { MAP_N, isoToTile, tileToIso, clamp, rainWetness, updateLanternMaterials } from "./common";
 import { wind } from "./wind3d";
 import { Weather3D, type AtmosphereMode } from "./weather3d";
@@ -77,6 +80,8 @@ export class Scene3D {
   width = 1;
   height = 1;
   private readonly ray = new THREE.Raycaster();
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly probe: THREE.PerspectiveCamera;
   private readonly tmpV = new THREE.Vector3();
@@ -166,6 +171,32 @@ export class Scene3D {
     this.sun.shadow.mapSize.setScalar(shadow);
     this.weather.particleFraction = particles;
     this.resize(this.width, this.height);
+    this.syncComposer();
+  }
+
+  private syncComposer(): void {
+    if (this.quality === "high") {
+      if (!this.composer) {
+        const composer = new EffectComposer(this.renderer);
+        composer.addPass(new RenderPass(this.scene, this.camera));
+        const bloom = new UnrealBloomPass(
+          new THREE.Vector2(this.width, this.height),
+          0.25,
+          0.45,
+          0.88,
+        );
+        composer.addPass(bloom);
+        this.composer = composer;
+        this.bloomPass = bloom;
+      }
+      this.composer.setPixelRatio(this.pixelRatio);
+      this.composer.setSize(this.width, this.height);
+      this.bloomPass?.resolution.set(this.width, this.height);
+    } else if (this.composer) {
+      this.composer.dispose();
+      this.composer = null;
+      this.bloomPass = null;
+    }
   }
 
   resize(w: number, h: number): void {
@@ -176,6 +207,11 @@ export class Scene3D {
     this.camera.updateProjectionMatrix();
     this.probe.aspect = this.camera.aspect;
     this.probe.updateProjectionMatrix();
+    if (this.composer) {
+      this.composer.setPixelRatio(this.pixelRatio);
+      this.composer.setSize(this.width, this.height);
+      this.bloomPass?.resolution.set(this.width, this.height);
+    }
   }
 
   rotate(dir: number): void { this.yawTarget += dir * (Math.PI / 4); }
@@ -224,6 +260,11 @@ export class Scene3D {
     wind.uWindStrength.value = this.quality === "low" ? 0 : 0.085 + 0.11 * this.weather.rain;
     rainWetness.value = this.weather.rain;
     updateLanternMaterials(this.weather.lanternBoost);
+    const lb = clamp(this.weather.lanternBoost, 0, 1);
+    this.scene.environmentIntensity =
+      lb <= 0.65
+        ? THREE.MathUtils.lerp(1.0, 0.7, lb / 0.65)
+        : THREE.MathUtils.lerp(0.7, 0.32, (lb - 0.65) / 0.35)); // ;st);
   }
 
   private setNdc(clientX: number, clientY: number): void {
@@ -286,8 +327,11 @@ export class Scene3D {
     this.scene.environment = null;
     this.environment.dispose();
     this.scene.clear();
+    this.composer?.dispose();
+    this.composer = null;
+    this.bloomPass = null;
     this.renderer.dispose();
   }
 
-  render(): void { this.renderer.render(this.scene, this.camera); }
+  render(): void{  if (this.quality === "high" && this.composer) { this.composer.render(); return; }{ this.renderer.render(this.scene, this.camera); }
 }
