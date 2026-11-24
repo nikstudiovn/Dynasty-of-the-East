@@ -67,8 +67,8 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     const key = n + "|" + (state.mapType || "river_valley") + "|" + (state.mapSeed || 0);
     if (key === mapKey) return;
     mapKey = key;
+    s3.scene.remove(terrain.group, world.group, fog.mesh);
     terrain.dispose(); world.dispose(); fog.dispose();
-    s3.scene.remove(terrain.group, world.group);
     setMapSize(n);
     s3.applyMapSize(n);
     terrain = new Terrain3D(); world = new World3D(); fog = new Fog3D();
@@ -168,6 +168,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         lastState = state;
       }
       if (state && state.grid && state.fog) ensureMap(state);
+      cam.zoom = clamp(cam.zoom, MIN_ZOOM, MAX_ZOOM);
       s3.update(cam, d);
       if (state && state.grid && state.fog) {
         terrain.update(state, E, time, s3, fx);
