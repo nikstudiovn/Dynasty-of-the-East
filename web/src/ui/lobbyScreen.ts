@@ -226,11 +226,181 @@ function renderEndgameScorecard(modalCard: HTMLElement, tipsEl: HTMLElement): vo
   }
 }
 
+function findDirectChild(root: HTMLElement, id: string): HTMLElement | null {
+  const el = document.getElementById(id);
+  if (!el || !root.contains(el)) return null;
+  let cur: HTMLElement | null = el;
+  while (cur && cur.parentElement && cur.parentElement !== root) {
+    cur = cur.parentElement;
+  }
+  return cur;
+}
+
+function selectModeOption(preferMulti: boolean): void {
+  const modeRoot = document.getElementById("opt-mode");
+  if (!modeRoot) return;
+  const pills = Array.from(modeRoot.querySelectorAll<HTMLElement>(".pill, button"));
+  if (pills.length === 0) return;
+  const multiRe = /(multi|online|2p|pvp|coop|lan|net)/i;
+  const soloRe = /(solo|single|1p|offline|ai)/i;
+  const target =
+    pills.find((p) => {
+      const v = `${p.dataset.v ?? ""} ${p.textContent ?? ""}`;
+      return preferMulti ? multiRe.test(v) : soloRe.test(v);
+    }) ?? (preferMulti ? pills[pills.length - 1] : pills[0]);
+  target?.click();
+}
+
+export function enhanceModal(modalCard: HTMLElement): void {
+  const setupPanel =
+    modalCard.querySelector<HTMLElement>("#setup-panel") ??
+    document.getElementById("setup-panel");
+  if (!setupPanel || setupPanel.dataset.pdTwoTier === "1") return;
+  setupPanel.dataset.pdTwoTier = "1";
+
+  const factionGroup = findDirectChild(setupPanel, "opt-faction");
+  const modeGroup = findDirectChild(setupPanel, "opt-mode");
+  const mapSizeGroup = findDirectChild(setupPanel, "opt-map-size");
+  const mapTypeGroup = findDirectChild(setupPanel, "opt-map-type");
+  const diffGroup = findDirectChild(setupPanel, "opt-diff");
+  const startGroup = findDirectChild(setupPanel, "btn-start");
+  const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
+
+  const homeTier = document.createElement("div");
+  homeTier.className = "pd-home-actions";
+
+  const setupTier = document.createElement("div");
+  setupTier.className = "pd-setup-tier";
+
+  const setTier = (tier: "home" | "setup"): void => {
+    homeTier.hidden = tier !== "home";
+    setupTier.hidden = tier !== "setup";
+    modalCard.classList.toggle("pd-modal-setup", tier === "setup");
+  };
+
+  const makeHomeBtn = (
+    cls: string,
+    icon: string,
+    title: string,
+    sub: string,
+    onClick: () => void,
+  ): HTMLButtonElement => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `pd-home-btn ${cls}`;
+    btn.innerHTML = `
+      <span class="pd-home-btn-icon" aria-hidden="true">${icon}</span>
+      <span class="pd-home-btn-text">
+        <span class="pd-home-btn-title">${title}</span>
+        <span class="pd-home-btn-sub">${sub}</span>
+      </span>
+    `;
+    btn.addEventListener("click", onClick);
+    return btn;
+  };
+
+  homeTier.appendChild(
+    makeHomeBtn("pd-home-btn-primary", "⚔️", "Đấu Đơn", "Chinh phạt AI trên bản đồ chiến thuật", () => {
+      selectModeOption(false);
+      setTier("setup");
+    }),
+  );
+
+  homeTier.appendChild(
+    makeHomeBtn("pd-home-btn-multi", "🌐", "Đấu Mạng", "Tạo phòng hoặc đối đầu trực tuyến", () => {
+      selectModeOption(true);
+      setTier("setup");
+    }),
+  );
+
+  if (loadSaveBtn) {
+    loadSaveBtn.classList.add("pd-home-btn", "pd-home-btn-save");
+    homeTier.appendChild(loadSaveBtn);
+  } else {
+    const fallbackSave = makeHomeBtn(
+      "pd-home-btn-save",
+      "💾",
+      "Tiếp tục ván đã lưu",
+      "Chưa có dữ liệu lưu",
+      () => {},
+    );
+    fallbackSave.id = "btn-load-save";
+    fallbackSave.disabled = true;
+    homeTier.appendChild(fallbackSave);
+  }
+
+  homeTier.appendChild(
+    makeHomeBtn("pd-home-btn-guide", "📜", "Hướng dẫn nhanh", "Xem luật chơi, tài nguyên và mẹo xuất quân", () => {
+      const guide = modalCard.querySelector<HTMLDetailsElement>("details.pd-guide");
+      if (guide) {
+        guide.open = !guide.open;
+        if (guide.open) {
+          guide.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }
+    }),
+  );
+
+  const topbar = document.createElement("div");
+  topbar.className = "pd-setup-topbar";
+
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.className = "pd-btn-back";
+  backBtn.textContent = "← Quay lại";
+  backBtn.addEventListener("click", () => setTier("home"));
+  topbar.appendChild(backBtn);
+
+  const columns = document.createElement("div");
+  columns.className = "pd-setup-columns";
+
+  const colLeft = document.createElement("div");
+  colLeft.className = "pd-setup-col-left";
+
+  const colRight = document.createElement("div");
+  colRight.className = "pd-setup-col-right";
+
+  const moved = new Set<HTMLElement>();
+  const moveTo = (el: HTMLElement | null, target: HTMLElement): void => {
+    if (!el || moved.has(el)) return;
+    moved.add(el);
+    target.appendChild(el);
+  };
+
+  moveTo(factionGroup, colLeft);
+  moveTo(modeGroup, colRight);
+  moveTo(mapSizeGroup, colRight);
+  moveTo(mapTypeGroup, colRight);
+  moveTo(diffGroup, colRight);
+
+  for (const child of Array.from(setupPanel.children)) {
+    if (child instanceof HTMLElement && !moved.has(child) && child !== startGroup) {
+      if (child.children.length > 0 || (child.textContent ?? "").trim().length > 0) {
+        moveTo(child, colRight);
+      } else {
+        child.remove();
+      }
+    }
+  }
+
+  moveTo(startGroup, colRight);
+
+  columns.appendChild(colLeft);
+  columns.appendChild(colRight);
+  setupTier.appendChild(topbar);
+  setupTier.appendChild(columns);
+
+  setupPanel.appendChild(homeTier);
+  setupPanel.appendChild(setupTier);
+  setTier("home");
+}
+
 export function initLobbyUI(): void {
   const modalCard = document.querySelector<HTMLElement>("#modal .modal-card");
   if (!modalCard) return;
 
   upgradeFactionButtons();
+  enhanceModal(modalCard);
   injectQuickGuide(modalCard);
 
   const tipsEl = document.getElementById("modal-tips");

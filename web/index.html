@@ -261,7 +261,7 @@
     overflow-y: auto;
   }
   #modal.hidden { display: none; }
-
+#pause-modal { position: absolute; inset: 0; background: rgba(12, 9, 8, 0.84); display: flex; align-items: center; justify-content: center; z-index: 35; padding: 14px; overflow-y: auto; } .pd-pause-card { background: #1D1714; border: 2px solid var(--gold); border-radius: 14px; padding: 20px 22px; max-width: 420px; width: 100%; box-shadow: 0 18px 46px rgba(0, 0, 0, 0.75); text-align: center; } .pd-pause-card h2 { font-size: 22px; color: var(--gold); margin: 0 0 14px; letter-spacing: 0.03em; } .pd-pause-actions { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; } .pd-pause-quick-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .modal-card {
     background: #1D1714;
     border: 2px solid var(--gold);
@@ -440,6 +440,7 @@
       <button class="icon-btn" id="btn-zoom-in" title="Phóng to">+</button>
       <button class="icon-btn rot-btn" id="btn-rot-left" title="Xoay camera (Q)">↺</button>
       <button class="icon-btn rot-btn" id="btn-rot-right" title="Xoay camera (E)">↻</button>
+      <button class="icon-btn" id="btn-pause" title="Tạm dừng">⏸</button>
       <button type="button" class="icon-btn" id="btn-settings" aria-label="Cài đặt trận đấu" aria-expanded="false" aria-controls="hud-settings">⚙️</button>
       <div id="hud-settings" role="group" aria-label="Cài đặt trận đấu">
         <button class="icon-btn" id="btn-atmosphere" title="Chuyển chu kỳ Ngày-Đêm &amp; Thời tiết">Trời: Tự động</button>
@@ -540,7 +541,8 @@
     </div>
   </div>
 </div>
-
+  <div id="pause-modal" style="display:none"><div class="pd-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="pd-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="pd-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button></div></div></div>
+  
 <script type="module">
 import "./src/ui/hudTheme.css";
 import { initBattleHud } from "./src/ui/battleHud";
@@ -820,9 +822,9 @@ const updateBattleHud = initBattleHud();
     renderCommandDock();
   }
 
-  function spawnBuilding(team, type, tx, ty, aiIndex = 0) {
+  function spawnBuilding(team, type, tx, ty, aiIndex = 0, underConstruction = false) {
     const def = BLDG_DEFS[type];
-    const b = { id: nextId++, team, aiIndex, type, tx, ty, size: def.size, hp: def.hp, maxHp: def.hp, atkCooldown: 0 };
+    const b = { id: nextId++, team, aiIndex, type, tx, ty, size: def.size, hp: underConstruction ? Math.max(10, Math.round(def.hp * 0.1)) : def.hp, maxHp: def.hp, atkCooldown: 0, progress: underConstruction ? 0 : 1, trainQueue: [] };
     state.buildings.push(b);
     for (let dy = 0; dy < def.size; dy++) {
       for (let dx = 0; dx < def.size; dx++) {
@@ -1062,10 +1064,51 @@ const updateBattleHud = initBattleHud();
       if (state.floats[i].life <= 0) state.floats.splice(i, 1);
     }
 
-    // Defensive Buildings Auto-Fire (Vọng Lâu, Hoàng Thành, Đình Làng)
+    // Building Construction & Training Queue
+  for (const b of state.buildings) {
+    if (b.hp <= 0) continue;
+    if ((b.progress ?? 1) < 1) {
+      const bx = b.tx + b.size * 0.5, by = b.ty + b.size * 0.5;
+      const buildersHere = state.units.filter(u => u.hp > 0 && u.team === b.team && u.type === "villager" && u.task === "build" && u.buildTargetId === b.id && Math.hypot(bx - u.x, by - u.y) <= 2.3).length;
+      if (buildersHere > 0) {
+        if (window.PDBuild?.stepBuildingProgress) { window.PDBuild.stepBuildingProgress(b, buildersHere, dt); } else { b.progress = Math.min(1, (b.progress ?? 0) + dt * 0.14 * buildersHere); }
+        b.hp = Math.min(b.maxHp, Math.max(b.hp, Math.round(b.maxHp * (0.1 + 0.9 * (b.progress ?? 0)))));
+        if ((b.progress ?? 0) >= 1) {
+          b.progress = 1; b.hp = b.maxHp;
+          if (b.team === "player") showToast(`Hoàn thành ${BLDG_DEFS[b.type].name}!`);
+          for (const u of state.units) {
+            if (u.hp > 0 && u.team === b.team && u.task === "build" && u.buildTargetId === b.id) {
+              u.buildTargetId = null;
+              while (u.buildQueue?.length) {
+                const nextId = u.buildQueue.shift();
+                const nb = state.buildings.find(x => x.id === nextId && x.hp > 0 && (x.progress ?? 1) < 1);
+                if (nb) { u.buildTargetId = nb.id; u.path = findPath(u.x, u.y, nb.tx + nb.size * 0.5, nb.ty + nb.size * 0.5, u.team); break; }
+              }
+              if (!u.buildTargetId) u.task = "idle";
+            }
+          }
+          if (state.selectedBuildingId === b.id) renderCommandDock();
+        }
+      }
+      continue;
+    }
+    if (b.trainQueue?.length > 0) {
+      b.trainQueue[0].remaining -= dt;
+      if (b.trainQueue[0].remaining <= 0) {
+        const item = b.trainQueue.shift();
+        const nu = spawnUnit(b.team, item.type, b.tx + b.size * 0.5, b.ty + b.size + 0.35, b.aiIndex || 0);
+        if (state.stats && b.team === "player") state.stats.unitsTrained++;
+        if (b.rallyPoint && window.PDTactics) window.PDTactics.applyRally(nu, b, (uu, gx, gy) => findPath(uu.x, uu.y, gx, gy, b.team));
+        if (b.team === "player") { sfxTrain(); showToast(`Đã chiêu mộ ${UNIT_DEFS[item.type].name}`); updateHud(); }
+        if (state.selectedBuildingId === b.id) renderCommandDock();
+      }
+    }
+  }
+
+  // Defensive Buildings Auto-Fire (Vọng Lâu, Hoàng Thành, Đình Làng)
     for (const b of state.buildings) {
       const bdef = BLDG_DEFS[b.type];
-      if (!bdef.atk) continue;
+      if (!bdef.atk || (b.progress ?? 1) < 1) continue;
       if (b.atkCooldown > 0) { b.atkCooldown -= dt; continue; }
       const bx = b.tx + b.size / 2;
       const by = b.ty + b.size / 2;
@@ -1146,7 +1189,22 @@ const updateBattleHud = initBattleHud();
       }
       if (u.task === "attack_move") { u.task = "idle"; u.amDest = null; }
 
-      if (u.type === "villager" && u.task === "gather" && u.targetTile) {
+      if (u.type === "villager" && u.task === "build" && u.buildTargetId) {
+      const tb = state.buildings.find(b => b.id === u.buildTargetId && b.hp > 0);
+      if (!tb || (tb.progress ?? 1) >= 1) {
+        u.buildTargetId = null;
+        while (u.buildQueue?.length) {
+          const nextId = u.buildQueue.shift();
+          const nb = state.buildings.find(x => x.id === nextId && x.hp > 0 && (x.progress ?? 1) < 1);
+          if (nb) { u.buildTargetId = nb.id; u.path = findPath(u.x, u.y, nb.tx + nb.size * 0.5, nb.ty + nb.size * 0.5, u.team); break; }
+        }
+        if (!u.buildTargetId) u.task = "idle";
+      } else if (Math.hypot(tb.tx + tb.size * 0.5 - u.x, tb.ty + tb.size * 0.5 - u.y) > 2.3) {
+        u.path = findPath(u.x, u.y, tb.tx + tb.size * 0.5, tb.ty + tb.size * 0.5, u.team);
+      }
+      continue;
+    }
+    if (u.type === "villager" && u.task === "gather" && u.targetTile) {
         const { tx, ty } = u.targetTile;
         const cell = state.grid[ty]?.[tx];
         const farmBldg = state.buildings.find(b => b.type === "farm" && b.tx === tx && b.ty === ty);
@@ -1599,7 +1657,8 @@ const updateBattleHud = initBattleHud();
 
     if (selBldg && selBldg.team === "player") {
       const bName = BLDG_DEFS[selBldg.type].name;
-      title.textContent = `${bName} (HP ${selBldg.hp}/${selBldg.maxHp}) · Công+${state.upgrades.attack * 2} Giáp+${state.upgrades.armor * 2}`;
+      const qLen = selBldg.trainQueue?.length || 0; const qPct = qLen > 0 ? Math.min(100, Math.max(0, Math.round((1 - selBldg.trainQueue[0].remaining / selBldg.trainQueue[0].total) * 100))) : 0; const qTxt = qLen > 0 ? ` · Huấn luyện: ${qLen} (${qPct}%)` : ""; const bProgTxt = (selBldg.progress ?? 1) < 1 ? ` · Đang xây ${Math.round((selBldg.progress ?? 0) * 100)}%` : "";
+    title.textContent = `${bName}${bProgTxt}${qTxt} (HP ${selBldg.hp}/${selBldg.maxHp}) · Công+${state.upgrades.attack * 2} Giáp+${state.upgrades.armor * 2}`;
       const { pop, cap } = getPopStats("player");
 
       if (selBldg.type === "town_center") {
@@ -1695,15 +1754,18 @@ const updateBattleHud = initBattleHud();
   }
 
   function trainFrom(bldg, unitType) {
+  if ((bldg.progress ?? 1) < 1) { showToast("Công trình đang xây!"); return; }
     const def = UNIT_DEFS[unitType];
     const { pop, cap } = getPopStats("player");
     if (pop >= cap) { showToast("Đầy dân số — hãy xây thêm Nhà Ngói!"); return; }
     if (!canAfford(def.cost)) { showToast("Chưa đủ tài nguyên!"); return; }
     spend(def.cost);
-    const nu = spawnUnit("player", unitType, bldg.tx + bldg.size * 0.5, bldg.ty + bldg.size + 0.35, 0); if (state.stats) state.stats.unitsTrained++;
-    if (bldg.rallyPoint && window.PDTactics) window.PDTactics.applyRally(nu, bldg, (uu, gx, gy) => findPath(uu.x, uu.y, gx, gy, "player"));
-    sfxTrain();
-    showToast(`Đã chiêu mộ ${def.name}`);
+    const trainTimes = { villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
+  const trainSec = trainTimes[unitType] || 7;
+  if (!bldg.trainQueue) bldg.trainQueue = [];
+  bldg.trainQueue.push({ type: unitType, remaining: trainSec, total: trainSec });
+  sfxClick();
+  showToast(`Đã xếp hàng ${def.name} (${trainSec}s)`);
     updateHud();
     renderCommandDock();
   }
@@ -1789,15 +1851,18 @@ const updateBattleHud = initBattleHud();
         state.buildMode = null; canvas.classList.remove("build-mode"); renderCommandDock(); return;
       }
       spend(def.cost);
-      const b = spawnBuilding("player", state.buildMode, tx, ty, 0);
-      sfxBuild(); recomputeFog(); if (state.stats) state.stats.buildingsBuilt++; ejectUnits(b);
-      const linear = b.type === "wall" || b.type === "gate"; // keep build mode on so walls can be laid tile by tile
-      if (window.PDGfx && !linear) window.PDGfx.villager.registerBuild(b);
-      showToast(`Đã xây xong ${def.name}`);
-      if (!linear) {
-        state.buildMode = null; canvas.classList.remove("build-mode");
-        state.selectedBuildingId = b.id; state.selectedIds = [];
-      }
+      const b = spawnBuilding("player", state.buildMode, tx, ty, 0, true);
+    sfxBuild(); recomputeFog(); if (state.stats) state.stats.buildingsBuilt++; ejectUnits(b);
+    const linear = b.type === "wall" || b.type === "gate";
+    if (window.PDGfx && !linear) window.PDGfx.villager.registerBuild(b);
+    showToast(`Đã đặt móng ${def.name}`);
+    for (const uid of state.selectedIds) {
+      const u = state.units.find(x => x.id === uid && x.hp > 0 && x.team === "player" && x.type === "villager");
+      if (!u) continue;
+      if (!u.buildQueue) u.buildQueue = [];
+      if (u.task === "build" && u.buildTargetId) { u.buildQueue.push(b.id); } else { u.task = "build"; u.buildTargetId = b.id; u.path = findPath(u.x, u.y, b.tx + b.size * 0.5, b.ty + b.size * 0.5, "player"); }
+    }
+    if (!canAfford(def.cost)) { state.buildMode = null; canvas.classList.remove("build-mode"); }
       updateHud(); renderCommandDock();
       return;
     }
@@ -1832,7 +1897,18 @@ const updateBattleHud = initBattleHud();
 
     const tappedOwnUnit = state.units.find(u => u.team === "player" && Math.hypot(u.x - (tx + 0.5), u.y - (ty + 0.5)) < 0.95);
     if (tappedOwnUnit) {
-      state.selectedIds = [tappedOwnUnit.id]; state.selectedBuildingId = null;
+      const nowTap = performance.now();
+    const prevTap = state._lastTapUnit;
+    if (prevTap && (nowTap - (state._lastTapUnitTime || 0)) <= 320 && (prevTap.id === tappedOwnUnit.id || (prevTap.type === tappedOwnUnit.type && Math.hypot(prevTap.x - tappedOwnUnit.x, prevTap.y - tappedOwnUnit.y) <= 1.5))) {
+      const res = window.PDSelect?.selectSameTypeNearby?.(state.units, tappedOwnUnit, 6) || state.units.filter(u => u.hp > 0 && u.team === "player" && u.type === tappedOwnUnit.type && Math.hypot(u.x - tappedOwnUnit.x, u.y - tappedOwnUnit.y) <= 6);
+      const ids = res.map(x => typeof x === "object" ? x.id : x);
+      state.selectedIds = ids.length ? ids : [tappedOwnUnit.id];
+      state._lastTapUnitTime = 0; state._lastTapUnit = null;
+    } else {
+      state.selectedIds = [tappedOwnUnit.id];
+      state._lastTapUnitTime = nowTap; state._lastTapUnit = { id: tappedOwnUnit.id, type: tappedOwnUnit.type, x: tappedOwnUnit.x, y: tappedOwnUnit.y };
+    }
+    state.selectedBuildingId = null;
       sfxClick(); renderCommandDock(); return;
     }
 
@@ -1876,28 +1952,29 @@ const updateBattleHud = initBattleHud();
         sfxClick();
       }
     }
-  }
+  }const activePointers = new Map(); let lastPointerDownAt = 0; let lastPointerDownPos = null; let doubleTapHoldBox = false;
+  
 
   canvas.addEventListener("pointerdown", e => {
     const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top; activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (activePointers.size > 1) { doubleTapHoldBox = false; if (selectionBox) { selectionBox = null; if (state) state.boxSelect = null; } return; } const nowTap = performance.now(); const isDoubleTap = lastPointerDownPos && (nowTap - lastPointerDownAt <= 320) && Math.hypot(e.clientX - lastPointerDownPos.x, e.clientY - lastPointerDownPos.y) <= 28; doubleTapHoldBox = Boolean(isDoubleTap); lastPointerDownAt = isDoubleTap ? 0 : nowTap; lastPointerDownPos = { x: e.clientX, y: e.clientY };
     isDragging = true;
     pointerDownPos = { x: e.clientX, y: e.clientY };
     lastPointer = { x: e.clientX, y: e.clientY };
     canvas.setPointerCapture(e.pointerId);
-    if (boxSelectMode || e.shiftKey) {
-      selectionBox = { x1: sx, y1: sy, x2: sx, y2: sy };
+    if (boxSelectMode || e.shiftKey || doubleTapHoldBox) {
+      selectionBox = { x1: sx, y1: sy, x2: sx, y2: sy }; if (state) state.boxSelect = selectionBox;
     }
   });
 
   canvas.addEventListener("pointermove", e => {
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-    hoverTile = screenToTile(sx, sy);
+    hoverTile = screenToTile(sx, sy); if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (activePointers.size > 1) { doubleTapHoldBox = false; if (selectionBox) { selectionBox = null; if (state) state.boxSelect = null; } return; }
     if (!isDragging) return;
     if (selectionBox) {
       selectionBox.x2 = sx;
-      selectionBox.y2 = sy;
+      selectionBox.y2 = sy; if (state) state.boxSelect = selectionBox;
       return;
     }
     const dx = e.clientX - lastPointer.x, dy = e.clientY - lastPointer.y;
@@ -1911,17 +1988,18 @@ const updateBattleHud = initBattleHud();
 
   canvas.addEventListener("pointerup", e => {
     const moved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
-    isDragging = false;
+    isDragging = false; activePointers.delete(e.pointerId);
     canvas.classList.remove("dragging");
     if (selectionBox) {
       const box = selectionBox;
-      selectionBox = null;
+      selectionBox = null; doubleTapHoldBox = false; if (state) state.boxSelect = null;
       if (moved > 12) { finishBoxSelect(box); return; }
       setBoxSelectMode(false);
     }
     if (moved <= 8) handleTap(e.clientX, e.clientY);
   });
-
+canvas.addEventListener("pointercancel", e => { activePointers.delete(e.pointerId); isDragging = false; doubleTapHoldBox = false; selectionBox = null; if (state) state.boxSelect = null; canvas.classList.remove("dragging"); });
+  
   miniCanvas.addEventListener("pointerdown", e => {
     const r = miniCanvas.getBoundingClientRect();
     const tx = Math.max(0, Math.min(state.mapSize, ((e.clientX - r.left) / r.width) * state.mapSize));
@@ -2057,12 +2135,13 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
   document.getElementById("btn-town-bell").addEventListener("click", () => { if (!state) return; const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0); if (!tc) return; if (state.bellActive || state.garrisonedCount > 0) { state.bellActive = false; for (const u of state.units) { if (u.team === "player" && u.garrisoned) { u.garrisoned = false; u.task = "idle"; u.x = tc.tx + 1.5; u.y = tc.ty + 2.5; } } state.garrisonedCount = 0; document.getElementById("btn-town-bell").textContent = "Chuông Báo"; addFloat(tc.tx + 1, tc.ty, "Xuất kích", "#34D399"); updateHud(); } else { state.bellActive = true; sfxGong(); for (const u of state.units) { if (u.team === "player" && u.type === "villager" && !u.garrisoned && u.hp > 0) { u.task = "garrison"; u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } } document.getElementById("btn-town-bell").textContent = "Thả Dân"; showToast("Chuông báo động! Nông dân đang chạy vào Đình Làng!"); } });
 
   function resize() { const wrap = document.getElementById("game-wrap"); const w = wrap ? wrap.clientWidth : (window.visualViewport?.width || window.innerWidth); const h = wrap ? wrap.clientHeight : (window.visualViewport?.height || window.innerHeight); canvas.width = Math.round(w) || window.innerWidth; canvas.height = Math.round(h) || window.innerHeight; if (R3D) R3D.resize(canvas.width, canvas.height); }
-
+    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.PDOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); startBGM(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
+  
   function loop(ts) {
     const dt = Math.min(0.05, (ts - lastTime) / 1000 || 0.016);
     lastTime = ts;
     frameDt = dt;
-    if (state) { stepSimulation(dt); const GFX = window.PDGfx; if (GFX) { GFX.vfx.update(dt, state, cam); GFX.villager.update(dt, state); GFX.atmosphere.update(dt, canvas.width, canvas.height); } render(); }
+    if (state) { if (!paused || isOnlineMode()) stepSimulation(dt); const GFX = window.PDGfx; if (GFX) { GFX.vfx.update(dt, state, cam); GFX.villager.update(dt, state); GFX.atmosphere.update(dt, canvas.width, canvas.height); } render(); }
     rafId = requestAnimationFrame(loop);
   }
 
