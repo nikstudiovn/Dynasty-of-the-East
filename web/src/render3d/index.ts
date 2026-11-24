@@ -21,8 +21,10 @@ export interface Renderer3D {
   dispose(): void;
   /** Client (viewport) coordinates -> tile under the pointer, via a ground-plane raycast. */
   screenToTile(clientX: number, clientY: number): { tx: number; ty: number };
-  /** Tile-space world point -> local CSS-pixel screen point (used by box-select). */
+  /** Tile-space ground point -> local CSS-pixel screen point. */
   worldToScreen(tx: number, ty: number): { x: number; y: number };
+  /** The projected feet and head of the unit in the most recently rendered frame. */
+  unitScreenSpan(id: number): { foot: { x: number; y: number }; top: { x: number; y: number } } | null;
   /** 1-finger pan: keeps the ground point under the finger glued to it. */
   pan(cam: Cam, fromX: number, fromY: number, toX: number, toY: number): void;
   /** Pinch / wheel anchoring helpers (client coordinates). */
@@ -219,6 +221,13 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     worldToScreen(tx: number, ty: number) {
       const p = s3.project(tx, 0, ty);
       return { x: p.x, y: p.y };
+    },
+
+    unitScreenSpan(id: number) {
+      const rig = units.rigFor(id);
+      if (!rig?.root.visible) return null;
+      const { x, y, z } = rig.root.position;
+      return { foot: s3.project(x, y, z), top: s3.project(x, y + rig.height, z) };
     },
 
     pan(cam: Cam, fromX: number, fromY: number, toX: number, toY: number): void {
