@@ -63,7 +63,7 @@ function roof(parent: THREE.Object3D, w: number, d: number, h: number, y: number
 }
 
 function foundation(parent: THREE.Object3D, w: number, d: number, steps = 2): number {
-  let y = 0;
+  let y = 0; const groundPad = mesh(box(w * 1.2, 0.018, d * 1.2), mat(shade(STONE_D, -0.18), { rough: 0.98, surface: "stone" }), 0, 0.048, 0, false); groundPad.receiveShadow = true; parent.add(groundPad);
   for (let k = 0; k < steps; k++) {
     const s = 1 - k * 0.07, h = 0.08;
     parent.add(mesh(box(w * s, h + (k === 0 ? 0.5 : 0), d * s), mat(k === 0 ? STONE_D : STONE, { rough: 0.92, surface: "stone" }), 0, y + h / 2 - (k === 0 ? 0.25 : 0), 0));
