@@ -1,5 +1,7 @@
 // Entry module: exposes the TypeScript subsystems to the classic game script in index.html.
 import "./graphics/index";
+import "./ui/screens.css";
+import { initLobbyUI } from "./ui/lobbyScreen";
 import * as steering from "./sim/steering";
 import * as pinch from "./input/pinchZoom";
 import * as render3d from "./render3d/index";
@@ -15,3 +17,9 @@ import * as wildlife from "./sim/wildlife";
 (window as any).PDPath = pathfinding;
 (window as any).PDTactics = tactics;
 (window as any).PDWild = wildlife;
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initLobbyUI);
+} else {
+  initLobbyUI();
+}
