@@ -61,6 +61,16 @@ export function rng(seed: number): () => number {
   };
 }
 
+export function newSeedFor(type: MapType): number {
+  return type === "random" ? 1 + Math.floor(Math.random() * 0x7ffffffe) : 0;
+}
+
+export function startingResources(n: number): { food: number; wood: number; gold: number; stone: number } {
+  const multiplier = 1 + (normalizeMapSize(n) - 48) / 96;
+  const rounded = (value: number) => Math.round(value * multiplier / 5) * 5;
+  return { food: rounded(200), wood: rounded(200), gold: rounded(50), stone: rounded(100) };
+}
+
 export function resolveBiome(mapType: MapType, seed: number): Biome {
   if (mapType !== "random") return mapType;
   const r = rng(seed ^ 0x9e3779b9);

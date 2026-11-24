@@ -748,23 +748,15 @@ const updateBattleHud = initBattleHud();
 
   function initGame() {
     nextId = 1;
-    const grid = [];
-    const fog = [];
-    for (let y = 0; y < setup.mapSize; y++) {
-      const row = [], frow = [];
-      for (let x = 0; x < setup.mapSize; x++) {
-        row.push({ terrain: "grass", res: null, resAmt: 0 });
-        frow.push(0);
-      }
-      grid.push(row);
-      fog.push(frow);
-    }
+    const valley = window.PDValley;
+    const mapSeed = valley ? valley.newSeedFor(setup.mapType) : 0;
+    const grid = valley
+      ? valley.generateValley(setup.mapSize, setup.mapType, mapSeed).grid
+      : Array.from({ length: setup.mapSize }, () =>
+          Array.from({ length: setup.mapSize }, () => ({ terrain: "grass", res: null, resAmt: 0 })));
+    const fog = grid.map(row => row.map(() => 0));
 
-    // 48×48 valley: winding river + central lotus lake, 3 arched wooden bridges, corner + contested resources
-    const mapSeed = window.PDValley ? window.PDValley.newSeedFor(setup.mapType) : 0;
-    if (window.PDValley) {
-      window.PDValley.generateValley(grid, setup.mapType, mapSeed);
-    } else {
+    if (!valley) {
       for (let y = 21; y <= 27; y++) for (let x = 20; x <= 28; x++) grid[y][x].terrain = "water";
       for (let x = 20; x <= 28; x++) { grid[24][x].terrain = "bridge"; grid[24][x].bridge = "h"; }
     }
@@ -793,13 +785,13 @@ const updateBattleHud = initBattleHud();
       aiWave: 0
     };
 
-    const pb = window.PDValley ? window.PDValley.playerBase(setup.mapSize) : { tx: 6, ty: 6 };
+    const pb = window.PDValley ? window.PDValley.playerBase(setup.mapSize, mapSeed) : { tx: 6, ty: 6 };
     const ptc = spawnBuilding("player", "town_center", pb.tx, pb.ty, 0);
     for (let i = 0; i < 5; i++) {
       spawnUnit("player", "villager", pb.tx - 0.4 + (i % 3) * 0.75, pb.ty + 2.6 + Math.floor(i / 3) * 0.7, 0);
     }
 
-    const aiCorners = window.PDValley ? window.PDValley.aiCorners(setup.mapSize) : [
+    const aiCorners = window.PDValley ? window.PDValley.aiCorners(setup.mapSize, mapSeed) : [
       { tx: 40, ty: 40, idx: 0 },
       { tx: 40, ty: 6, idx: 1 },
       { tx: 6, ty: 40, idx: 2 }
@@ -807,18 +799,18 @@ const updateBattleHud = initBattleHud();
 
     for (let i = 0; i < setup.aiCount; i++) {
       const c = aiCorners[i];
-      spawnBuilding("enemy", "town_center", c.tx, c.ty, c.idx);
+      spawnBuilding("enemy", "town_center", c.tx, c.ty, i);
       const gx = c.tx < state.mapSize / 2 ? c.tx + 2.5 : c.tx - 0.8;
       const gy = c.ty < state.mapSize / 2 ? c.ty + 2.5 : c.ty - 0.8;
-      spawnUnit("enemy", "swordsman", gx, gy, c.idx);
-      spawnUnit("enemy", "archer", gx + 0.6, gy - 0.4, c.idx);
+      spawnUnit("enemy", "swordsman", gx, gy, i);
+      spawnUnit("enemy", "archer", gx + 0.6, gy - 0.4, i);
     }
 
     state.attackMove = false;
     state.animals = window.PDWild ? window.PDWild.spawnWildlife(grid, setup.mapSize, mapSeed, [pb].concat(aiCorners.slice(0, setup.aiCount)), () => nextId++) : [];
 
     state.selectedBuildingId = ptc.id;
-    cam.x = 0;
+    cam.x = (pb.tx - pb.ty) * (TILE_W / 2);
     cam.y = (pb.tx + pb.ty + 5) * (TILE_H / 2);
     setBoxSelectMode(false);
     prepareGfx();
@@ -2019,8 +2011,8 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
       document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
       return;
     }
-    document.getElementById("modal").classList.add("hidden");
     initGame();
+    document.getElementById("modal").classList.add("hidden");
     sfxAgeUp(); startBGM();
   });
 
