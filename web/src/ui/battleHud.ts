@@ -1,16 +1,13 @@
 import { isoToTile, tileToIso } from "../render3d/common";
 import type { Renderer3D } from "../render3d";
 import type { Cam } from "../render3d/scene3d";
+import { initBuildingShortcuts, type ShortcutBuilding } from "./buildingShortcuts";
 
-interface Building {
-  id: number;
-  type: string;
-  team: string;
+interface Building extends ShortcutBuilding {
   aiIndex: number;
   tx: number;
   ty: number;
   size: number;
-  hp: number;
 }
 
 interface Match {
@@ -19,6 +16,7 @@ interface Match {
   gameOver: boolean;
   stats?: { elapsedSec?: number };
   buildings: Building[];
+  selectedBuildingId: number | null;
   aiStates: { idx: number; age: number }[];
 }
 
@@ -72,6 +70,7 @@ export function initBattleHud() {
   const ctx = minimap.getContext("2d")!;
   const modal = wrap.querySelector<HTMLElement>("#modal")!;
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const shortcuts = initBuildingShortcuts<Building>(top);
 
   const timer = document.createElement("time");
   timer.className = "battle-timer";
@@ -120,6 +119,18 @@ export function initBattleHud() {
 
   canvas.addEventListener("pointerdown", () => { jump = undefined; });
   minimap.addEventListener("pointerdown", () => { jump = undefined; });
+  canvas.addEventListener("wheel", () => { jump = undefined; }, { passive: true });
+
+  function focusBuilding(building: Building, cam: Cam) {
+    const to = tileToIso(building.tx + building.size / 2, building.ty + building.size / 2);
+    if (reducedMotion.matches) {
+      jump = undefined;
+      cam.x = to.x;
+      cam.y = to.y;
+    } else {
+      jump = { cam, from: { ...cam }, to, start: performance.now(), x: cam.x, y: cam.y };
+    }
+  }
 
   function removeAlert(button: HTMLButtonElement) {
     window.clearTimeout(alerts.get(button));
@@ -134,16 +145,7 @@ export function initBattleHud() {
     button.className = "battle-alert";
     button.textContent = text;
     button.title = "Chạm để chuyển camera đến vị trí";
-    button.addEventListener("click", () => {
-      const to = tileToIso(building.tx + building.size / 2, building.ty + building.size / 2);
-      if (reducedMotion.matches) {
-        jump = undefined;
-        cam.x = to.x;
-        cam.y = to.y;
-      } else {
-        jump = { cam, from: { ...cam }, to, start: performance.now(), x: cam.x, y: cam.y };
-      }
-    });
+    button.addEventListener("click", () => focusBuilding(building, cam));
     feed.prepend(button);
     alerts.set(button, window.setTimeout(() => removeAlert(button), ALERT_LIFETIME));
   }
@@ -174,7 +176,13 @@ export function initBattleHud() {
     }
   }
 
-  return (state: Match, cam: Cam, renderer: Renderer3D | null) => {
+  return (
+    state: Match,
+    cam: Cam,
+    renderer: Renderer3D | null,
+    definitions: Readonly<Record<string, { name: string }>>,
+    selectBuilding: (state: Match, buildingId: number) => boolean
+  ) => {
     const inBattle = state.running && !state.gameOver && modal.classList.contains("hidden");
     if (inBattle !== active || state !== match) {
       active = inBattle;
@@ -185,8 +193,17 @@ export function initBattleHud() {
       aiAges.clear();
       for (const button of alerts.keys()) removeAlert(button);
       jump = undefined;
+      shortcuts.setMatch(active ? {
+        match: state,
+        definitions,
+        select: building => {
+          if (modal.classList.contains("hidden") && selectBuilding(state, building.id)) focusBuilding(building, cam);
+        }
+      } : undefined);
     }
 
+    const now = performance.now();
+    shortcuts.update(now);
     drawViewport(ctx, canvas, state.mapSize, cam, renderer);
     if (!active) return;
 
@@ -198,7 +215,6 @@ export function initBattleHud() {
       timer.dateTime = `PT${seconds}S`;
     }
 
-    const now = performance.now();
     trackEvents(state, cam, now);
     // The game has drawn this frame. Update the target for the next frame, unless a game control moved it.
     if (!jump) return;
@@ -206,7 +222,7 @@ export function initBattleHud() {
       jump = undefined;
       return;
     }
-    const progress = Math.min((now - jump.start) / JUMP_DURATION, 1);
+    const progress = Math.max(0, Math.min((now - jump.start) / JUMP_DURATION, 1));
     const eased = progress * progress * (3 - 2 * progress);
     jump.cam.x = jump.x = jump.from.x + (jump.to.x - jump.from.x) * eased;
     jump.cam.y = jump.y = jump.from.y + (jump.to.y - jump.from.y) * eased;
