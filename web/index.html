@@ -1601,7 +1601,23 @@ const updateBattleHud = initBattleHud();
       mctx.fillStyle = u.team === "player" ? "#FACC15" : "#93C5FD";
       mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2.5, 2.5);
     }
-    updateBattleHud(state, cam, R3D);
+    updateBattleHud(state, cam, R3D, BLDG_DEFS, selectBuildingFromHud);
+  }
+
+  function selectBuildingFromHud(match, id) {
+    if (state !== match || !state.running || state.gameOver) return false;
+    const building = state.buildings.find(b => b.id === id && b.team === "player" && b.hp > 0);
+    if (!building) return false;
+    state.selectedBuildingId = id;
+    state.selectedIds = [];
+    state.buildMode = null;
+    state.attackMove = false;
+    canvas.classList.remove("build-mode");
+    setBoxSelectMode(false);
+    ensureAudio();
+    sfxClick();
+    renderCommandDock();
+    return true;
   }
 
   // =========================================================================
