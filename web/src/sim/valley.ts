@@ -450,3 +450,36 @@ export function generateValley(
 }
  
 
+/** Marks bridge cells: the contiguous water run through the river centre on each bridge row. */
+export function placeBridges(grid: ValleyCell[][]): void {
+const n = grid.length;
+if (n === 0) return;
+const rows = [Math.floor(n * 0.25), Math.floor(n * 0.5), Math.floor(n * 0.75)];
+for (const y of rows) {
+if (y < 0 || y >= n) continue;
+const row = grid[y];
+let seed = Math.floor(n / 2);
+if (row[seed]?.terrain !== "water" && row[seed]?.terrain !== "bridge") {
+let found = -1;
+for (let d = 1; d < n && found < 0; d++) {
+if (seed - d >= 0 && row[seed - d]?.terrain === "water") found = seed - d;
+else if (seed + d < n && row[seed + d]?.terrain === "water") found = seed + d;
+}
+if (found < 0) continue;
+seed = found;
+}
+let x0 = seed;
+let x1 = seed;
+while (x0 > 0 && row[x0 - 1]?.terrain === "water") x0--;
+while (x1 < n - 1 && row[x1 + 1]?.terrain === "water") x1++;
+for (let x = x0; x <= x1; x++) {
+const c = row[x];
+if (!c) continue;
+c.terrain = "bridge";
+c.bridge = "h";
+c.res = null;
+c.resAmt = 0;
+}
+}
+}
+
