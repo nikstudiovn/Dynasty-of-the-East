@@ -94,6 +94,7 @@ function farmAt(state: any, tx: number, ty: number): any {
 
 function classify(u: any, state: any): WorkStyle {
   if (u.task === "return" && u.carryAmt > 0) return "carry";
+  if (u.task === "hunt" && u.huntBusy) return "harvest";
   if (u.task === "build" && siteOf.get(u)) {
     const s = siteOf.get(u) as Site;
     if (u.path.length === 0 && Math.hypot(s.cx - u.x, s.cy - u.y) <= s.size / 2 + 2.4) return "build";

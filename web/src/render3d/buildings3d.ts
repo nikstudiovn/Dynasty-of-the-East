@@ -6,7 +6,7 @@ import type { FX3D } from "./fx3d";
 const VERMILION = "#B91C1C", PLASTER = "#eadfc8", STONE = "#8f8a80", STONE_D = "#6b665e", TIMBER = "#5a3a22", GOLD = "#e8b53a";
 const LATTICE = "#ffb347", BAMBOO = "#c9a36a", THATCH = "#b8955a", TERRACOTTA = "#b4532f";
 
-export interface BuildingParts { flags: THREE.Mesh[]; fires: THREE.Mesh[]; spin: THREE.Object3D[]; top: number; lanterns: THREE.Object3D[]; chimney?: THREE.Vector3; }
+export interface BuildingParts { flags: THREE.Mesh[]; fires: THREE.Mesh[]; spin: THREE.Object3D[]; top: number; lanterns: THREE.Object3D[]; chimney?: THREE.Vector3; doors?: THREE.Object3D[]; }
 /** Collector for the building currently being assembled (lanterns register themselves to sway). */
 let curParts: BuildingParts | null = null;
 
@@ -111,6 +111,8 @@ function lantern(parent: THREE.Object3D, x: number, y: number, z: number): void 
   curParts?.lanterns.push(pivot);
 }
 
+function lanternOn(parent: THREE.Object3D, x: number, y: number, z: number): void { lantern(parent, x, y, z); }
+
 function banner(parent: THREE.Object3D, parts: BuildingParts, x: number, y: number, z: number, color: string, h = 0.7): void {
   parent.add(mesh(cyl(0.012, 0.015, h, 6), mat("#3a2412"), x, y + h / 2, z));
   parent.add(mesh(sphere(0.025, 8, 6), mat(GOLD, { metal: 0.8, rough: 0.3 }), x, y + h + 0.02, z));
@@ -167,7 +169,7 @@ function hall(g: THREE.Group, parts: BuildingParts, w: number, d: number, wallH:
   return top;
 }
 
-export function buildBuilding(type: string, team: string, age: number, size: number, cropStage: number): { group: THREE.Group; parts: BuildingParts } {
+export function buildBuilding(type: string, team: string, age: number, size: number, cropStage: number, mask = 0): { group: THREE.Group; parts: BuildingParts } {
   const g = new THREE.Group();
   const parts: BuildingParts = { flags: [], fires: [], spin: [], top: 1, lanterns: [] };
   curParts = parts;
@@ -357,6 +359,109 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       banner(g, parts, W / 2, 0.46, W / 2, team, 0.75);
       break;
     }
+    case "wall": {
+      const stoneM = mat("#9a948a", { rough: 0.9 }), darkM = mat(STONE_D, { rough: 0.95 }), capM = mat("#b3ada1", { rough: 0.85 });
+      const post = (x: number, z: number, w: number, d: number, h: number) => {
+        g.add(mesh(box(w, h, d), stoneM, x, h / 2, z));
+        g.add(mesh(box(w + 0.04, 0.05, d + 0.04), capM, x, h + 0.025, z));
+      };
+      const T = 0.4, H = 0.58;
+      g.add(mesh(box(T + 0.1, 0.07, T + 0.1), darkM, 0, 0.035, 0));
+      post(0, 0, T + 0.06, T + 0.06, H + 0.06);
+      const arms: Array<[number, number, number, number]> = [[1, 0, -1, 0], [2, 1, 0, 0], [4, 0, 1, 0], [8, -1, 0, 0]];
+      for (const [bit, dx, dz] of arms.map(a => [a[0], a[1], a[2]])) {
+        if (!(mask & bit)) continue;
+        const len = 0.5 - (T + 0.06) / 2;
+        const cx = dx * ((T + 0.06) / 2 + len / 2), cz = dz * ((T + 0.06) / 2 + len / 2);
+        const w = dx !== 0 ? len : T, d = dz !== 0 ? len : T;
+        g.add(mesh(box(w, 0.07, d + (dz ? 0 : 0.1)), darkM, cx, 0.035, cz));
+        g.add(mesh(box(w, H, d), stoneM, cx, H / 2, cz));
+        g.add(mesh(box(w + (dz ? 0.04 : 0), 0.05, d + (dx ? 0.0 : 0.0) + (dz ? 0 : 0.04)), capM, cx, H + 0.025, cz));
+        // battlements (merlons) on both faces
+        for (const sd of [-1, 1]) {
+          for (let k = 0; k < 2; k++) {
+            const off = (k - 0.5) * (len * 0.5);
+            const mx = dx !== 0 ? cx + off : cx + sd * (T / 2 - 0.05), mz = dz !== 0 ? cz + off : cz + sd * (T / 2 - 0.05);
+            g.add(mesh(box(dx !== 0 ? 0.1 : 0.08, 0.1, dz !== 0 ? 0.1 : 0.08), stoneM, mx, H + 0.1, mz));
+          }
+        }
+      }
+      if (!mask) for (let k = 0; k < 4; k++) g.add(mesh(box(0.09, 0.1, 0.09), stoneM, ((k & 1) ? 1 : -1) * 0.13, H + 0.17, ((k & 2) ? 1 : -1) * 0.13));
+      else for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(mesh(box(0.09, 0.1, 0.09), stoneM, sx * 0.13, H + 0.17, sz * 0.13));
+      parts.top = H + 0.3;
+      break;
+    }
+    case "gate": {
+      const stoneM = mat("#9a948a", { rough: 0.9 }), darkM = mat(STONE_D, { rough: 0.95 }), woodM = mat("#6b4423", { rough: 0.8 }), ironM = mat("#2c2a28", { metal: 0.6, rough: 0.4 });
+      const alongZ = !(mask & (2 | 8)) && !!(mask & (1 | 4));
+      const gg = new THREE.Group();
+      if (alongZ) gg.rotation.y = Math.PI / 2;
+      g.add(gg);
+      gg.add(mesh(box(1.0, 0.06, 0.62), darkM, 0, 0.03, 0));
+      for (const sx of [-1, 1]) {
+        gg.add(mesh(box(0.28, 0.8, 0.5), stoneM, sx * 0.36, 0.4, 0));
+        gg.add(mesh(box(0.32, 0.05, 0.54), mat("#b3ada1", { rough: 0.85 }), sx * 0.36, 0.825, 0));
+        for (const sz of [-1, 1]) gg.add(mesh(box(0.08, 0.09, 0.08), stoneM, sx * 0.36, 0.89, sz * 0.2));
+      }
+      gg.add(mesh(box(0.9, 0.12, 0.5), stoneM, 0, 0.68, 0));
+      gg.add(mesh(box(0.5, 0.05, 0.54), mat(VERMILION, { rough: 0.6 }), 0, 0.605, 0));
+      // curved gatehouse roof
+      roof(gg, 1.06, 0.74, 0.26, 0.84, TERRACOTTA, "#5a2a18", false, 0.12);
+      for (const sx of [-1, 1]) lanternOn(gg, sx * 0.5, 0.72, 0.3);
+      // swinging double doors (pivot at hinge, pushed open when friendly units are near)
+      const doors: THREE.Object3D[] = [];
+      for (const sx of [-1, 1]) {
+        const pivot = new THREE.Group();
+        pivot.position.set(sx * 0.22, 0, 0);
+        const panel = new THREE.Group();
+        panel.add(mesh(box(0.22, 0.54, 0.05), woodM, -sx * 0.11, 0.27, 0));
+        for (const yy of [0.12, 0.42]) panel.add(mesh(box(0.22, 0.03, 0.06), ironM, -sx * 0.11, yy, 0, false));
+        panel.add(mesh(sphere(0.02, 6, 5), mat(GOLD, { metal: 0.8, rough: 0.3 }), -sx * 0.17, 0.27, 0.035, false));
+        pivot.add(panel);
+        pivot.userData.sx = sx;
+        gg.add(pivot);
+        doors.push(pivot);
+      }
+      parts.doors = doors;
+      banner(gg, parts, -0.36, 0.89, -0.2, team, 0.35);
+      parts.top = 1.15;
+      break;
+    }
+    case "market": {
+      const woodM = mat("#7a5230", { rough: 0.85 }), plankM = mat("#a4784a", { rough: 0.85 });
+      const y0 = foundation(g, S * 0.98, S * 0.98, 1);
+      g.add(mesh(box(S * 0.96, 0.04, S * 0.96), plankM, 0, y0 + 0.02, 0));
+      const awn = ["#d9382b", "#f2b630", "#2fa6a0", "#8a4fc4"];
+      const stalls: Array<[number, number, number]> = [[-1, -1, 0], [1, -1, 1], [-1, 1, 2], [1, 1, 3]];
+      for (const [sx, sz, i] of stalls) {
+        const cx = sx * S * 0.25, cz = sz * S * 0.25;
+        for (const px of [-1, 1]) for (const pz of [-1, 1]) g.add(mesh(cyl(0.022, 0.026, 0.46, 6), woodM, cx + px * 0.3, y0 + 0.27, cz + pz * 0.26));
+        // sloped striped awning
+        const aw = new THREE.Group();
+        aw.position.set(cx, y0 + 0.5, cz);
+        aw.rotation.x = -sz * 0.22;
+        for (let k = 0; k < 6; k++) aw.add(mesh(box(0.1, 0.025, 0.62), mat(k % 2 ? "#f6efe0" : awn[i], { rough: 0.7 }), -0.3 + k * 0.12, 0, 0));
+        for (let k = 0; k < 6; k++) aw.add(mesh(box(0.1, 0.07, 0.015), mat(k % 2 ? "#f6efe0" : awn[i], { rough: 0.7 }), -0.3 + k * 0.12, -0.04, sz * 0.315, false));
+        g.add(aw);
+        // counter + goods
+        g.add(mesh(box(0.56, 0.16, 0.18), woodM, cx, y0 + 0.1, cz + sz * 0.12));
+        for (let k = 0; k < 4; k++) {
+          const gm = mat(["#e0523a", "#e8c23a", "#7ac04a", "#c9a36a"][(k + i) % 4], { rough: 0.6 });
+          const o = mesh(sphere(0.045, 8, 6), gm, cx - 0.18 + k * 0.12, y0 + 0.22, cz + sz * 0.12);
+          g.add(o);
+        }
+      }
+      // central pole with banner, crates, barrels
+      g.add(mesh(cyl(0.025, 0.03, 0.9, 6), woodM, 0, y0 + 0.45, 0));
+      banner(g, parts, 0, y0 + 0.5, 0, team, 0.45);
+      g.add(mesh(box(0.14, 0.12, 0.14), plankM, 0.1, y0 + 0.06, 0.08));
+      g.add(mesh(box(0.12, 0.1, 0.12), plankM, -0.12, y0 + 0.05, -0.09));
+      g.add(mesh(cyl(0.07, 0.07, 0.15, 8), woodM, 0.05, y0 + 0.08, -0.14));
+      lanternOn(g, S * 0.3, y0 + 0.5, 0);
+      lanternOn(g, -S * 0.3, y0 + 0.5, 0);
+      parts.top = y0 + 0.95;
+      break;
+    }
     default: {
       hall(g, parts, S * 0.7, S * 0.6, 0.34, milStyle);
     }
@@ -376,9 +481,64 @@ export function buildBuilding(type: string, team: string, age: number, size: num
 }
 
 // ---------------------------------------------------------------------------
-interface Entry { group: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; smokeT: number; fireT: number; puffT?: number; b: any; }
+interface Entry { group: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
+
+function linkMask(state: any, b: any): number {
+  let m = 0;
+  const has = (x: number, y: number) => state.buildings.some((o: any) => o.tx === x && o.ty === y && o.team === b.team && (o.type === "wall" || o.type === "gate") && o.hp > 0);
+  if (has(b.tx, b.ty - 1)) m |= 1;
+  if (has(b.tx + 1, b.ty)) m |= 2;
+  if (has(b.tx, b.ty + 1)) m |= 4;
+  if (has(b.tx - 1, b.ty)) m |= 8;
+  return m;
+}
+
+/** Glowing, waving rally flag planted at a production building's rally point. */
+class RallyFlag {
+  readonly group = new THREE.Group();
+  private readonly cloth: THREE.Mesh;
+  private readonly base: Float32Array;
+  private readonly glow: THREE.Mesh;
+  private readonly halo: THREE.Mesh;
+  constructor() {
+    this.group.add(mesh(cyl(0.015, 0.02, 0.9, 6), mat("#3a2412"), 0, 0.45, 0));
+    this.group.add(mesh(sphere(0.035, 8, 6), mat(GOLD, { metal: 0.8, rough: 0.3 }), 0, 0.92, 0));
+    const g = new THREE.PlaneGeometry(0.46, 0.28, 10, 2);
+    g.translate(0.23, 0, 0);
+    this.cloth = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: "#ffd23a", emissive: new THREE.Color("#ff9a1a"), emissiveIntensity: 0.9, side: THREE.DoubleSide, roughness: 0.6 }));
+    this.cloth.position.set(0.016, 0.76, 0);
+    this.base = Float32Array.from(g.getAttribute("position").array as ArrayLike<number>);
+    this.group.add(this.cloth);
+    this.glow = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.26, 24), new THREE.MeshBasicMaterial({ color: 0xffc84a, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    this.glow.rotation.x = -Math.PI / 2; this.glow.position.y = 0.03; this.glow.renderOrder = 6;
+    this.group.add(this.glow);
+    this.halo = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffb02e, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.halo.position.y = 0.76; this.halo.renderOrder = 6;
+    this.group.add(this.halo);
+  }
+  update(t: number): void {
+    const p = this.cloth.geometry.getAttribute("position") as THREE.BufferAttribute, arr = p.array as Float32Array;
+    for (let i = 0; i < p.count; i++) {
+      const x = this.base[i * 3];
+      arr[i * 3 + 2] = Math.sin(t * 7 + x * 12) * 0.06 * (x / 0.46);
+      arr[i * 3 + 1] = this.base[i * 3 + 1] - x * 0.08;
+    }
+    p.needsUpdate = true;
+    const k = 0.85 + Math.sin(t * 4) * 0.15;
+    this.glow.scale.setScalar(1 + Math.sin(t * 3) * 0.12);
+    (this.glow.material as THREE.MeshBasicMaterial).opacity = 0.55 + k * 0.3;
+    this.halo.scale.setScalar(0.9 + k * 0.3);
+    (this.cloth.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5 + k * 0.6;
+  }
+  dispose(): void {
+    this.cloth.geometry.dispose(); (this.cloth.material as THREE.Material).dispose();
+    this.glow.geometry.dispose(); (this.glow.material as THREE.Material).dispose();
+    this.halo.geometry.dispose(); (this.halo.material as THREE.Material).dispose();
+  }
+}
 
 export class Buildings3D {
+  private readonly rally = new Map<number, RallyFlag>();
   readonly group = new THREE.Group();
   private readonly map = new Map<number, Entry>();
   private readonly ringGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 0, -0.5), new THREE.Vector3(0.5, 0, 0.5), new THREE.Vector3(-0.5, 0, 0.5)]);
@@ -392,6 +552,8 @@ export class Buildings3D {
   clear(): void {
     for (const e of this.map.values()) this.group.remove(e.group);
     this.map.clear();
+    for (const f of this.rally.values()) { this.group.remove(f.group); f.dispose(); }
+    this.rally.clear();
   }
 
   update(state: any, env: Env3D, t: number, dt: number): void {
@@ -402,11 +564,12 @@ export class Buildings3D {
       const age = env.ageOf(b);
       const stage = b.type === "farm" ? (b.cropStage === undefined ? 1 : b.cropStage) : 0;
       const ageKey = b.type === "town_center" || b.type === "house" || b.type === "depot" || b.type === "stable" || b.type === "barracks" || b.type === "archery_range" ? Math.min(4, age) : 0;
-      const key = `${b.type}|${color}|${ageKey}|${stage}`;
+      const mask = b.type === "wall" || b.type === "gate" ? linkMask(state, b) : 0;
+      const key = `${b.type}|${color}|${ageKey}|${stage}|${mask}`;
       let e = this.map.get(b.id);
       if (!e || e.key !== key) {
         if (e) this.group.remove(e.group);
-        const built = buildBuilding(b.type, color, Math.min(4, age), b.size || 1, stage);
+        const built = buildBuilding(b.type, color, Math.min(4, age), b.size || 1, stage, mask);
         const ring = new THREE.LineLoop(this.ringGeo, this.ringMat);
         ring.renderOrder = 6;
         built.group.add(ring);
@@ -440,6 +603,16 @@ export class Buildings3D {
           arr[i * 3 + 1] = base[i * 3 + 1] - x * 0.06;
         }
         p.needsUpdate = true;
+      }
+      // auto-opening gate doors: swing wide while a friendly unit is passing
+      if (e.parts.doors) {
+        let want = 0;
+        if (!building) for (const u of state.units) {
+          if (u.team !== b.team || u.hp <= 0) continue;
+          if (Math.abs(u.x - cx) < 1.5 && Math.abs(u.y - cz) < 1.5) { want = 1; break; }
+        }
+        e.open = (e.open ?? 0) + (want - (e.open ?? 0)) * Math.min(1, dt * 6);
+        for (const d of e.parts.doors) d.rotation.y = -d.userData.sx * e.open * 1.45;
       }
       // flickering fires / furnace
       for (let i = 0; i < e.parts.fires.length; i++) {
@@ -480,6 +653,18 @@ export class Buildings3D {
         }
       }
     }
+    // rally flags: visible for the selected player production building
+    const rseen = new Set<number>();
+    for (const b of state.buildings) {
+      if (!b.rallyPoint || b.team !== "player" || state.selectedBuildingId !== b.id || b.hp <= 0) continue;
+      rseen.add(b.id);
+      let f = this.rally.get(b.id);
+      if (!f) { f = new RallyFlag(); this.rally.set(b.id, f); this.group.add(f.group); }
+      const r = b.rallyPoint;
+      f.group.position.set(r.x, terrainHeight(r.x, r.y), r.y);
+      f.update(t);
+    }
+    for (const [id, f] of this.rally) if (!rseen.has(id)) { this.group.remove(f.group); f.dispose(); this.rally.delete(id); }
     for (const [id, e] of this.map) {
       if (seen.has(id)) continue;
       // collapse burst when a building is destroyed

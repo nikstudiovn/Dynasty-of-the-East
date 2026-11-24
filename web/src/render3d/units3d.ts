@@ -251,6 +251,51 @@ function buildUnit(type: string, team: string): Rig {
 }
 
 // ---------------------------------------------------------------------------
+interface AnimalRig { root: THREE.Group; legs: THREE.Group[]; body: THREE.Group; yaw: number; px: number; pz: number; walk: number; init: boolean; type: string; dead: number; }
+
+/** Stylized low-poly deer (antlered stag with spotted flanks) and wild boar (bristled, tusked). */
+function buildAnimal(type: string): AnimalRig {
+  const root = new THREE.Group(), body = new THREE.Group();
+  root.add(body);
+  const legs: THREE.Group[] = [];
+  if (type === "deer") {
+    const fur = mat("#b8793a"), dark = mat("#7b4a22"), belly = mat("#efe0c4"), white = mat("#fbf5e8");
+    body.add(mesh(box(0.15, 0.16, 0.38), fur, 0, 0.32, 0));
+    body.add(mesh(box(0.14, 0.05, 0.3), belly, 0, 0.245, 0.01));
+    for (const [x, z] of [[-0.04, -0.05], [0.05, 0.04], [-0.03, 0.1], [0.04, -0.12]]) body.add(mesh(sphere(0.014, 5, 4), white, x + (x < 0 ? -0.07 : 0.07), 0.36, z, false));
+    const neck = mesh(box(0.08, 0.2, 0.08), fur, 0, 0.46, 0.18); neck.rotation.x = 0.45; body.add(neck);
+    body.add(mesh(box(0.08, 0.08, 0.15), fur, 0, 0.56, 0.27));
+    body.add(mesh(box(0.05, 0.04, 0.05), dark, 0, 0.55, 0.36, false));
+    for (const sx of [-1, 1]) {
+      body.add(mesh(box(0.025, 0.05, 0.015), fur, sx * 0.04, 0.62, 0.22, false));
+      const a1 = mesh(cyl(0.006, 0.008, 0.12, 4), dark, sx * 0.045, 0.66, 0.23, false); a1.rotation.z = -sx * 0.4; body.add(a1);
+      const a2 = mesh(cyl(0.005, 0.006, 0.07, 4), dark, sx * 0.075, 0.7, 0.23, false); a2.rotation.z = sx * 0.5; body.add(a2);
+    }
+    const tail = mesh(box(0.04, 0.05, 0.03), white, 0, 0.36, -0.2, false); body.add(tail);
+    for (const [x, z] of [[-0.05, 0.13], [0.05, 0.13], [-0.05, -0.13], [0.05, -0.13]]) {
+      const l = new THREE.Group(); l.position.set(x, 0.26, z);
+      l.add(mesh(box(0.035, 0.26, 0.035), dark, 0, -0.13, 0)); body.add(l); legs.push(l);
+    }
+  } else {
+    const fur = mat("#4a3a2e", { rough: 0.95 }), dark = mat("#2a2018", { rough: 0.95 }), tusk = mat("#f0e8d0");
+    body.add(mesh(box(0.22, 0.2, 0.4), fur, 0, 0.22, 0));
+    body.add(mesh(box(0.2, 0.22, 0.18), fur, 0, 0.23, 0.17));
+    for (let k = 0; k < 5; k++) body.add(mesh(box(0.025, 0.05, 0.05), dark, 0, 0.35 - Math.abs(k - 2) * 0.012, -0.14 + k * 0.08, false));
+    body.add(mesh(box(0.14, 0.13, 0.12), fur, 0, 0.2, 0.3));
+    body.add(mesh(box(0.09, 0.07, 0.07), mat("#c58a7a"), 0, 0.17, 0.375, false));
+    for (const sx of [-1, 1]) {
+      const t = mesh(cone(0.012, 0.07, 5), tusk, sx * 0.05, 0.15, 0.37, false); t.rotation.z = sx * 0.4; t.rotation.x = -0.5; body.add(t);
+      body.add(mesh(box(0.03, 0.05, 0.02), dark, sx * 0.06, 0.3, 0.27, false));
+      body.add(mesh(sphere(0.012, 5, 4), mat("#ffdd88", { emissive: "#442200" }), sx * 0.055, 0.25, 0.355, false));
+    }
+    for (const [x, z] of [[-0.07, 0.14], [0.07, 0.14], [-0.07, -0.13], [0.07, -0.13]]) {
+      const l = new THREE.Group(); l.position.set(x, 0.14, z);
+      l.add(mesh(box(0.045, 0.14, 0.045), dark, 0, -0.07, 0)); body.add(l); legs.push(l);
+    }
+  }
+  return { root, legs, body, yaw: 0, px: 0, pz: 0, walk: 0, init: false, type, dead: 0 };
+}
+
 interface Proj { mesh: THREE.Object3D; kind: string; lx: number; ly: number; lz: number; tx: number; tz: number; }
 
 export class Units3D {
@@ -259,6 +304,7 @@ export class Units3D {
   private readonly projs = new Map<object, Proj>();
   private readonly pool: Record<string, THREE.Object3D[]> = { arrow: [], bolt: [], boulder: [] };
   private readonly tmp = new THREE.Vector3();
+  private readonly animals = new Map<number, AnimalRig>();
 
   constructor(private readonly fx: FX3D) {}
 
@@ -268,6 +314,8 @@ export class Units3D {
   clear(): void {
     for (const r of this.rigs.values()) this.group.remove(r.root);
     this.rigs.clear();
+    for (const a of this.animals.values()) this.group.remove(a.root);
+    this.animals.clear();
     for (const p of this.projs.values()) p.mesh.visible = false;
     this.projs.clear();
   }
@@ -366,6 +414,8 @@ export class Units3D {
         want = Math.atan2(tx - u.x, tz - u.y);
       } else if (u.type === "villager" && u.workStyle && u.workStyle !== "idle" && u.targetTile) {
         want = Math.atan2(u.targetTile.tx + 0.5 - u.x, u.targetTile.ty + 0.5 - u.y);
+      } else if (u.type === "villager" && u.task === "hunt" && u.huntFace) {
+        want = Math.atan2(u.huntFace.x - u.x, u.huntFace.y - u.y);
       }
       let dYaw = want - r.yaw;
       while (dYaw > Math.PI) dYaw -= TAU;
@@ -380,11 +430,61 @@ export class Units3D {
       this.animate(r, u, state, t, dt, moving, speed, target);
     }
 
+    this.updateAnimals(state, t, dt, fogAt);
+
     for (const [id, r] of this.rigs) {
       if (seen.has(id)) continue;
       if (r.root.visible) this.fx.debris.burst(r.root.position.x, r.root.position.y + 0.2, r.root.position.z, 10, 0.9, 1.6, 0.8, 1, [0x8a7a66, 0x5b4a3a, 0xb91c1c], -7);
       this.group.remove(r.root);
       this.rigs.delete(id);
+    }
+  }
+
+  private updateAnimals(state: any, t: number, dt: number, fogAt: (x: number, z: number) => number): void {
+    const seenA = new Set<number>();
+    for (const a of state.animals || []) {
+      seenA.add(a.id);
+      let r = this.animals.get(a.id);
+      if (!r) { r = buildAnimal(a.type); this.group.add(r.root); this.animals.set(a.id, r); }
+      const vis = fogAt(a.x, a.y) === 2;
+      r.root.visible = vis;
+      const gy = standHeight(a.x, a.y, state.grid);
+      if (!r.init) { r.root.position.set(a.x, gy, a.y); r.px = a.x; r.pz = a.y; r.init = true; }
+      const k = 1 - Math.exp(-dt * 18);
+      r.root.position.x += (a.x - r.root.position.x) * k;
+      r.root.position.z += (a.y - r.root.position.z) * k;
+      r.root.position.y += (gy - r.root.position.y) * k;
+      const vx = (a.x - r.px) / Math.max(dt, 1e-3), vz = (a.y - r.pz) / Math.max(dt, 1e-3);
+      r.px = a.x; r.pz = a.y;
+      if (!vis) continue;
+      const speed = Math.hypot(vx, vz);
+      const moving = speed > 0.1 && !a.dead;
+      if (moving) {
+        let d = Math.atan2(vx, vz) - r.yaw;
+        while (d > Math.PI) d -= TAU;
+        while (d < -Math.PI) d += TAU;
+        r.yaw += d * (1 - Math.exp(-dt * 9));
+      }
+      r.root.rotation.y = r.yaw;
+      r.walk += dt * (moving ? 5 + speed * 3.2 : 0);
+      const amp = moving ? Math.min(0.9, 0.3 + speed * 0.2) : 0;
+      r.legs.forEach((l, i) => { l.rotation.x = Math.sin(r!.walk + (i === 0 || i === 3 ? 0 : Math.PI)) * amp; });
+      const grazing = !a.dead && !moving && a.type === "deer";
+      r.body.position.y = moving ? Math.abs(Math.sin(r.walk)) * (speed > 1.5 ? 0.06 : 0.015) : 0;
+      r.body.rotation.x = grazing ? 0.06 * Math.sin(t * 0.8 + a.id) : 0;
+      // carcass: topple onto its side and shrink as the meat is harvested
+      const target = a.dead ? 1 : 0;
+      r.dead += (target - r.dead) * Math.min(1, dt * 5);
+      r.root.rotation.z = r.dead * 1.45;
+      const meat = a.dead ? 0.55 + 0.45 * Math.max(0, a.food / (a.type === "deer" ? 140 : 240)) : 1;
+      r.root.scale.setScalar(meat);
+      // fresh hurt flash for charging boar: raise head
+      if (a.type === "boar" && a.aggroId != null) r.body.rotation.x = -0.12;
+    }
+    for (const [id, r] of this.animals) {
+      if (seenA.has(id)) continue;
+      this.group.remove(r.root);
+      this.animals.delete(id);
     }
   }
 
