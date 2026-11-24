@@ -1,0 +1,126 @@
+// Pixel Dynasty 3D — shared constants, coordinate helpers, height field and material cache.
+// World space: 1 tile = 1 unit. Tile (tx, ty) covers x in [tx, tx+1], z in [ty, ty+1]. y is up.
+import * as THREE from "three";
+
+export const MAP_N = 26;
+export const TILE_W = 52;
+export const TILE_H = 26;
+export const WATER_LEVEL = -0.1;
+export const BRIDGE_DECK = 0.12;
+
+/** Hooks supplied by the classic game script (index.html). */
+export interface Env3D {
+  teamColor(e: any): string;
+  ageOf(e: any): number;
+  bldgSize(type: string): number;
+  canPlace(tx: number, ty: number, size: number): boolean;
+  getHover(): { tx: number; ty: number } | null;
+  getSelectionBox(): { x1: number; y1: number; x2: number; y2: number } | null;
+}
+
+/** The classic camera lives in 2D isometric pixel space; these convert it to/from tile space. */
+export function isoToTile(ix: number, iy: number): { x: number; z: number } {
+  return { x: (ix / (TILE_W / 2) + iy / (TILE_H / 2)) / 2, z: (iy / (TILE_H / 2) - ix / (TILE_W / 2)) / 2 };
+}
+export function tileToIso(x: number, z: number): { x: number; y: number } {
+  return { x: (x - z) * (TILE_W / 2), y: (x + z) * (TILE_H / 2) };
+}
+
+export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+export const smoothstep = (a: number, b: number, v: number) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+/** Deterministic hash noise in [0,1). */
+export function hash2(x: number, y: number): number {
+  const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+function vnoise(x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+export function fbm(x: number, y: number): number {
+  return vnoise(x, y) * 0.55 + vnoise(x * 2.1 + 5.3, y * 2.1 + 1.7) * 0.3 + vnoise(x * 4.3 + 9.1, y * 4.3 + 3.3) * 0.15;
+}
+
+// ---- Height field -----------------------------------------------------------
+let waterMask: Float32Array = new Float32Array(MAP_N * MAP_N);
+
+/** Rebuild the blurred water mask from the grid (called when a new map is loaded). */
+export function setWaterGrid(grid: any[][]): void {
+  const raw = new Float32Array(MAP_N * MAP_N);
+  for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
+    const t = grid[y]?.[x]?.terrain;
+    raw[y * MAP_N + x] = t === "water" || t === "bridge" ? 1 : 0;
+  }
+  waterMask = raw;
+}
+function waterAt(x: number, z: number): number {
+  // bilinear sample of the per-tile mask at tile centres
+  const fx = x - 0.5, fz = z - 0.5;
+  const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
+  const g = (ix: number, iz: number) => (ix < 0 || iz < 0 || ix >= MAP_N || iz >= MAP_N ? 0 : waterMask[iz * MAP_N + ix]);
+  const a = g(x0, z0), b = g(x0 + 1, z0), c = g(x0, z0 + 1), d = g(x0 + 1, z0 + 1);
+  return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
+}
+/** 0 on dry land, 1 deep inside the lake. */
+export function wetness(x: number, z: number): number { return smoothstep(0.18, 0.75, waterAt(x, z)); }
+
+/** Gentle rolling hills (kept low so the y=0 ground-plane raycast stays tile-accurate). */
+export function terrainHeight(x: number, z: number): number {
+  const hills = (fbm(x * 0.16, z * 0.16) - 0.35) * 0.42 + Math.sin(x * 0.31 + 1.3) * Math.cos(z * 0.27 - 0.4) * 0.07;
+  const edge = Math.min(x, z, MAP_N - x, MAP_N - z);
+  const rim = smoothstep(2.5, 0, edge) * 0.25; // valley rim rises a little at the map edge
+  const w = wetness(x, z);
+  return Math.max(-0.05, hills) * (1 - w) + rim - w * 0.48;
+}
+
+/** Height a unit stands on (bridges are flat decks above the water). */
+export function standHeight(x: number, z: number, grid: any[][] | null): number {
+  const c = grid?.[Math.floor(z)]?.[Math.floor(x)];
+  if (c && c.terrain === "bridge") return BRIDGE_DECK + 0.03;
+  return Math.max(terrainHeight(x, z), WATER_LEVEL);
+}
+
+// ---- Materials --------------------------------------------------------------
+const matCache = new Map<string, THREE.Material>();
+export interface MatOpts { metal?: number; rough?: number; emissive?: string; emissiveIntensity?: number; transparent?: boolean; opacity?: number; side?: THREE.Side; flat?: boolean; }
+export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial {
+  const key = color + JSON.stringify(o);
+  let m = matCache.get(key) as THREE.MeshStandardMaterial | undefined;
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color, metalness: o.metal ?? 0.05, roughness: o.rough ?? 0.72,
+      emissive: o.emissive ? new THREE.Color(o.emissive) : new THREE.Color(0x000000), emissiveIntensity: o.emissiveIntensity ?? 1,
+      transparent: !!o.transparent, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide, flatShading: !!o.flat
+    });
+    matCache.set(key, m);
+  }
+  return m;
+}
+export function shade(hex: string, k: number): string {
+  const c = new THREE.Color(hex);
+  if (k >= 0) c.lerp(new THREE.Color(0xffffff), k); else c.multiplyScalar(1 + k);
+  return "#" + c.getHexString();
+}
+
+// ---- Geometry cache -----------------------------------------------------------
+const geoCache = new Map<string, THREE.BufferGeometry>();
+export function geo<T extends THREE.BufferGeometry>(key: string, make: () => T): T {
+  let g = geoCache.get(key) as T | undefined;
+  if (!g) { g = make(); geoCache.set(key, g); }
+  return g;
+}
+export const box = (w: number, h: number, d: number) => geo(`box${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d));
+export const cyl = (rt: number, rb: number, h: number, s = 8) => geo(`cyl${rt},${rb},${h},${s}`, () => new THREE.CylinderGeometry(rt, rb, h, s));
+export const sphere = (r: number, w = 10, h = 8) => geo(`sph${r},${w},${h}`, () => new THREE.SphereGeometry(r, w, h));
+export const cone = (r: number, h: number, s = 8) => geo(`cone${r},${h},${s}`, () => new THREE.ConeGeometry(r, h, s));
+
+/** Mesh helper: shared geometry + material, shadows on, positioned. */
+export function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0, shadows = true): THREE.Mesh {
+  const me = new THREE.Mesh(g, m);
+  me.position.set(x, y, z);
+  me.castShadow = shadows; me.receiveShadow = shadows;
+  return me;
+}

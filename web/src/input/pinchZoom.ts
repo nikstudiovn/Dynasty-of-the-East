@@ -9,6 +9,13 @@ export interface PinchOptions {
   onPinchStart?: () => void;
   minZoom?: number;
   maxZoom?: number;
+  /** Optional 3D view: anchors pinch / wheel zoom with ground-plane raycasts instead of the 2D iso math. */
+  view?: PinchView;
+}
+
+export interface PinchView {
+  anchorAt(clientX: number, clientY: number): { x: number; z: number };
+  placeAnchor(cam: Cam, anchor: { x: number; z: number }, clientX: number, clientY: number, zoom: number): void;
 }
 
 export const MIN_ZOOM = 0.55;
@@ -24,6 +31,12 @@ export function install(o: PinchOptions): void {
   const activePointers = new Map<number, { x: number; y: number }>();
   let pinchActive = false;
   let startDist = 1, startZoom = 1, anchorX = 0, anchorY = 0;
+  const view = o.view;
+  let anchor3 = { x: 0, z: 0 };
+  const clientMid = () => {
+    const pts = Array.from(activePointers.values());
+    return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+  };
 
   const clamp = (z: number) => Math.max(minZ, Math.min(maxZ, z));
   const local = (cx: number, cy: number) => {
@@ -46,6 +59,7 @@ export function install(o: PinchOptions): void {
     pinchActive = true;
     const g = geometry();
     startDist = g.dist; startZoom = cam.zoom;
+    if (view) { const c = clientMid(); anchor3 = view.anchorAt(c.x, c.y); }
     const w = worldAt(g.mx, g.my, cam.zoom);
     anchorX = w.x; anchorY = w.y;
     if (o.onPinchStart) o.onPinchStart();
@@ -54,6 +68,7 @@ export function install(o: PinchOptions): void {
   function applyPinch() {
     const g = geometry();
     const z = clamp(startZoom * (g.dist / startDist));
+    if (view) { const c = clientMid(); view.placeAnchor(cam, anchor3, c.x, c.y, z); cam.zoom = z; return; }
     cam.zoom = z;
     // the world point under the (moving) midpoint stays under it => zoom + two-finger pan
     cam.x = anchorX - (g.mx - canvas.width / 2) / z;
@@ -112,7 +127,12 @@ export function install(o: PinchOptions): void {
   canvas.addEventListener("wheel", e => {
     e.preventDefault();
     const unit = e.deltaMode === 1 ? 0.05 : e.ctrlKey ? 0.01 : 0.0015;
+    const nz = cam.zoom * Math.exp(-e.deltaY * unit);
+    if (view) {
+      const a = view.anchorAt(e.clientX, e.clientY), z = clamp(nz);
+      view.placeAnchor(cam, a, e.clientX, e.clientY, z); cam.zoom = z; return;
+    }
     const p = local(e.clientX, e.clientY);
-    zoomAt(p.x, p.y, cam.zoom * Math.exp(-e.deltaY * unit));
+    zoomAt(p.x, p.y, nz);
   }, { passive: false });
 }
