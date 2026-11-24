@@ -1,5 +1,7 @@
 // Pixel Dynasty — terrain: wooden bridges, sandy shorelines, golden-hour shadows.
 
+import { placeBridges } from "../sim/valley";
+
 const TILE_W = 52;
 const TILE_H = 26;
 const INK = "#1A120E";
@@ -7,25 +9,12 @@ const INK = "#1A120E";
 export type BridgeDir = "h" | "v" | "x";
 
 /**
- * Marks 2 crossings over the central lake (water tiles x,y in 11..14):
- *  - west->east along row y=12 (x 11..14)
- *  - north->south along column x=13 (y 11..14)
+ * Marks the 3 arched wooden crossings of the 48×48 valley (north river, lotus lake, south river).
  * Bridge cells get terrain "bridge" (walkable: only "water" blocks) and a `bridge` direction.
  * Everything is plain JSON, so it serialises with the grid in the save file.
  */
 export function placeWoodenBridges(grid: any[][]): void {
-  const mark = (x: number, y: number, dir: BridgeDir) => {
-    const c = grid[y]?.[x];
-    if (!c) return;
-    if (c.terrain === "bridge" && c.bridge !== dir) { c.bridge = "x"; return; }
-    if (c.terrain !== "water" && c.terrain !== "bridge") return;
-    c.terrain = "bridge";
-    c.bridge = dir;
-    c.res = null;
-    c.resAmt = 0;
-  };
-  for (let x = 11; x <= 14; x++) mark(x, 12, "h");
-  for (let y = 11; y <= 14; y++) mark(13, y, "v");
+  placeBridges(grid);
 }
 
 /** Only water blocks movement. Bridges and land are walkable. */

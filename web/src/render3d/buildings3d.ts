@@ -1,12 +1,14 @@
 // Pixel Dynasty 3D — procedural stylized East Asian architecture for all 11 building types (4-age evolution).
 import * as THREE from "three";
-import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D } from "./common";
+import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D, MAP_N } from "./common";
 import type { FX3D } from "./fx3d";
 
-const VERMILION = "#b3261e", PLASTER = "#eadfc8", STONE = "#8f8a80", STONE_D = "#6b665e", TIMBER = "#5a3a22", GOLD = "#e8b53a";
+const VERMILION = "#B91C1C", PLASTER = "#eadfc8", STONE = "#8f8a80", STONE_D = "#6b665e", TIMBER = "#5a3a22", GOLD = "#e8b53a";
 const LATTICE = "#ffb347", BAMBOO = "#c9a36a", THATCH = "#b8955a", TERRACOTTA = "#b4532f";
 
-export interface BuildingParts { flags: THREE.Mesh[]; fires: THREE.Mesh[]; spin: THREE.Object3D[]; top: number; }
+export interface BuildingParts { flags: THREE.Mesh[]; fires: THREE.Mesh[]; spin: THREE.Object3D[]; top: number; lanterns: THREE.Object3D[]; chimney?: THREE.Vector3; }
+/** Collector for the building currently being assembled (lanterns register themselves to sway). */
+let curParts: BuildingParts | null = null;
 
 // ---------------------------------------------------------------------------
 // Curved roof: flared upturned eaves, concave sweep, optional ridge along x.
@@ -44,6 +46,13 @@ function roof(parent: THREE.Object3D, w: number, d: number, h: number, y: number
     const tip = mesh(cone(0.04, 0.14, 5), rm, s * (rl / 2 + 0.03), y + h + 0.07, 0);
     tip.rotation.z = -s * 0.5;
     parent.add(tip);
+  }
+  // curled roof-corner finials on the upturned eave tips
+  const fm = mat(ridgeColor === GOLD || gilded ? GOLD : shade(ridgeColor, 0.15), { metal: 0.6, rough: 0.35 });
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const f = mesh(cone(0.028, 0.13, 5), fm, sx * w / 2 * 0.98, y + lift + 0.05, sz * d / 2 * 0.98, false);
+    f.rotation.set(sz * 0.7, 0, -sx * 0.7);
+    parent.add(f);
   }
 }
 
@@ -87,11 +96,19 @@ function walls(parent: THREE.Object3D, w: number, d: number, h: number, y: numbe
 }
 
 function lantern(parent: THREE.Object3D, x: number, y: number, z: number): void {
-  const l = mesh(sphere(0.05, 10, 8), mat("#e8321e", { emissive: "#ff3a1a", emissiveIntensity: 0.9, rough: 0.4 }), x, y, z, false);
+  // red silk lantern hung from a cord; the pivot sits at the hook so it swings like a pendulum
+  const pivot = new THREE.Group();
+  pivot.position.set(x, y + 0.15, z);
+  const l = mesh(sphere(0.05, 10, 8), mat("#e8321e", { emissive: "#ff3a1a", emissiveIntensity: 0.9, rough: 0.4 }), 0, -0.15, 0, false);
   l.scale.set(1, 1.3, 1);
-  parent.add(l);
-  parent.add(mesh(cyl(0.025, 0.025, 0.02, 6), mat(GOLD, { metal: 0.7, rough: 0.3 }), x, y + 0.07, z, false));
-  parent.add(mesh(cyl(0.004, 0.004, 0.08, 4), mat("#3a2412"), x, y + 0.11, z, false));
+  pivot.add(l);
+  for (const yy of [-0.08, -0.22]) pivot.add(mesh(cyl(0.025, 0.025, 0.02, 6), mat(GOLD, { metal: 0.7, rough: 0.3 }), 0, yy, 0, false));
+  pivot.add(mesh(cyl(0.004, 0.004, 0.08, 4), mat("#3a2412"), 0, -0.04, 0, false));
+  const tassel = mesh(cyl(0.004, 0.012, 0.07, 5), mat("#f2c14e"), 0, -0.27, 0, false);
+  pivot.add(tassel);
+  pivot.userData.ph = Math.random() * 6;
+  parent.add(pivot);
+  curParts?.lanterns.push(pivot);
 }
 
 function banner(parent: THREE.Object3D, parts: BuildingParts, x: number, y: number, z: number, color: string, h = 0.7): void {
@@ -152,7 +169,8 @@ function hall(g: THREE.Group, parts: BuildingParts, w: number, d: number, wallH:
 
 export function buildBuilding(type: string, team: string, age: number, size: number, cropStage: number): { group: THREE.Group; parts: BuildingParts } {
   const g = new THREE.Group();
-  const parts: BuildingParts = { flags: [], fires: [], spin: [], top: 1 };
+  const parts: BuildingParts = { flags: [], fires: [], spin: [], top: 1, lanterns: [] };
+  curParts = parts;
   const S = size * 0.92;
   const teamRoof = shade(team, -0.25);
   const ageStyle = styleFor(age, team);
@@ -162,6 +180,19 @@ export function buildBuilding(type: string, team: string, age: number, size: num
     case "town_center": {
       const top = hall(g, parts, S * 0.82, S * 0.62, 0.42, ageStyle);
       if (age >= 4) {
+        // ornate carved stone terrace with balustrade around the imperial double pavilion
+        const tw = S * 0.98;
+        g.add(mesh(box(tw, 0.07, tw), mat("#b9b2a3", { rough: 0.85 }), 0, 0.035, 0));
+        const balM = mat("#d8d1c2", { rough: 0.8 });
+        for (const sx of [-1, 1]) for (let k = 0; k < 7; k++) {
+          const q = -tw / 2 + (k / 6) * tw;
+          g.add(mesh(box(0.035, 0.12, 0.035), balM, q, 0.13, sx * tw / 2));
+          if (k !== 3 || sx < 0) g.add(mesh(box(0.035, 0.12, 0.035), balM, sx * tw / 2, 0.13, q));
+        }
+        for (const sx of [-1, 1]) {
+          g.add(mesh(box(tw, 0.025, 0.04), balM, 0, 0.2, sx * tw / 2));
+          g.add(mesh(box(0.04, 0.025, tw), balM, sx * tw / 2, 0.2, 0));
+        }
         // gilded imperial crown tier
         roof(g, 0.42, 0.42, 0.22, top - 0.04, GOLD, shade(team, -0.1), true, 0.1);
         parts.top = top + 0.22;
@@ -260,6 +291,10 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       hall(g, parts, S * 0.7, S * 0.5, 0.34, { ...milStyle, roof: TERRACOTTA, ridge: "#3a1a10" });
       // chimney + glowing furnace + anvil
       g.add(mesh(box(0.16, 0.9, 0.16), mat(STONE_D, { rough: 0.95 }), S * 0.28, 0.45, -S * 0.12));
+      g.add(mesh(box(0.2, 0.05, 0.2), mat("#3f3b36"), S * 0.28, 0.92, -S * 0.12));
+      parts.chimney = new THREE.Vector3(S * 0.28, 0.96, -S * 0.12);
+      // anvil horn
+      { const horn = mesh(cone(0.03, 0.08, 6), mat("#475569", { metal: 0.85, rough: 0.35 }), S * 0.15 + 0.11, 0.17, S * 0.38, false); horn.rotation.z = -Math.PI / 2; g.add(horn); }
       g.add(mesh(box(0.34, 0.26, 0.26), mat("#57534e", { rough: 0.9 }), -S * 0.3, 0.13, S * 0.33));
       const glowM = mat("#ff7a1a", { emissive: "#ff5a00", emissiveIntensity: 2.2 });
       g.add(mesh(box(0.16, 0.1, 0.02), glowM, -S * 0.3, 0.12, S * 0.33 + 0.135, false));
@@ -336,11 +371,12 @@ export function buildBuilding(type: string, team: string, age: number, size: num
   }
 
   g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && m.castShadow) m.receiveShadow = true; });
+  curParts = null;
   return { group: g, parts };
 }
 
 // ---------------------------------------------------------------------------
-interface Entry { group: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; smokeT: number; fireT: number; b: any; }
+interface Entry { group: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; smokeT: number; fireT: number; puffT?: number; b: any; }
 
 export class Buildings3D {
   readonly group = new THREE.Group();
@@ -385,7 +421,7 @@ export class Buildings3D {
       for (const [dx, dz] of [[0, 0], [size, 0], [0, size], [size, size], [size / 2, size / 2]]) { const h = terrainHeight(b.tx + dx, b.ty + dz); hMin = Math.min(hMin, h); hAvg += h / 5; }
       const gy = Math.max(hMin, hAvg - 0.06);
       e.group.position.set(cx, gy, cz);
-      const fogv = state.fog[Math.min(25, b.ty)]?.[Math.min(25, b.tx)] ?? 0;
+      const fogv = state.fog[Math.min(MAP_N - 1, b.ty)]?.[Math.min(MAP_N - 1, b.tx)] ?? 0;
       e.group.visible = b.team === "player" || fogv !== 0;
       const building = b.progress !== undefined && b.progress < 1;
       e.group.scale.set(1, building ? 0.25 + 0.75 * Math.max(0, b.progress) : 1, 1);
@@ -410,6 +446,17 @@ export class Buildings3D {
         const f = e.parts.fires[i];
         const k = 0.8 + Math.sin(t * 17 + i * 2.1 + b.id) * 0.15 + Math.sin(t * 29 + i) * 0.08;
         f.scale.set(1, k, 1);
+      }
+      // swaying silk lanterns
+      for (const l of e.parts.lanterns) { l.rotation.z = Math.sin(t * 1.6 + l.userData.ph) * 0.14; l.rotation.x = Math.sin(t * 1.2 + l.userData.ph * 1.3) * 0.08; }
+      // blacksmith chimney: rising, swelling 3D smoke puffs
+      if (e.parts.chimney && !building) {
+        e.puffT = (e.puffT ?? 0) - dt;
+        if (e.puffT <= 0) {
+          e.puffT = 0.35 + Math.random() * 0.2;
+          const c = e.parts.chimney;
+          this.fx.debris.emit(cx + c.x, gy + c.y, cz + c.z, 0.08 + (Math.random() - 0.5) * 0.06, 0.38 + Math.random() * 0.15, (Math.random() - 0.5) * 0.06, 2.4 + Math.random() * 0.8, 0.8 + Math.random() * 0.4, Math.random() < 0.5 ? 0x8a837a : 0xa59d92, 0.07, 2.6);
+        }
       }
       for (const s of e.parts.spin) if ((s as THREE.Mesh).geometry?.type === "TorusGeometry") s.rotation.z = Math.sin(t * 0.8) * 0.4;
 

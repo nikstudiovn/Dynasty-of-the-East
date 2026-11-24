@@ -2,14 +2,39 @@
 import * as THREE from "three";
 import { MAP_N, isoToTile, tileToIso, clamp } from "./common";
 
+const HAZE = 0xcbb998;
+const SUN_OFFSET = new THREE.Vector3(-15, 19, -3);
+const SHADOW_R = 22;
+
+/** Gradient sky dome: warm pale horizon haze -> soft jade-blue zenith, with a golden glow toward the sun. */
+function makeSky(): THREE.Mesh {
+  const m = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { uHorizon: { value: new THREE.Color(HAZE) }, uZenith: { value: new THREE.Color(0x7fa9c2) }, uSun: { value: new THREE.Color(0xffd79a) } },
+    vertexShader: "varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+    fragmentShader: `uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uSun; varying vec3 vDir;
+      void main(){ float h = clamp(vDir.y, 0.0, 1.0);
+        vec3 c = mix(uHorizon, uZenith, smoothstep(0.02, 0.6, h));
+        float s = max(dot(normalize(vDir), normalize(vec3(-0.6, 0.35, -0.12))), 0.0);
+        c += uSun * pow(s, 8.0) * 0.35;
+        gl_FragColor = vec4(c, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const me = new THREE.Mesh(new THREE.SphereGeometry(280, 24, 12), m);
+  me.renderOrder = -10; me.frustumCulled = false;
+  return me;
+}
+
 export interface Cam { x: number; y: number; zoom: number; shake?: number; }
 
-export const MIN_ZOOM = 0.45;
-export const MAX_ZOOM = 2.5;
+export const MIN_ZOOM = 0.35;
+export const MAX_ZOOM = 2.6;
 const PITCH = THREE.MathUtils.degToRad(45);
 const DEFAULT_YAW = Math.PI / 4; // matches the classic isometric orientation (screen-right = +x / -z)
 
-/** cam.zoom [0.45, 2.5] -> camera distance (zooming in brings the camera down toward the roofs). */
+/** cam.zoom [0.35, 2.6] -> camera distance (zooming in brings the camera down toward the roofs). */
 export function distForZoom(z: number): number {
   return 16 / clamp(z, MIN_ZOOM, MAX_ZOOM);
 }
@@ -20,6 +45,7 @@ export class Scene3D {
   readonly camera: THREE.PerspectiveCamera;
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
+  readonly sky: THREE.Mesh;
   readonly target = new THREE.Vector3(MAP_N / 2, 0, MAP_N / 2);
   yaw = DEFAULT_YAW;
   yawTarget = DEFAULT_YAW;
@@ -40,27 +66,31 @@ export class Scene3D {
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.12;
     r.outputColorSpace = THREE.SRGBColorSpace;
-    r.setClearColor(0x1a1511, 1);
+    r.setClearColor(HAZE, 1);
     this.renderer = r;
 
-    this.scene.background = new THREE.Color(0x1a1511);
-    this.scene.fog = new THREE.FogExp2(0x1a1511, 0.009);
+    // Golden misty haze: distant ridges dissolve into the sky instead of a black void.
+    this.scene.background = new THREE.Color(HAZE);
+    this.scene.fog = new THREE.FogExp2(HAZE, 0.0085);
+    this.sky = makeSky();
+    this.scene.add(this.sky);
 
-    this.camera = new THREE.PerspectiveCamera(36, 1, 0.3, 220);
+    this.camera = new THREE.PerspectiveCamera(36, 1, 0.3, 320);
     this.probe = new THREE.PerspectiveCamera(36, 1, 0.01, 50);
 
     // Warm sky + lush ground bounce keeps shadowed faces rich and readable.
     this.hemi = new THREE.HemisphereLight(0xffe8c2, 0x2e4a22, 0.95);
     this.scene.add(this.hemi);
 
-    // Golden-hour sun from the top-left of the screen, crisp 2048² soft shadows over the whole valley.
+    // Golden-hour sun from the top-left of the screen. On 48×48 the 2048² shadow frustum follows the
+    // camera target (snapped to a texel grid so shadows never shimmer while panning).
     const sun = new THREE.DirectionalLight(0xffc98a, 2.6);
-    sun.position.set(MAP_N / 2 - 15, 19, MAP_N / 2 - 3);
-    sun.target.position.set(MAP_N / 2, 0, MAP_N / 2);
+    sun.position.copy(this.target).add(SUN_OFFSET);
+    sun.target.position.copy(this.target);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera;
-    sc.left = -21; sc.right = 21; sc.top = 21; sc.bottom = -21; sc.near = 1; sc.far = 70;
+    sc.left = -SHADOW_R; sc.right = SHADOW_R; sc.top = SHADOW_R; sc.bottom = -SHADOW_R; sc.near = 1; sc.far = 80;
     sun.shadow.bias = -0.0006;
     sun.shadow.normalBias = 0.025;
     sun.shadow.radius = 3;
@@ -69,8 +99,9 @@ export class Scene3D {
 
     // faint cool rim light from behind so silhouettes pop against the meadow
     const rim = new THREE.DirectionalLight(0x9fb8ff, 0.35);
-    rim.position.set(MAP_N / 2 + 14, 10, MAP_N / 2 + 12);
-    this.scene.add(rim);
+    rim.position.set(MAP_N / 2 + 26, 14, MAP_N / 2 + 22);
+    rim.target.position.set(MAP_N / 2, 0, MAP_N / 2);
+    this.scene.add(rim, rim.target);
   }
 
   resize(w: number, h: number): void {
@@ -92,7 +123,7 @@ export class Scene3D {
   /** Pull the camera from the classic cam (iso pixel space) every frame. */
   update(cam: Cam, dt: number): void {
     const t = isoToTile(cam.x, cam.y);
-    this.target.set(clamp(t.x, -2, MAP_N + 2), 0, clamp(t.z, -2, MAP_N + 2));
+    this.target.set(clamp(t.x, -3, MAP_N + 3), 0, clamp(t.z, -3, MAP_N + 3));
     const k = 1 - Math.exp(-dt * 12);
     this.dist += (distForZoom(cam.zoom) - this.dist) * k;
     this.yaw += (this.yawTarget - this.yaw) * (1 - Math.exp(-dt * 8));
@@ -105,6 +136,15 @@ export class Scene3D {
     }
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
+    // shadow frustum follows the view; wider when zoomed out
+    const sr = clamp(this.dist * 0.95, 14, 30), tex = (sr * 2) / 2048;
+    const sc = this.sun.shadow.camera;
+    if (Math.abs(sc.right - sr) > 0.5) { sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr; sc.updateProjectionMatrix(); }
+    const fx = Math.round(this.target.x / tex) * tex, fz = Math.round(this.target.z / tex) * tex;
+    this.sun.target.position.set(fx, 0, fz);
+    this.sun.position.set(fx + SUN_OFFSET.x, SUN_OFFSET.y, fz + SUN_OFFSET.z);
+    this.sun.target.updateMatrixWorld();
+    this.sky.position.set(this.camera.position.x, 0, this.camera.position.z);
   }
 
   private setNdc(clientX: number, clientY: number): void {

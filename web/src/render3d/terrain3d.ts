@@ -1,12 +1,15 @@
-// Pixel Dynasty 3D — sculpted seamless terrain, living lotus lake, wooden bridges and instanced resources.
+// Pixel Dynasty 3D — sculpted seamless terrain, winding river + living lotus lake (shader shimmer, lily pads,
+// lotus blossoms, koi), arched vermilion wooden bridges and instanced resources (bamboo groves, terraced rice,
+// gold crystal outcrops, mossy stone). Everything repeated is an InstancedMesh so 48×48 stays at 60 FPS.
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { shakeX } from "../graphics/villagerActions";
 import {
-  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, terrainHeight, wetness, setWaterGrid, mat, Env3D
+  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, setWaterGrid, archLift, mat, Env3D
 } from "./common";
 
-const SEG = MAP_N * 4;
+const SEG = MAP_N * 3;
+const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------------------
 // Geometry merger (collapses many static pieces into one draw call per material)
@@ -37,22 +40,26 @@ class Merger {
 
 // ---------------------------------------------------------------------------
 // Instanced resource layer
-interface Item { x: number; y: number; z: number; ry: number; sx: number; sy: number; sz: number; tx: number; ty: number; sway: number; }
+interface Item {
+  x: number; y: number; z: number; ry: number; sx: number; sy: number; sz: number; tx: number; ty: number; sway: number;
+  /** outward lean (radians, applied before yaw) */ tl?: number;
+  /** height above the parent stalk base + parent yaw: leaves follow the stalk's sway */ lift?: number; pry?: number;
+}
 
 class InstLayer {
   mesh: THREE.InstancedMesh;
   items: Item[] = [];
   private readonly m4 = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
-  private readonly e = new THREE.Euler();
+  private readonly e = new THREE.Euler(0, 0, 0, "YXZ");
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
-  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64) {
+  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64, private shadows = true) {
     this.mesh = this.make(capacity);
   }
   private make(n: number): THREE.InstancedMesh {
     const me = new THREE.InstancedMesh(this.geometry, this.material, n);
-    me.castShadow = true; me.receiveShadow = true; me.count = 0; me.frustumCulled = false;
+    me.castShadow = this.shadows; me.receiveShadow = true; me.count = 0; me.frustumCulled = false;
     me.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.group.add(me);
     return me;
@@ -66,44 +73,130 @@ class InstLayer {
     }
     this.mesh.count = items.length;
     if (colors) { for (let i = 0; i < items.length; i++) this.mesh.setColorAt(i, colors[i]); if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true; }
-    this.animate(0, () => 0);
+    this.animate(() => 0);
   }
-  /** Rewrite matrices; `bend(item)` returns an extra tilt (radians) for wind sway / chopping shake. */
-  animate(_t: number, bend: (it: Item) => number): void {
+  /** Rewrite matrices; `bend(item)` = extra tilt (wind / chopping shake); `carry(item)` = parent stalk bend for leaves. */
+  animate(bend: (it: Item) => number, carry?: (it: Item) => number): void {
     for (let i = 0; i < this.items.length; i++) {
       const it = this.items[i];
       const b = bend(it);
-      this.e.set(b * 0.6, it.ry, b);
-      this.m4.compose(this.p.set(it.x, it.y, it.z), this.q.setFromEuler(this.e), this.s.set(it.sx, it.sy, it.sz));
+      let x = it.x, y = it.y, z = it.z;
+      if (carry && it.lift) {
+        const cb = carry(it), L = it.lift, ry = it.pry || 0;
+        const lx = -Math.sin(cb) * L, lz = Math.sin(cb * 0.6) * L;
+        const c = Math.cos(ry), s = Math.sin(ry);
+        x += lx * c + lz * s; z += -lx * s + lz * c; y -= (1 - Math.cos(cb)) * L;
+      }
+      this.e.set((it.tl || 0) + b * 0.6, it.ry, b);
+      this.m4.compose(this.p.set(x, y, z), this.q.setFromEuler(this.e), this.s.set(it.sx, it.sy, it.sz));
       this.mesh.setMatrixAt(i, this.m4);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 }
 
-function bambooStalkGeometry(): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.032, 0.042, 1, 6, 7);
-  g.translate(0, 0.5, 0);
+function colorize(g: THREE.BufferGeometry, fn: (x: number, y: number, z: number) => [number, number, number]): THREE.BufferGeometry {
   const pos = g.getAttribute("position");
   const col = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    const node = Math.abs(y * 7 - Math.round(y * 7)) < 0.02;
-    const c = node ? [0.2, 0.36, 0.12] : [0.36 + y * 0.18, 0.62 + y * 0.12, 0.22];
-    col.set(c, i * 3);
-  }
+  for (let i = 0; i < pos.count; i++) col.set(fn(pos.getX(i), pos.getY(i), pos.getZ(i)), i * 3);
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
   return g;
 }
+function strip(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const c = g.index ? g.toNonIndexed() : g;
+  if (c.getAttribute("uv")) c.deleteAttribute("uv");
+  return c;
+}
+
+/** Slender segmented bamboo culm (height 1): 6 internodes, dark node rings with a pale band. */
+function bambooStalkGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const N = 6;
+  for (let k = 0; k < N; k++) {
+    const y0 = k / N, h = 1 / N;
+    const r0 = 0.034 - k * 0.003, r1 = 0.034 - (k + 1) * 0.003;
+    const seg = new THREE.CylinderGeometry(r1, r0, h * 0.94, 6, 1);
+    seg.translate(0, y0 + h * 0.47, 0);
+    parts.push(colorize(strip(seg), (_x, y) => {
+      const t = (y - y0) / h; // light at the base of each internode, deeper green toward the next node
+      return [0.5 - t * 0.14 + k * 0.01, 0.74 - t * 0.12, 0.3 - t * 0.08];
+    }));
+    const node = new THREE.CylinderGeometry(r1 * 1.25, r1 * 1.25, h * 0.07, 6, 1);
+    node.translate(0, y0 + h, 0);
+    parts.push(colorize(strip(node), (_x, y) => (y > y0 + h ? [0.78, 0.82, 0.52] : [0.2, 0.34, 0.12])));
+  }
+  return mergeGeometries(parts, false)!;
+}
+
+/** Airy drooping tuft of 7 lanceolate bamboo leaves radiating from a twig point. */
+function leafTuftGeometry(): THREE.BufferGeometry {
+  const blades: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 7; k++) {
+    const L = 0.3 + (k % 3) * 0.05, W = 0.045;
+    // a blade along +x: base at origin, widest at 30%, tip at L, drooping downward
+    const pts = [[0, 0, 0], [L * 0.3, -0.02, W], [L * 0.3, -0.02, -W], [L, -0.12, 0]];
+    const p = new Float32Array([...pts[0], ...pts[1], ...pts[3], ...pts[0], ...pts[3], ...pts[2]]);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+    g.rotateZ(0.35 - (k % 2) * 0.25);
+    g.rotateY((k / 7) * TAU + (k % 2) * 0.3);
+    g.computeVertexNormals();
+    colorize(g, (x, _y, z) => { const d = Math.min(1, Math.hypot(x, z) / 0.35); return [0.14 + d * 0.16, 0.46 + d * 0.16, 0.18 + d * 0.04]; });
+    blades.push(g);
+  }
+  const g = mergeGeometries(blades, false)!;
+  // flip normals upward for nicer lighting on both faces
+  const n = g.getAttribute("normal");
+  for (let i = 0; i < n.count; i++) if (n.getY(i) < 0) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i));
+  return g;
+}
+
+/** Rice tuft (height 1): 5 thin blades + a drooping grain head. */
+function riceTuftGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 5; k++) {
+    const b = new THREE.BoxGeometry(0.012, 1, 0.005);
+    b.translate(0, 0.5, 0);
+    b.rotateZ((k - 2) * 0.16);
+    b.rotateY(k * 1.1);
+    parts.push(strip(b));
+  }
+  const head = new THREE.SphereGeometry(0.03, 5, 4); head.scale(0.8, 2.2, 0.8); head.rotateZ(0.6); head.translate(0.06, 0.95, 0);
+  parts.push(strip(head));
+  return mergeGeometries(parts, false)!;
+}
+
+function lotusBloomGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let ring = 0; ring < 3; ring++) {
+    const n = ring === 0 ? 8 : ring === 1 ? 7 : 5;
+    for (let k = 0; k < n; k++) {
+      const p = new THREE.SphereGeometry(0.05, 6, 4);
+      p.scale(0.55, 0.3, 1.25 - ring * 0.2);
+      p.translate(0, 0, 0.055);
+      p.rotateX(-(ring === 0 ? 0.45 : ring === 1 ? 0.9 : 1.25));
+      p.rotateY((k / n) * TAU + ring * 0.35);
+      p.translate(0, ring * 0.018, 0);
+      parts.push(colorize(strip(p), (_x, y) => { const t = clamp(y / 0.08, 0, 1); return [0.98, 0.62 + (1 - t) * 0.2, 0.74 + (1 - t) * 0.12]; }));
+    }
+  }
+  const seed = new THREE.CylinderGeometry(0.028, 0.02, 0.03, 8); seed.translate(0, 0.035, 0);
+  parts.push(colorize(strip(seed), () => [0.96, 0.82, 0.25]));
+  return mergeGeometries(parts, false)!;
+}
 
 // ---------------------------------------------------------------------------
+interface Koi { g: THREE.Group; tail: THREE.Object3D; cx: number; cz: number; rx: number; rz: number; sp: number; ph: number; dir: number; }
+
 export class Terrain3D {
   readonly group = new THREE.Group();
   private terrain: THREE.Mesh | null = null;
   private water: THREE.Mesh | null = null;
-  private waterBase: Float32Array | null = null;
+  private readonly waterTime = { value: 0 };
   private lake = new THREE.Group();
-  private lotus: { obj: THREE.Object3D; base: number; ph: number }[] = [];
+  private pads: InstLayer | null = null;
+  private blooms: InstLayer | null = null;
+  private koi: Koi[] = [];
   private bridges = new THREE.Group();
   private gridRef: any = null;
   private resSig = -1;
@@ -111,28 +204,33 @@ export class Terrain3D {
   private stalks: InstLayer;
   private leaves: InstLayer;
   private rice: InstLayer;
+  private bunds: InstLayer;
   private paddy: InstLayer;
   private rocks: InstLayer;
   private crystals: InstLayer;
   private moss: InstLayer;
+  private readonly crystalMat: THREE.MeshStandardMaterial;
   private footprint: THREE.Mesh;
   private footEdges: THREE.LineSegments;
+  /** Lotus lake centre in tile space (for koi + wildlife). */
+  readonly lakeCenter = new THREE.Vector3(MAP_N / 2, WATER_LEVEL, MAP_N / 2);
   readonly heightCache = new Float32Array((MAP_N + 1) * (MAP_N + 1));
 
   constructor() {
     this.group.add(this.lake, this.bridges, this.res);
-    const leafG = new THREE.ConeGeometry(0.22, 0.42, 7); leafG.translate(0, 0.21, 0);
-    this.stalks = new InstLayer(this.res, bambooStalkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }), 160);
-    this.leaves = new InstLayer(this.res, leafG, mat("#2f8f3a", { rough: 0.7, flat: true }), 260);
-    const riceG = new THREE.ConeGeometry(0.05, 0.3, 5); riceG.translate(0, 0.15, 0);
-    this.rice = new InstLayer(this.res, riceG, mat("#e2b23a", { rough: 0.55, flat: true }), 200);
-    const paddyG = new THREE.BoxGeometry(0.86, 0.06, 0.26); paddyG.translate(0, 0.03, 0);
-    this.paddy = new InstLayer(this.res, paddyG, mat("#6f5a2c", { rough: 0.9 }), 60);
-    this.rocks = new InstLayer(this.res, new THREE.DodecahedronGeometry(0.2, 0), mat("#7d8590", { rough: 0.85, flat: true }), 80);
-    const crysG = new THREE.OctahedronGeometry(0.09, 0); crysG.scale(1, 2.1, 1);
-    this.crystals = new InstLayer(this.res, crysG, mat("#f5b830", { metal: 0.75, rough: 0.25, emissive: "#4a2a00", flat: true }), 80);
-    const mossG = new THREE.SphereGeometry(0.12, 7, 5); mossG.scale(1, 0.45, 1);
-    this.moss = new InstLayer(this.res, mossG, mat("#4f7a2c", { rough: 0.95 }), 40);
+    this.stalks = new InstLayer(this.res, bambooStalkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }), 600);
+    this.leaves = new InstLayer(this.res, leafTuftGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), 1200);
+    this.rice = new InstLayer(this.res, riceTuftGeometry(), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), 600, false);
+    const bundG = new THREE.BoxGeometry(1, 0.07, 0.09); bundG.translate(0, 0.035, 0);
+    this.bunds = new InstLayer(this.res, bundG, mat("#6f5430", { rough: 0.95 }), 200);
+    const paddyG = new THREE.BoxGeometry(0.9, 0.02, 0.9); paddyG.translate(0, 0.01, 0);
+    this.paddy = new InstLayer(this.res, paddyG, mat("#5f7046", { rough: 0.22, metal: 0.15 }), 60, false);
+    this.rocks = new InstLayer(this.res, new THREE.DodecahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true }), 160);
+    const crysG = new THREE.OctahedronGeometry(0.08, 0); crysG.scale(1, 2.2, 1);
+    this.crystalMat = new THREE.MeshStandardMaterial({ color: 0xf5b830, metalness: 0.85, roughness: 0.22, emissive: 0x7a4200, emissiveIntensity: 0.6, flatShading: true });
+    this.crystals = new InstLayer(this.res, crysG, this.crystalMat, 200);
+    const mossG = new THREE.SphereGeometry(0.12, 7, 5); mossG.scale(1, 0.4, 1);
+    this.moss = new InstLayer(this.res, mossG, mat("#4f7a2c", { rough: 0.95 }), 120);
 
     this.footprint = new THREE.Mesh(new THREE.BoxGeometry(1, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     this.footEdges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 0.08, 1)), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, fog: false }));
@@ -158,7 +256,7 @@ export class Terrain3D {
   }
 
   private pathSegments(state: any): number[][] {
-    // curved footpaths radiating from every Đình Làng (town centre) toward the lake and along the valley
+    // curved footpaths radiating from every Đình Làng (town centre) toward the lotus lake and along the valley
     const segs: number[][] = [];
     const tcs = (state.buildings || []).filter((b: any) => b.type === "town_center");
     for (const tc of tcs) {
@@ -167,11 +265,11 @@ export class Terrain3D {
       dirs.forEach(([dx, dz], di) => {
         const len = Math.hypot(dx, dz) || 1;
         const ux = dx / len, uz = dz / len, nx = -uz, nz = ux;
-        const reach = di === 0 ? Math.max(2, len - 3.2) : Math.min(7, len);
+        const reach = di === 0 ? Math.max(2, len - 7) : Math.min(10, len);
         let px = cx, pz = cz;
-        for (let k = 1; k <= 14; k++) {
-          const t = (k / 14) * reach;
-          const wob = Math.sin(t * 0.9 + di * 2 + tc.tx) * 0.55;
+        for (let k = 1; k <= 16; k++) {
+          const t = (k / 16) * reach;
+          const wob = Math.sin(t * 0.7 + di * 2 + tc.tx) * 0.65;
           const qx = cx + ux * t + nx * wob, qz = cz + uz * t + nz * wob;
           segs.push([px, pz, qx, qz]);
           px = qx; pz = qz;
@@ -183,7 +281,7 @@ export class Terrain3D {
 
   private buildTerrain(state: any): THREE.Mesh {
     const grid = state.grid;
-    const g = new THREE.PlaneGeometry(MAP_N + 6, MAP_N + 6, SEG + 24, SEG + 24);
+    const g = new THREE.PlaneGeometry(MAP_N + 6, MAP_N + 6, SEG + 18, SEG + 18);
     g.rotateX(-Math.PI / 2);
     g.translate(MAP_N / 2, 0, MAP_N / 2);
     const pos = g.getAttribute("position");
@@ -199,14 +297,13 @@ export class Terrain3D {
       pos.setY(i, h);
       const n = fbm(x * 0.35, z * 0.35);
       c.copy(cMoss).lerp(cMeadow, smoothstep(0.25, 0.7, n)).lerp(cSun, smoothstep(0.05, 0.3, h) * 0.55);
-      // resource floors
       const cell = grid[Math.floor(z)]?.[Math.floor(x)];
       if (cell?.res === "wood") c.lerp(cForest, 0.45);
       else if (cell?.res === "gold" || cell?.res === "stone") c.lerp(cGravel, 0.35);
       else if (cell?.res === "food") c.lerp(cMud, 0.3);
-      // footpaths (dirt + cobblestones)
       let d = 9;
       for (const s of segs) {
+        if (Math.abs(s[0] - x) > 2 && Math.abs(s[2] - x) > 2) continue;
         const vx = s[2] - s[0], vz = s[3] - s[1], l2 = vx * vx + vz * vz || 1;
         const t = Math.max(0, Math.min(1, ((x - s[0]) * vx + (z - s[1]) * vz) / l2));
         const ex = s[0] + vx * t - x, ez = s[1] + vz * t - z;
@@ -214,12 +311,10 @@ export class Terrain3D {
       }
       const path = 1 - smoothstep(0.06, 0.16, d);
       if (path > 0) c.lerp(hash2(Math.floor(x * 6), Math.floor(z * 6)) > 0.55 ? cCobble : cDirt, path * 0.85);
-      // shoreline sand -> lake bed
       const w = wetness(x, z);
       if (w > 0) c.lerp(cSand, smoothstep(0, 0.35, w) * 0.9).lerp(cBed, smoothstep(0.45, 0.9, w));
-      // outside the playable map: darker valley rim
       const out = Math.max(0, -x, -z, x - MAP_N, z - MAP_N);
-      if (out > 0) c.multiplyScalar(Math.max(0.35, 1 - out * 0.22));
+      if (out > 0) c.lerp(cMoss, Math.min(1, out * 0.3)).multiplyScalar(Math.max(0.55, 1 - out * 0.12));
       col.set([c.r, c.g, c.b], i * 3);
     }
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
@@ -230,189 +325,281 @@ export class Terrain3D {
     return me;
   }
 
-  private buildLake(grid: any[][]): void {
-    this.group.remove(this.lake);
-    this.lake.traverse(o => { if ((o as THREE.Mesh).geometry && o !== this.lake) (o as THREE.Mesh).geometry.dispose(); });
-    this.lake = new THREE.Group();
-    this.lotus = [];
-    this.group.add(this.lake);
-    let x0 = MAP_N, z0 = MAP_N, x1 = -1, z1 = -1;
-    const cells: [number, number][] = [];
-    for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
-      const t = grid[y][x].terrain;
-      if (t === "water" || t === "bridge") { x0 = Math.min(x0, x); z0 = Math.min(z0, y); x1 = Math.max(x1, x); z1 = Math.max(z1, y); if (t === "water") cells.push([x, y]); }
-    }
-    this.water = null; this.waterBase = null;
-    if (x1 < 0) return;
-    const w = x1 - x0 + 3, d = z1 - z0 + 3;
-    const wg = new THREE.PlaneGeometry(w, d, w * 6, d * 6);
-    wg.rotateX(-Math.PI / 2);
-    wg.translate(x0 - 1 + w / 2, WATER_LEVEL, z0 - 1 + d / 2);
-    this.waterBase = Float32Array.from(wg.getAttribute("position").array as ArrayLike<number>);
-    const wm = new THREE.MeshStandardMaterial({ color: "#1f8f78", emissive: "#063a30", emissiveIntensity: 0.6, roughness: 0.12, metalness: 0.25, transparent: true, opacity: 0.8 });
-    this.water = new THREE.Mesh(wg, wm);
-    this.water.receiveShadow = true;
-    this.water.renderOrder = 2;
-    this.lake.add(this.water);
-
-    // floating lily pads + multi-petal lotus blossoms
-    const padG = new THREE.CircleGeometry(0.15, 14, 0.35, Math.PI * 2 - 0.35); padG.rotateX(-Math.PI / 2);
-    const padM = mat("#3c8a3a", { rough: 0.6, side: THREE.DoubleSide });
-    const petals: THREE.BufferGeometry[] = [];
-    for (let ring = 0; ring < 2; ring++) {
-      const n = ring === 0 ? 8 : 6;
-      for (let k = 0; k < n; k++) {
-        const p = new THREE.SphereGeometry(0.05, 7, 5);
-        p.scale(0.55, 0.3, 1.25);
-        p.translate(0, 0, 0.055);
-        p.rotateX(-(ring === 0 ? 0.55 : 1.0));
-        p.rotateY((k / n) * Math.PI * 2 + ring * 0.3);
-        p.translate(0, ring * 0.02, 0);
-        petals.push(p.toNonIndexed());
+  // -------------------------------------------------------------------------
+  private buildWaterMesh(grid: any[][]): THREE.Mesh | null {
+    const isW = (x: number, y: number) => { const t = grid[y]?.[x]?.terrain; return t === "water" || t === "bridge"; };
+    const D = 3, pos: number[] = [], idx: number[] = [];
+    for (let y = -1; y <= MAP_N; y++) for (let x = -1; x <= MAP_N; x++) {
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) near = isW(x + dx, y + dy);
+      if (!near) continue;
+      const base = pos.length / 3;
+      for (let j = 0; j <= D; j++) for (let i = 0; i <= D; i++) pos.push(x + i / D, WATER_LEVEL, y + j / D);
+      for (let j = 0; j < D; j++) for (let i = 0; i < D; i++) {
+        const a = base + j * (D + 1) + i, b = a + 1, c = a + D + 1, d = c + 1;
+        idx.push(a, c, b, b, c, d);
       }
     }
-    const lotusG = mergeGeometries(petals, false)!;
-    const lotusM = mat("#f29ab8", { rough: 0.5, emissive: "#3a0f1c", emissiveIntensity: 0.35 });
-    const seedG = new THREE.CylinderGeometry(0.03, 0.02, 0.03, 8);
-    const seedM = mat("#f3d34a", { emissive: "#3a2a00" });
-    let idx = 0;
-    for (const [cx, cz] of cells) {
-      for (let k = 0; k < 3; k++) {
-        const r = hash2(cx * 3.1 + k, cz * 7.7 - k);
-        if (r < 0.25) continue;
-        const px = cx + 0.2 + hash2(cx + k * 1.7, cz) * 0.6, pz = cz + 0.2 + hash2(cx, cz + k * 2.3) * 0.6;
-        const pad = new THREE.Mesh(padG, padM);
-        pad.position.set(px, WATER_LEVEL + 0.012, pz); pad.rotation.y = r * 6.28; pad.scale.setScalar(0.8 + r * 0.6);
-        pad.receiveShadow = true;
-        this.lake.add(pad);
-        this.lotus.push({ obj: pad, base: WATER_LEVEL + 0.012, ph: r * 9 });
-        if ((idx++) % 2 === 0) {
-          const bloom = new THREE.Group();
-          const pm = new THREE.Mesh(lotusG, lotusM); pm.castShadow = true;
-          const sm = new THREE.Mesh(seedG, seedM); sm.position.y = 0.02;
-          bloom.add(pm, sm);
-          bloom.position.set(px + 0.03, WATER_LEVEL + 0.03, pz - 0.02);
-          bloom.scale.setScalar(1 + r * 0.5);
-          this.lake.add(bloom);
-          this.lotus.push({ obj: bloom, base: WATER_LEVEL + 0.03, ph: r * 9 + 1 });
-        }
+    if (!pos.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.Float32BufferAttribute(new Float32Array(pos.length).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+    g.setIndex(idx);
+    const wm = new THREE.MeshStandardMaterial({ color: "#1f8f78", emissive: "#063a30", emissiveIntensity: 0.6, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.74 });
+    const uTime = this.waterTime;
+    wm.onBeforeCompile = shader => {
+      shader.uniforms.uTime = uTime;
+      shader.vertexShader = "uniform float uTime;\nvarying vec2 vWp;\n" + shader.vertexShader
+        .replace("#include <beginnormal_vertex>", `
+          float wx = position.x, wz = position.z;
+          vWp = vec2(wx, wz);
+          float dhx = 0.0372 * cos(wx * 3.1 + uTime * 1.7) + 0.024 * cos((wx + wz) * 6.0 + uTime * 3.0);
+          float dhz = -0.0324 * sin(wz * 2.7 - uTime * 1.3) + 0.024 * cos((wx + wz) * 6.0 + uTime * 3.0);
+          vec3 objectNormal = normalize(vec3(-dhx * 3.0, 1.0, -dhz * 3.0));
+          #ifdef USE_TANGENT
+          vec3 objectTangent = vec3(tangent.xyz);
+          #endif`)
+        .replace("#include <begin_vertex>", `vec3 transformed = vec3(position);
+          transformed.y += sin(wx * 3.1 + uTime * 1.7) * 0.012 + cos(wz * 2.7 - uTime * 1.3) * 0.012 + sin((wx + wz) * 6.0 + uTime * 3.0) * 0.004;`);
+      shader.fragmentShader = "uniform float uTime;\nvarying vec2 vWp;\n" + shader.fragmentShader
+        .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+          float rip = sin(vWp.x * 5.3 + uTime * 2.1) * sin(vWp.y * 4.7 - uTime * 1.7) + sin((vWp.x - vWp.y) * 3.1 + uTime * 1.2) * 0.5;
+          totalEmissiveRadiance += vec3(1.0, 0.92, 0.7) * pow(max(rip, 0.0) * 0.67, 6.0) * 0.55;`);
+    };
+    wm.customProgramCacheKey = () => "pd-water-shimmer";
+    const me = new THREE.Mesh(g, wm);
+    me.receiveShadow = true;
+    me.renderOrder = 2;
+    return me;
+  }
+
+  private buildLake(grid: any[][]): void {
+    this.group.remove(this.lake);
+    this.lake.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !(m as any).isInstancedMesh && m.geometry && m !== (this.water as any)) { /* shared geos */ } });
+    if (this.water) this.water.geometry.dispose();
+    this.lake = new THREE.Group();
+    this.koi = [];
+    this.group.add(this.lake);
+    this.water = this.buildWaterMesh(grid);
+    if (!this.water) { this.pads = null; this.blooms = null; return; }
+    this.lake.add(this.water);
+
+    const isW = (x: number, y: number) => grid[y]?.[x]?.terrain === "water";
+    // lake interior: cells whose 5×5 neighbourhood is (almost) all water — the river is too narrow to qualify
+    let sx = 0, sz = 0, n = 0;
+    const interior = (x: number, y: number) => { let c = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (isW(x + dx, y + dy) || grid[y + dy]?.[x + dx]?.terrain === "bridge") c++; return c >= 21; };
+    const padItems: Item[] = [], bloomItems: Item[] = [];
+    for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
+      if (!isW(x, y)) continue;
+      const inner = interior(x, y);
+      if (inner) { sx += x + 0.5; sz += y + 0.5; n++; }
+      const nearBridge = grid[y - 1]?.[x]?.terrain === "bridge" || grid[y + 1]?.[x]?.terrain === "bridge";
+      if (nearBridge) continue;
+      const odds = inner ? 0.6 : 0.16;
+      for (let k = 0; k < 2; k++) {
+        const r = hash2(x * 3.1 + k, y * 7.7 - k);
+        if (r > odds) continue;
+        const px = x + 0.2 + hash2(x + k * 1.7, y) * 0.6, pz = y + 0.2 + hash2(x, y + k * 2.3) * 0.6;
+        const s = 0.8 + hash2(x * 5 + k, y) * 0.7;
+        padItems.push({ x: px, y: WATER_LEVEL + 0.014, z: pz, ry: r * 40, sx: s, sy: 1, sz: s, tx: x, ty: y, sway: r * 9 });
+        if (hash2(x + 11 * k, y * 3) < 0.5) bloomItems.push({ x: px + 0.03, y: WATER_LEVEL + 0.03, z: pz - 0.02, ry: r * 20, sx: 1 + r * 0.4, sy: 1 + r * 0.4, sz: 1 + r * 0.4, tx: x, ty: y, sway: r * 9 + 1 });
+      }
+    }
+    if (n) this.lakeCenter.set(sx / n, WATER_LEVEL, sz / n);
+
+    if (!this.pads) {
+      const padG = new THREE.CircleGeometry(0.15, 14, 0.3, TAU - 0.3); padG.rotateX(-Math.PI / 2);
+      colorize(padG, (x, _y, z) => { const d = Math.hypot(x, z) / 0.15; return [0.2 + d * 0.06, 0.48 + d * 0.08, 0.2]; });
+      this.pads = new InstLayer(this.lake, padG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, side: THREE.DoubleSide }), 200, false);
+      this.blooms = new InstLayer(this.lake, lotusBloomGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, emissive: 0x3a0f1c, emissiveIntensity: 0.35 }), 120);
+    } else {
+      this.lake.add(this.pads.mesh); this.lake.add(this.blooms!.mesh);
+    }
+    this.pads.set(padItems);
+    this.blooms!.set(bloomItems);
+
+    // 6 orange-and-white koi gliding in slow loops beneath the surface of the lotus lake
+    if (n) {
+      const orange = mat("#f2621f", { rough: 0.4 }), white = mat("#f5f1e8", { rough: 0.4 }), fin = mat("#ff9a4a", { rough: 0.5, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+      const bodyG = new THREE.SphereGeometry(0.05, 10, 6); bodyG.scale(0.75, 0.55, 2);
+      const patchG = new THREE.SphereGeometry(0.035, 8, 5); patchG.scale(0.9, 0.6, 1.3);
+      const tailG = new THREE.BufferGeometry();
+      tailG.setAttribute("position", new THREE.BufferAttribute(new Float32Array([0, 0, 0, -0.045, 0, -0.08, 0.045, 0, -0.08]), 3));
+      tailG.computeVertexNormals();
+      for (let i = 0; i < 6; i++) {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(bodyG, i % 3 === 2 ? white : orange));
+        const p1 = new THREE.Mesh(patchG, i % 3 === 2 ? orange : white); p1.position.set(0, 0.012, 0.03); g.add(p1);
+        const p2 = new THREE.Mesh(patchG, white); p2.position.set(0, 0.01, -0.04); p2.scale.setScalar(0.7); g.add(p2);
+        const tail = new THREE.Group(); tail.position.z = -0.09;
+        tail.add(new THREE.Mesh(tailG, fin)); g.add(tail);
+        for (const s of [-1, 1]) { const f = new THREE.Mesh(tailG, fin); f.position.set(s * 0.03, -0.005, 0.03); f.rotation.y = s * 2.2; f.scale.setScalar(0.5); g.add(f); }
+        g.scale.setScalar(1.3);
+        this.lake.add(g);
+        const rr = 0.9 + (i % 3) * 0.75;
+        this.koi.push({ g, tail, cx: this.lakeCenter.x + (i - 2.5) * 0.25, cz: this.lakeCenter.z + ((i * 7) % 3 - 1) * 0.5, rx: rr * 1.15, rz: rr * 0.85, sp: 0.35 + (i % 4) * 0.08, ph: i * 1.7, dir: i % 2 ? 1 : -1 });
       }
     }
   }
 
+  // -------------------------------------------------------------------------
+  /** Arched wooden bridges: one continuous humped deck per span, vermilion railings with gilded caps, timber pilings. */
   private buildBridges(grid: any[][]): void {
     this.group.remove(this.bridges);
     this.bridges.traverse(o => { if ((o as THREE.Mesh).geometry && o !== this.bridges) (o as THREE.Mesh).geometry.dispose(); });
     this.bridges = new THREE.Group();
     this.group.add(this.bridges);
-    const planks = new Merger(), timber = new Merger(), rails = new Merger();
+    const planks = new Merger(), timber = new Merger(), rails = new Merger(), gold = new Merger();
     const slat = new THREE.BoxGeometry(1, 1, 1);
     const post = new THREE.CylinderGeometry(0.5, 0.5, 1, 7);
-    const isBridge = (x: number, y: number) => grid[y]?.[x]?.terrain === "bridge";
+    const knob = new THREE.SphereGeometry(0.5, 7, 5);
+    const isB = (x: number, y: number) => grid[y]?.[x]?.terrain === "bridge";
     const isLand = (x: number, y: number) => { const t = grid[y]?.[x]?.terrain; return t !== undefined && t !== "water" && t !== "bridge"; };
+
     for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
       const c = grid[y][x];
       if (c.terrain !== "bridge") continue;
-      const dir: string = c.bridge || "h";
-      const cx = x + 0.5, cz = y + 0.5, top = BRIDGE_DECK;
-      const along = (alongX: boolean) => {
-        // extend onto the shore where the bridge meets land
-        const ext0 = alongX ? (isLand(x - 1, y) ? 0.45 : 0) : (isLand(x, y - 1) ? 0.45 : 0);
-        const ext1 = alongX ? (isLand(x + 1, y) ? 0.45 : 0) : (isLand(x, y + 1) ? 0.45 : 0);
-        const a0 = -0.5 - ext0, a1 = 0.5 + ext1;
-        const n = Math.round((a1 - a0) / 0.14);
-        for (let k = 0; k < n; k++) {
-          const a = a0 + (k + 0.5) * ((a1 - a0) / n);
-          const lift = (ext0 && a < -0.5 ? (a + 0.5) * 0.12 : 0) + (ext1 && a > 0.5 ? -(a - 0.5) * 0.12 : 0);
-          const shade = 0.96 + hash2(x * 9 + k, y * 5) * 0.08;
-          if (alongX) planks.add(slat, cx + a, top + lift, cz, 0.12, 0.05 * shade, 0.9, 0, 0, (hash2(k, y) - 0.5) * 0.04);
-          else planks.add(slat, cx, top + lift, cz + a, 0.9, 0.05 * shade, 0.12, 0, (hash2(x, k) - 0.5) * 0.04, 0);
-        }
-        // stringers under the deck
+      const vert = c.bridge === "v";
+      // only start a span at its first cell
+      if (vert ? isB(x, y - 1) && grid[y - 1][x].bridge === "v" : isB(x - 1, y) && grid[y][x - 1].bridge !== "v") continue;
+      let a = vert ? y : x, b = a;
+      while (vert ? isB(x, b + 1) && grid[b + 1][x].bridge === "v" : isB(b + 1, y) && grid[y][b + 1].bridge !== "v") b++;
+      b += 1; // span covers [a, b)
+      const ext0 = (vert ? isLand(x, a - 1) : isLand(a - 1, y)) ? 0.7 : 0;
+      const ext1 = (vert ? isLand(x, b) : isLand(b, y)) ? 0.7 : 0;
+      const lane = vert ? x + 0.5 : y + 0.5;
+      const W = (p: number, s: number): [number, number] => (vert ? [lane + s, p] : [p, lane + s]);
+      const deck = (p: number): number => {
+        if (p < a) { const [wx, wz] = W(p, 0); const sh = terrainHeight(wx, wz) + 0.02; return sh + (BRIDGE_DECK - sh) * smoothstep(a - ext0, a, p); }
+        if (p > b) { const [wx, wz] = W(p, 0); const sh = terrainHeight(wx, wz) + 0.02; return sh + (BRIDGE_DECK - sh) * smoothstep(b + ext1, b, p); }
+        return BRIDGE_DECK + archLift(p, a, b);
+      };
+      const slope = (p: number) => (deck(p + 0.05) - deck(p - 0.05)) / 0.1;
+      const p0 = a - ext0, p1 = b + ext1;
+      // planks
+      const nP = Math.round((p1 - p0) / 0.14);
+      for (let k = 0; k < nP; k++) {
+        const p = p0 + (k + 0.5) * ((p1 - p0) / nP);
+        const [wx, wz] = W(p, 0), ang = Math.atan(slope(p)), shadeK = 0.96 + hash2(x * 9 + k, y * 5) * 0.08;
+        if (vert) planks.add(slat, wx, deck(p), wz, 0.92, 0.05 * shadeK, 0.12, 0, -ang, (hash2(x, k) - 0.5) * 0.04);
+        else planks.add(slat, wx, deck(p), wz, 0.12, 0.05 * shadeK, 0.92, 0, (hash2(k, y) - 0.5) * 0.04, ang);
+      }
+      // stringers + railings follow the arch in short straight pieces
+      const step = 0.5;
+      const nS = Math.max(1, Math.round((p1 - p0) / step));
+      for (let k = 0; k < nS; k++) {
+        const q0 = p0 + k * ((p1 - p0) / nS), q1 = p0 + (k + 1) * ((p1 - p0) / nS), qm = (q0 + q1) / 2;
+        const d0 = deck(q0), d1 = deck(q1), len = Math.hypot(q1 - q0, d1 - d0), ang = Math.atan2(d1 - d0, q1 - q0);
         for (const s of [-0.32, 0.32]) {
-          if (alongX) timber.add(slat, cx + (ext1 - ext0) / 2, top - 0.06, cz + s, a1 - a0, 0.07, 0.08);
-          else timber.add(slat, cx + s, top - 0.06, cz + (ext1 - ext0) / 2, 0.08, 0.07, a1 - a0);
+          const [wx, wz] = W(qm, s);
+          if (vert) timber.add(slat, wx, (d0 + d1) / 2 - 0.06, wz, 0.08, 0.07, len, 0, -ang, 0);
+          else timber.add(slat, wx, (d0 + d1) / 2 - 0.06, wz, len, 0.07, 0.08, 0, 0, ang);
         }
-        // side railings (skip the side where another bridge arm joins)
-        for (const s of [-0.46, 0.46]) {
-          const sideBridge = alongX ? isBridge(x, y + Math.sign(s)) : isBridge(x + Math.sign(s), y);
-          if (sideBridge) continue;
-          if (alongX) { rails.add(slat, cx, top + 0.27, cz + s, 1, 0.045, 0.05); rails.add(slat, cx, top + 0.14, cz + s, 1, 0.03, 0.035); }
-          else { rails.add(slat, cx + s, top + 0.27, cz, 0.05, 0.045, 1); rails.add(slat, cx + s, top + 0.14, cz, 0.035, 0.03, 1); }
-          for (const p of [-0.5, 0, 0.5]) {
-            if (alongX) rails.add(post, cx + p, top + 0.15, cz + s, 0.05, 0.32, 0.05);
-            else rails.add(post, cx + s, top + 0.15, cz + p, 0.05, 0.32, 0.05);
+        for (const s of [-0.47, 0.47]) {
+          const [wx, wz] = W(qm, s);
+          for (const [hh, th] of [[0.32, 0.045], [0.16, 0.03]]) {
+            if (vert) rails.add(slat, wx, (d0 + d1) / 2 + hh, wz, th + 0.01, th, len, 0, -ang, 0);
+            else rails.add(slat, wx, (d0 + d1) / 2 + hh, wz, len, th, th + 0.01, 0, 0, ang);
           }
         }
-      };
-      if (dir === "x") {
-        for (let k = 0; k < 7; k++) planks.add(slat, cx - 0.43 + k * 0.143, top, cz, 0.13, 0.05, 0.92);
-        timber.add(slat, cx, top - 0.06, cz, 0.9, 0.07, 0.9);
-        for (const [px, pz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) rails.add(post, cx + px, top + 0.17, cz + pz, 0.06, 0.38, 0.06);
-      } else along(dir === "h");
-      // timber support pilings down into the lake bed
-      for (const [px, pz] of [[-0.36, -0.36], [0.36, 0.36], [-0.36, 0.36], [0.36, -0.36]]) {
-        timber.add(post, cx + px, (top - 0.62) / 2, cz + pz, 0.07, top + 0.62, 0.07);
+      }
+      for (let k = 0; k <= nS; k++) {
+        const q = p0 + k * ((p1 - p0) / nS), d = deck(q);
+        for (const s of [-0.47, 0.47]) {
+          const [wx, wz] = W(q, s);
+          rails.add(post, wx, d + 0.17, wz, 0.055, 0.36, 0.055);
+          gold.add(knob, wx, d + 0.37, wz, 0.06, 0.06, 0.06);
+        }
+      }
+      // timber pilings into the riverbed + cross braces
+      for (let p = a + 0.5; p < b; p += 1) {
+        const d = deck(p);
+        for (const s of [-0.38, 0.38]) {
+          const [wx, wz] = W(p, s);
+          timber.add(post, wx, (d - 0.08 - 0.7) / 2, wz, 0.08, d - 0.08 + 0.7, 0.08);
+        }
+        const [bx, bz] = W(p, 0);
+        if (vert) timber.add(slat, bx, d - 0.32, bz, 0.8, 0.05, 0.05, 0, 0, 0.35);
+        else timber.add(slat, bx, d - 0.32, bz, 0.05, 0.05, 0.8, 0, 0.35, 0);
       }
     }
-    const a = planks.build(mat("#a8733f", { rough: 0.8 }));
-    const b = timber.build(mat("#5a3a22", { rough: 0.85 }));
-    const r = rails.build(mat("#7a1e1a", { rough: 0.6 }));
-    for (const m of [a, b, r]) if (m) this.bridges.add(m);
+    const pm = planks.build(mat("#a8733f", { rough: 0.8 }));
+    const tm = timber.build(mat("#5a3a22", { rough: 0.85 }));
+    const rm = rails.build(mat("#b91c1c", { rough: 0.45 }));
+    const gm = gold.build(mat("#e8b53a", { metal: 0.75, rough: 0.3 }), false);
+    for (const m of [pm, tm, rm, gm]) if (m) this.bridges.add(m);
   }
 
   // -------------------------------------------------------------------------
   private rebuildResources(state: any): void {
     const grid = state.grid, fog = state.fog;
-    const stalks: Item[] = [], leaves: Item[] = [], rice: Item[] = [], paddy: Item[] = [], rocks: Item[] = [], crys: Item[] = [], moss: Item[] = [];
-    const rockCol: THREE.Color[] = [];
+    const stalks: Item[] = [], leaves: Item[] = [], rice: Item[] = [], bunds: Item[] = [], paddy: Item[] = [], rocks: Item[] = [], crys: Item[] = [], moss: Item[] = [];
+    const rockCol: THREE.Color[] = [], riceCol: THREE.Color[] = [];
+    const RICE = [new THREE.Color("#8fe08a"), new THREE.Color("#5cb83c"), new THREE.Color("#e2b23a")];
     for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
       const c = grid[y][x];
       if (!c.res || (fog[y]?.[x] ?? 0) === 0) continue;
-      const h = (dx: number, dz: number) => terrainHeight(x + dx, y + dz);
+      const h = (wx: number, wz: number) => terrainHeight(wx, wz);
       const amt = Math.max(0.55, Math.min(1, (c.resAmt || 200) / 260));
       if (c.res === "wood") {
-        for (let k = 0; k < 5; k++) {
-          const a = k * 1.256 + hash2(x, y) * 3, r = k === 0 ? 0 : 0.2 + hash2(x + k, y) * 0.12;
+        // bamboo clump: 4–6 slender culms leaning slightly outward, layered leaf tufts near the crown
+        const n = 4 + Math.floor(hash2(x * 1.3, y * 2.9) * 3);
+        const rot = hash2(x, y) * TAU;
+        for (let k = 0; k < n; k++) {
+          const a = rot + (k / n) * TAU + (hash2(x + k, y) - 0.5) * 0.6;
+          const r = 0.06 + hash2(x + k * 3, y + 1) * 0.16;
           const px = x + 0.5 + Math.cos(a) * r, pz = y + 0.5 + Math.sin(a) * r;
-          const ht = (1.15 + hash2(x * 2 + k, y * 3) * 0.6) * amt;
-          const base = h(px - x, pz - y);
-          stalks.push({ x: px, y: base, z: pz, ry: a, sx: 1, sy: ht, sz: 1, tx: x, ty: y, sway: k });
-          leaves.push({ x: px, y: base + ht * 0.82, z: pz, ry: a, sx: 1, sy: 1, sz: 1, tx: x, ty: y, sway: k });
-          leaves.push({ x: px, y: base + ht * 0.62, z: pz, ry: a + 1, sx: 1.25, sy: 0.9, sz: 1.25, tx: x, ty: y, sway: k });
+          const ht = (1.25 + hash2(x * 2 + k, y * 3) * 0.75) * (0.7 + amt * 0.3);
+          const tl = 0.05 + hash2(x * 7 + k, y) * 0.13;
+          const ry = Math.PI / 2 - a; // leans along (cos a, sin a)
+          const base = h(px, pz);
+          const sway = k + hash2(x, y * 5) * 6;
+          stalks.push({ x: px, y: base, z: pz, ry, tl, sx: 1, sy: ht, sz: 1, tx: x, ty: y, sway });
+          for (const [f, s] of [[0.72, 1.05], [0.88, 0.95], [1.0, 0.75]]) {
+            if (f === 0.72 && k % 2) continue;
+            const L = ht * f, off = Math.sin(tl) * L;
+            leaves.push({ x: px + Math.cos(a) * off, y: base + Math.cos(tl) * L, z: pz + Math.sin(a) * off, ry: hash2(k, x + f) * TAU, sx: s, sy: s, sz: s, tx: x, ty: y, sway, lift: L, pry: ry });
+          }
         }
       } else if (c.res === "food") {
-        for (let row = 0; row < 3; row++) {
-          const pz = y + 0.2 + row * 0.3, base = h(0.5, pz - y) + row * 0.04;
-          paddy.push({ x: x + 0.5, y: base, z: pz, ry: 0, sx: 1, sy: 1, sz: 1, tx: x, ty: y, sway: 0 });
-          for (let k = 0; k < 5; k++) {
-            const px = x + 0.16 + k * 0.17;
-            rice.push({ x: px, y: base + 0.05, z: pz + (hash2(k, row) - 0.5) * 0.08, ry: k, sx: 1, sy: amt * (0.85 + hash2(x + k, y + row) * 0.3), sz: 1, tx: x, ty: y, sway: k + row });
-          }
+        // terraced rice paddy: earthen bunds, wet floor and rice tufts that grow through 3 stages
+        const ratio = clamp((c.resAmt || 0) / 240, 0, 1);
+        const stage = ratio > 0.66 ? 2 : ratio > 0.33 ? 1 : 0;
+        const base = h(x + 0.5, y + 0.5);
+        paddy.push({ x: x + 0.5, y: base + 0.005, z: y + 0.5, ry: 0, sx: 1, sy: 1, sz: 1, tx: x, ty: y, sway: 0 });
+        for (const [bx, bz, ry] of [[0.5, 0.05, 0], [0.5, 0.95, 0], [0.05, 0.5, Math.PI / 2], [0.95, 0.5, Math.PI / 2], [0.5, 0.5, 0]]) {
+          bunds.push({ x: x + bx, y: h(x + bx, y + bz) - 0.01, z: y + bz, ry, sx: ry ? 0.98 : 0.98, sy: 1, sz: 1, tx: x, ty: y, sway: 0 });
+        }
+        const H = [0.13, 0.25, 0.38][stage];
+        for (let row = 0; row < 4; row++) for (let k = 0; k < 4; k++) {
+          const px = x + 0.17 + k * 0.22 + (hash2(k, row + y) - 0.5) * 0.04;
+          const pz = y + 0.16 + row * 0.2 + (row >= 2 ? 0.08 : 0);
+          rice.push({ x: px, y: base + 0.015, z: pz, ry: hash2(x + k, row) * TAU, sx: 1, sy: H * (0.85 + hash2(x + k, y + row) * 0.3), sz: 1, tx: x, ty: y, sway: k + row * 1.7 });
+          riceCol.push(RICE[stage].clone().multiplyScalar(0.9 + hash2(k + x, row) * 0.2));
         }
       } else {
         const gold = c.res === "gold";
         for (let k = 0; k < 3; k++) {
           const px = x + 0.3 + hash2(x + k, y * 2) * 0.4, pz = y + 0.3 + hash2(x * 2, y + k) * 0.4;
-          const s = (k === 0 ? 1.5 : 1) * (0.85 + hash2(x + k * 3, y) * 0.4) * amt;
-          rocks.push({ x: px, y: h(px - x, pz - y) + 0.08 * s, z: pz, ry: hash2(k, x) * 6, sx: s, sy: s * 0.8, sz: s, tx: x, ty: y, sway: 0 });
-          rockCol.push(new THREE.Color(gold ? "#8a7f6e" : "#8d949c").multiplyScalar(0.85 + hash2(x, y + k) * 0.3));
+          const s = (k === 0 ? 1.55 : 1) * (0.85 + hash2(x + k * 3, y) * 0.4) * amt;
+          rocks.push({ x: px, y: h(px, pz) + 0.08 * s, z: pz, ry: hash2(k, x) * 6, sx: s, sy: s * 0.8, sz: s, tx: x, ty: y, sway: 0 });
+          rockCol.push(new THREE.Color(gold ? "#4d4740" : "#8d949c").multiplyScalar(0.85 + hash2(x, y + k) * 0.3));
+          if (!gold) {
+            // moss cushions on top of the boulder
+            moss.push({ x: px + 0.02, y: h(px, pz) + 0.08 * s + 0.13 * s, z: pz - 0.02, ry: 0, sx: s * 0.9, sy: s, sz: s * 0.9, tx: x, ty: y, sway: 0 });
+          }
         }
         if (gold) {
-          for (let k = 0; k < 5; k++) {
-            const a = k * 1.3 + hash2(x, y) * 2, r = 0.12 + hash2(k, y) * 0.18;
+          // bright metallic veins bursting out of the dark rock
+          for (let k = 0; k < 7; k++) {
+            const a = k * 0.9 + hash2(x, y) * 2, r = 0.08 + hash2(k, y) * 0.22;
             const px = x + 0.5 + Math.cos(a) * r, pz = y + 0.5 + Math.sin(a) * r;
-            crys.push({ x: px, y: h(px - x, pz - y) + 0.16, z: pz, ry: a, sx: amt, sy: amt * (0.8 + hash2(x + k, y) * 0.6), sz: amt, tx: x, ty: y, sway: 0 });
-          }
-        } else {
-          for (let k = 0; k < 2; k++) {
-            const px = x + 0.35 + k * 0.3, pz = y + 0.4 + hash2(x, k) * 0.2;
-            moss.push({ x: px, y: h(px - x, pz - y) + 0.2, z: pz, ry: 0, sx: 1, sy: 1, sz: 1, tx: x, ty: y, sway: 0 });
+            crys.push({ x: px, y: h(px, pz) + 0.12 + (k < 3 ? 0.1 : 0), z: pz, ry: a, tl: 0.25 + hash2(k, x) * 0.45, sx: amt, sy: amt * (0.7 + hash2(x + k, y) * 0.7), sz: amt, tx: x, ty: y, sway: 0 });
           }
         }
       }
     }
-    this.stalks.set(stalks); this.leaves.set(leaves); this.rice.set(rice); this.paddy.set(paddy);
+    this.stalks.set(stalks); this.leaves.set(leaves); this.rice.set(rice, riceCol); this.bunds.set(bunds); this.paddy.set(paddy);
     this.rocks.set(rocks, rockCol); this.crystals.set(crys); this.moss.set(moss);
   }
 
@@ -422,8 +609,9 @@ export class Terrain3D {
     for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
       const c = grid[y][x];
       const r = c.res === "wood" ? 1 : c.res === "food" ? 2 : c.res === "gold" ? 3 : c.res === "stone" ? 4 : 0;
-      const vis = r && (fog[y]?.[x] ?? 0) > 0 ? 1 : 0;
-      const lvl = r ? Math.min(4, Math.floor((c.resAmt || 0) / 70)) : 0;
+      if (!r) continue;
+      const vis = (fog[y]?.[x] ?? 0) > 0 ? 1 : 0;
+      const lvl = Math.min(4, Math.floor((c.resAmt || 0) / 70));
       s = (s * 31 + r * 13 + vis * 7 + lvl + y * 3 + x) | 0;
     }
     return s;
@@ -435,27 +623,29 @@ export class Terrain3D {
     const sig = this.resourceSignature(state);
     if (sig !== this.resSig) { this.resSig = sig; this.rebuildResources(state); }
 
-    // bamboo sways in the wind and shakes when a villager chops it; rice ripples
-    const wind = (it: Item) => Math.sin(t * 1.6 + it.x * 0.7 + it.z * 0.5 + it.sway) * 0.035;
-    const chop = (it: Item) => { const s = shakeX(it.tx, it.ty); return s ? s * 0.06 * Math.sin(t * 40 + it.sway) : 0; };
-    this.stalks.animate(t, it => wind(it) + chop(it));
-    this.leaves.animate(t, it => wind(it) * 1.6 + chop(it) * 1.4);
-    this.rice.animate(t, it => Math.sin(t * 2.2 + it.x * 3 + it.sway) * 0.09);
+    // bamboo sways in the wind (sin(time + seed)) and shakes hard while a villager chops it; rice ripples
+    const wind = (it: Item) => Math.sin(t * 1.5 + it.tx * 0.7 + it.ty * 0.5 + it.sway) * 0.045 + Math.sin(t * 3.7 + it.sway * 2) * 0.008;
+    const chop = (it: Item) => { const s = shakeX(it.tx, it.ty); return s ? clamp(Math.abs(s), 0, 1.5) * 0.16 * Math.sin(t * 38 + it.sway) : 0; };
+    const stalkBend = (it: Item) => wind(it) + chop(it);
+    this.stalks.animate(stalkBend);
+    this.leaves.animate(it => wind(it) * 1.9 + chop(it) * 1.6 + Math.sin(t * 5 + it.sway * 3) * 0.04, stalkBend);
+    this.rice.animate(it => Math.sin(t * 2.2 + it.x * 3 + it.sway) * 0.1);
+    this.crystalMat.emissiveIntensity = 0.45 + Math.max(0, Math.sin(t * 1.7)) * 0.5;
 
-    // shimmering water surface
-    if (this.water && this.waterBase) {
-      const p = this.water.geometry.getAttribute("position") as THREE.BufferAttribute;
-      const arr = p.array as Float32Array, base = this.waterBase;
-      for (let i = 0; i < p.count; i++) {
-        const x = base[i * 3], z = base[i * 3 + 2];
-        arr[i * 3 + 1] = WATER_LEVEL + Math.sin(x * 3.1 + t * 1.7) * 0.012 + Math.cos(z * 2.7 - t * 1.3) * 0.012 + Math.sin((x + z) * 6 + t * 3) * 0.004;
-      }
-      p.needsUpdate = true;
-      this.water.geometry.computeVertexNormals();
+    // shimmering water, bobbing lotus, swimming koi
+    this.waterTime.value = t;
+    if (this.pads) this.pads.animate(it => Math.sin(t * 1.3 + it.sway) * 0.03);
+    if (this.blooms) {
+      for (const it of this.blooms.items) it.y = WATER_LEVEL + 0.03 + Math.sin(t * 1.4 + it.sway) * 0.012;
+      this.blooms.animate(it => Math.sin(t * 1.1 + it.sway) * 0.05);
     }
-    for (const l of this.lotus) {
-      l.obj.position.y = l.base + Math.sin(t * 1.4 + l.ph) * 0.012;
-      l.obj.rotation.y += 0.0015 * Math.sin(l.ph);
+    for (const k of this.koi) {
+      const a = k.ph + t * k.sp * k.dir;
+      const x = k.cx + Math.cos(a) * k.rx, z = k.cz + Math.sin(a) * k.rz;
+      const dx = -Math.sin(a) * k.rx * k.dir, dz = Math.cos(a) * k.rz * k.dir;
+      k.g.position.set(x, WATER_LEVEL - 0.055 + Math.sin(t * 0.9 + k.ph) * 0.012, z);
+      k.g.rotation.y = Math.atan2(dx, dz) + Math.sin(t * 6 + k.ph) * 0.08;
+      k.tail.rotation.y = Math.sin(t * 9 + k.ph) * 0.5;
     }
 
     // glowing placement footprint (only while placing a building)

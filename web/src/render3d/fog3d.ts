@@ -1,9 +1,10 @@
-// Pixel Dynasty 3D — smooth 3-state fog of war: a terrain-hugging veil driven by a 26×26 DataTexture.
+// Pixel Dynasty 3D — smooth 3-state fog of war: a terrain-hugging veil driven by a MAP_N×MAP_N (48×48) DataTexture
+// sampled with LinearFilter for soft edges.
 import * as THREE from "three";
-import { MAP_N, terrainHeight } from "./common";
+import { MAP_N, terrainHeight, bridgeDeckAt } from "./common";
 
 const ALPHA = [0.92, 0.48, 0]; // unexplored / explored / visible
-const SEG = MAP_N * 3;
+const SEG = MAP_N * 2; // 96×96 quads keeps the veil smooth and cheap on mobile GPUs
 
 export class Fog3D {
   readonly mesh: THREE.Mesh;
@@ -21,7 +22,7 @@ export class Fog3D {
     this.tex.generateMipmaps = false;
     this.tex.needsUpdate = true;
 
-    // own grid so uv (0..1) maps exactly to tile space x/z (0..26); texel centres sit on tile centres
+    // own grid so uv (0..1) maps exactly to tile space x/z (0..MAP_N); texel centres sit on tile centres
     const g = new THREE.BufferGeometry();
     const n = SEG + 1, pos = new Float32Array(n * n * 3), uv = new Float32Array(n * n * 2), idx: number[] = [];
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
@@ -38,7 +39,7 @@ export class Fog3D {
     g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
 
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uFog: { value: this.tex }, uTime: { value: 0 } },
+      uniforms: { uFog: { value: this.tex }, uTime: { value: 0 }, uN: { value: MAP_N } },
       transparent: true,
       depthWrite: false,
       fog: false,
@@ -46,13 +47,13 @@ export class Fog3D {
         varying vec2 vUv;
         void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform sampler2D uFog; uniform float uTime; varying vec2 vUv;
+        uniform sampler2D uFog; uniform float uTime; uniform float uN; varying vec2 vUv;
         float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
         void main() {
           vec4 f = texture2D(uFog, vUv);
-          vec2 p = vUv * 26.0;
+          vec2 p = vUv * uN;
           float cloud = n2(p * 0.7 + vec2(uTime * 0.05, uTime * 0.03)) * 0.6 + n2(p * 1.7 - vec2(uTime * 0.04, 0.0)) * 0.4;
           float a = f.g * (0.86 + 0.22 * cloud);
           vec3 ink = vec3(0.035, 0.04, 0.035) + cloud * 0.05;
@@ -66,15 +67,23 @@ export class Fog3D {
   }
 
   /** Lift the veil so it hugs the sculpted hills (re-run when a new map is loaded). */
-  private conform(): void {
+  private conform(grid: any[][]): void {
     const p = this.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) p.setY(i, Math.max(terrainHeight(p.getX(i), p.getZ(i)), -0.1) + 0.08);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i);
+      let y = Math.max(terrainHeight(x, z), -0.1) + 0.08;
+      // lift over arched bridges so unexplored decks stay hidden under the veil
+      for (const [dx, dz] of [[0, 0], [-0.4, 0], [0.4, 0], [0, -0.4], [0, 0.4]]) {
+        if (grid[Math.floor(z + dz)]?.[Math.floor(x + dx)]?.terrain === "bridge") y = Math.max(y, bridgeDeckAt(x + dx, z + dz) + 0.42);
+      }
+      p.setY(i, y);
+    }
     p.needsUpdate = true;
   }
 
   /** Track state.fog every frame (recomputeFog() mutates it) and ease alpha toward the target. */
   update(state: any, t: number, dt: number): void {
-    if (state.grid !== this.heightsFor) { this.heightsFor = state.grid; this.conform(); this.first = true; }
+    if (state.grid !== this.heightsFor) { this.heightsFor = state.grid; this.conform(state.grid); this.first = true; }
     this.mat.uniforms.uTime.value = t;
     const fog = state.fog;
     const k = this.first ? 1 : 1 - Math.exp(-dt * 6);

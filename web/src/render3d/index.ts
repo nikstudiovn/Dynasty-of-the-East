@@ -6,6 +6,7 @@ import { Buildings3D } from "./buildings3d";
 import { Units3D } from "./units3d";
 import { Fog3D } from "./fog3d";
 import { FX3D } from "./fx3d";
+import { World3D } from "./world3d";
 import { Env3D, MAP_N, isoToTile, tileToIso, clamp, standHeight } from "./common";
 
 export { MIN_ZOOM, MAX_ZOOM };
@@ -47,7 +48,8 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   const buildings = new Buildings3D(fx);
   const units = new Units3D(fx);
   const fog = new Fog3D();
-  s3.scene.add(terrain.group, buildings.group, units.group, fx.group, fog.mesh);
+  const world = new World3D();
+  s3.scene.add(world.group, terrain.group, buildings.group, units.group, fx.group, fog.mesh);
 
   const octx = overlayCanvas.getContext("2d") as CanvasRenderingContext2D;
   let dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -135,6 +137,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         units.update(state, E, time, d);
         fog.update(state, time, d);
       }
+      world.update(time, d, s3.target);
       fx.update(d);
       s3.render();
       drawOverlay(state);
@@ -164,7 +167,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       const a = s3.groundAt(fromX, fromY), b = s3.groundAt(toX, toY);
       if (!a || !b) return;
       const t = isoToTile(cam.x, cam.y);
-      const nx = clamp(t.x + (a.x - b.x), -2, MAP_N + 2), nz = clamp(t.z + (a.z - b.z), -2, MAP_N + 2);
+      const nx = clamp(t.x + (a.x - b.x), -3, MAP_N + 3), nz = clamp(t.z + (a.z - b.z), -3, MAP_N + 3);
       const iso = tileToIso(nx, nz);
       cam.x = iso.x; cam.y = iso.y;
     },
@@ -178,8 +181,8 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       const p = local(clientX, clientY);
       s3.placeAnchor(cam, anchor, p.x, p.y, clamp(zoom, MIN_ZOOM, MAX_ZOOM));
       const t = isoToTile(cam.x, cam.y);
-      if (t.x < -2 || t.z < -2 || t.x > MAP_N + 2 || t.z > MAP_N + 2) {
-        const iso = tileToIso(clamp(t.x, -2, MAP_N + 2), clamp(t.z, -2, MAP_N + 2));
+      if (t.x < -3 || t.z < -3 || t.x > MAP_N + 3 || t.z > MAP_N + 3) {
+        const iso = tileToIso(clamp(t.x, -3, MAP_N + 3), clamp(t.z, -3, MAP_N + 3));
         cam.x = iso.x; cam.y = iso.y;
       }
     },

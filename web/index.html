@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>Pixel Dynasty — Triều Đại Pixel (Sprint 3)</title>
+<title>Pixel Dynasty — Triều Đại Pixel 3D</title>
 <style>
   :root {
     --bg: #120E0C;
@@ -350,7 +350,7 @@
     .hud-pill { padding: 5px 8px; gap: 6px; font-size: 11.5px; }
     .opt-row { grid-template-columns: 1fr; }
   }
-.hud-pill::-webkit-scrollbar, .quick-bar::-webkit-scrollbar { display: none; } @media (max-height: 520px) { .top-hud { flex-wrap: nowrap; gap: 4px; top: 4px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; } .hud-pill { padding: 3px 7px; font-size: 11px; gap: 5px; } .icon-btn { padding: 3px 6px; font-size: 11px; white-space: nowrap; } .bottom-hud { bottom: 4px; gap: 6px; } .cmd-dock { padding: 4px 6px; gap: 3px; } .quick-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; } #sel-portrait { width: 28px; height: 28px; } .mini-btn { padding: 2px 5px; font-size: 10.5px; } .act-btn { padding: 3px 6px; min-width: 76px; font-size: 11px; } #minimapCanvas { width: 84px; height: 56px; } } </style>
+.hud-pill::-webkit-scrollbar, .quick-bar::-webkit-scrollbar { display: none; } @media (max-width: 430px) { .hud-pill { gap: 5px; font-size: 11.5px; padding: 4px 8px; } .hud-pill > * { white-space: nowrap; flex-shrink: 0; } .faction-pill, .age-badge { padding: 2px 5px; letter-spacing: 0; margin: 0; } .res-item { gap: 2px; } .res-icon { width: 15px; height: 15px; } #res-pop { white-space: nowrap; } } @media (max-height: 520px) { .top-hud { flex-wrap: nowrap; gap: 4px; top: 4px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; } .hud-pill { padding: 3px 7px; font-size: 11px; gap: 5px; } .icon-btn { padding: 3px 6px; font-size: 11px; white-space: nowrap; } .bottom-hud { bottom: 4px; gap: 6px; } .cmd-dock { padding: 4px 6px; gap: 3px; } .quick-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; } #sel-portrait { width: 28px; height: 28px; } .mini-btn { padding: 2px 5px; font-size: 10.5px; } .act-btn { padding: 3px 6px; min-width: 76px; font-size: 11px; } #minimapCanvas { width: 84px; height: 56px; } } </style>
 </head>
 <body>
 <div id="game-wrap">
@@ -449,7 +449,7 @@
   // =========================================================================
   // 1. CONSTANTS, FACTIONS & COMPLETE EAST ASIAN ROSTER (v0.3)
   // =========================================================================
-  const MAP_N = 26;
+  const MAP_N = 48;
   const TILE_W = 52;
   const TILE_H = 26;
 
@@ -657,37 +657,13 @@
       fog.push(frow);
     }
 
-    for (let y = 11; y <= 14; y++) {
-      for (let x = 11; x <= 14; x++) {
-        if ((x === 11 || x === 14) && (y === 11 || y === 14)) continue;
-        grid[y][x].terrain = "water";
-      }
+    // 48×48 valley: winding river + central lotus lake, 3 arched wooden bridges, corner + contested resources
+    if (window.PDValley) {
+      window.PDValley.generateValley(grid);
+    } else {
+      for (let y = 21; y <= 27; y++) for (let x = 20; x <= 28; x++) grid[y][x].terrain = "water";
+      for (let x = 20; x <= 28; x++) { grid[24][x].terrain = "bridge"; grid[24][x].bridge = "h"; }
     }
-    if (window.PDGfx) window.PDGfx.terrain.placeWoodenBridges(grid);
-
-    const placeRes = (coords, type, amt) => {
-      coords.forEach(([x, y]) => {
-        if (x >= 0 && y >= 0 && x < MAP_N && y < MAP_N && grid[y][x].terrain === "grass") {
-          grid[y][x].res = type;
-          grid[y][x].resAmt = amt;
-        }
-      });
-    };
-
-    // Player resources
-    placeRes([[1,5],[2,5],[1,6],[2,6],[3,6],[6,1],[7,1],[7,2],[8,2]], "wood", 260);
-    placeRes([[5,4],[6,4],[5,5]], "food", 280);
-    placeRes([[2,8],[3,8],[8,4],[8,5]], "gold", 380);
-    placeRes([[1,9],[2,9],[9,2],[10,2]], "stone", 360);
-
-    // Mid-map contested gold/stone
-    placeRes([[10,15],[15,10],[12,8],[8,12]], "gold", 420);
-    placeRes([[16,12],[12,16],[15,15]], "stone", 380);
-
-    // AI corner forests
-    placeRes([[22,19],[23,19],[22,20],[18,23],[19,23]], "wood", 250);
-    placeRes([[19,2],[20,2],[21,2],[23,5],[23,6]], "wood", 250);
-    placeRes([[2,19],[2,20],[5,23],[6,23]], "wood", 250);
 
     state = {
       running: true,
@@ -712,29 +688,29 @@
       aiWave: 0
     };
 
-    const ptc = spawnBuilding("player", "town_center", 3, 2, 0);
+    const ptc = spawnBuilding("player", "town_center", 6, 6, 0);
     for (let i = 0; i < 5; i++) {
-      spawnUnit("player", "villager", 2.4 + (i % 3) * 0.75, 4.5 + Math.floor(i / 3) * 0.7, 0);
+      spawnUnit("player", "villager", 5.6 + (i % 3) * 0.75, 8.6 + Math.floor(i / 3) * 0.7, 0);
     }
 
     const aiCorners = [
-      { tx: 21, ty: 21, idx: 0 },
-      { tx: 21, ty: 2, idx: 1 },
-      { tx: 2, ty: 21, idx: 2 }
+      { tx: 40, ty: 40, idx: 0 },
+      { tx: 40, ty: 6, idx: 1 },
+      { tx: 6, ty: 40, idx: 2 }
     ];
 
     for (let i = 0; i < setup.aiCount; i++) {
       const c = aiCorners[i];
       spawnBuilding("enemy", "town_center", c.tx, c.ty, c.idx);
-      const gx = c.tx < 12 ? c.tx + 2.5 : c.tx - 0.8;
-      const gy = c.ty < 12 ? c.ty + 2.5 : c.ty - 0.8;
+      const gx = c.tx < MAP_N / 2 ? c.tx + 2.5 : c.tx - 0.8;
+      const gy = c.ty < MAP_N / 2 ? c.ty + 2.5 : c.ty - 0.8;
       spawnUnit("enemy", "swordsman", gx, gy, c.idx);
       spawnUnit("enemy", "archer", gx + 0.6, gy - 0.4, c.idx);
     }
 
     state.selectedBuildingId = ptc.id;
-    cam.x = (4 - 3) * (TILE_W / 2);
-    cam.y = (4 + 3) * (TILE_H / 2);
+    cam.x = (8.5 - 8.5) * (TILE_W / 2);
+    cam.y = (8.5 + 8.5) * (TILE_H / 2);
     setBoxSelectMode(false);
     prepareGfx();
 
@@ -894,7 +870,7 @@
     const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 
     let iter = 0;
-    while (open.length > 0 && iter++ < 480) {
+    while (open.length > 0 && iter++ < 1400) {
       open.sort((a, b) => a.f - b.f);
       const cur = open.shift();
       const ck = key(cur.x, cur.y);
@@ -1200,8 +1176,8 @@
         for (let k = 0; k < perBase; k++) {
           const pool = state.aiWave >= 4 ? ["swordsman", "archer", "cavalry", "catapult"] : state.aiWave >= 2 ? ["swordsman", "spearman", "archer"] : ["swordsman", "archer"];
           const pick = pool[(state.aiWave + k + etc.aiIndex) % pool.length];
-          const sx = etc.tx < 12 ? etc.tx + 2.4 : etc.tx - 0.6;
-          const sy = etc.ty < 12 ? etc.ty + 2.4 : etc.ty - 0.6;
+          const sx = etc.tx < MAP_N / 2 ? etc.tx + 2.4 : etc.tx - 0.6;
+          const sy = etc.ty < MAP_N / 2 ? etc.ty + 2.4 : etc.ty - 0.6;
           const u = spawnUnit("enemy", pick, sx + k * 0.4, sy, etc.aiIndex);
           if (playerTc) {
             u.task = "attack";
@@ -1437,7 +1413,7 @@
         const f = state.fog[y][x];
         if (f === 0) continue;
         const c = state.grid[y][x];
-        mctx.fillStyle = c.terrain === "water" ? "#0F766E" : c.terrain === "bridge" ? "#8B5A2B" : c.res === "wood" ? "#166534" : c.res === "gold" ? "#F59E0B" : "#2D4715";
+        mctx.fillStyle = c.terrain === "water" ? "#0F766E" : c.terrain === "bridge" ? "#B91C1C" : c.res === "wood" ? "#166534" : c.res === "gold" ? "#F59E0B" : c.res === "stone" ? "#94A3B8" : c.res === "food" ? "#A3B33A" : "#2D4715";
         mctx.fillRect(x * sx, y * sy, sx + 0.5, sy + 0.5);
         if (f === 1) { mctx.fillStyle = "rgba(0,0,0,0.45)"; mctx.fillRect(x * sx, y * sy, sx + 0.5, sy + 0.5); }
       }
@@ -1452,8 +1428,12 @@
       const uy = Math.max(0, Math.min(MAP_N - 1, Math.floor(u.y)));
       if (u.team === "enemy" && state.fog[uy][ux] < 2) continue;
       mctx.fillStyle = u.team === "player" ? "#FACC15" : "#93C5FD";
-      mctx.fillRect(u.x * sx, u.y * sy, 2.5, 2.5);
+      mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2.5, 2.5);
     }
+    // current view centre (48×48 is big — keeps you oriented)
+    const vx = (cam.y / (TILE_H / 2) + cam.x / (TILE_W / 2)) / 2, vy = (cam.y / (TILE_H / 2) - cam.x / (TILE_W / 2)) / 2;
+    mctx.strokeStyle = "rgba(255,255,255,0.85)"; mctx.lineWidth = 1;
+    mctx.strokeRect(vx * sx - 6 * sx, vy * sy - 4 * sy, 12 * sx, 8 * sy);
   }
 
   // =========================================================================
@@ -1768,8 +1748,8 @@
 
   miniCanvas.addEventListener("pointerdown", e => {
     const r = miniCanvas.getBoundingClientRect();
-    const tx = ((e.clientX - r.left) / r.width) * MAP_N;
-    const ty = ((e.clientY - r.top) / r.height) * MAP_N;
+    const tx = Math.max(0, Math.min(MAP_N, ((e.clientX - r.left) / r.width) * MAP_N));
+    const ty = Math.max(0, Math.min(MAP_N, ((e.clientY - r.top) / r.height) * MAP_N));
     cam.x = (tx - ty) * (TILE_W / 2); cam.y = (tx + ty) * (TILE_H / 2);
   });
 
@@ -1798,7 +1778,7 @@
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
-function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, aiStates: state.aiStates, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("pixel_dynasty_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; ensureAudio(); state = { running: true, gameOver: false, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, aiStates: d.aiStates || [], garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiTimer: 0, aiWave: 0 }; nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && d.grid.length === 48) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, aiStates: state.aiStates, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("pixel_dynasty_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; if (!Array.isArray(d.grid) || d.grid.length !== MAP_N) { showToast("Bản lưu từ bản đồ cũ 26×26 không dùng được trên thung lũng 48×48!"); return; } ensureAudio(); state = { running: true, gameOver: false, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, aiStates: d.aiStates || [], garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiTimer: 0, aiWave: 0 }; nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
     if (state && state.gameOver && document.getElementById("setup-panel").style.display === "none") {

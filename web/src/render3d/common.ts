@@ -2,11 +2,13 @@
 // World space: 1 tile = 1 unit. Tile (tx, ty) covers x in [tx, tx+1], z in [ty, ty+1]. y is up.
 import * as THREE from "three";
 
-export const MAP_N = 26;
+export const MAP_N = 48;
 export const TILE_W = 52;
 export const TILE_H = 26;
 export const WATER_LEVEL = -0.1;
 export const BRIDGE_DECK = 0.12;
+/** Extra lift at the middle of an arched bridge span. */
+export const BRIDGE_ARCH = 0.42;
 
 /** Hooks supplied by the classic game script (index.html). */
 export interface Env3D {
@@ -55,6 +57,34 @@ export function setWaterGrid(grid: any[][]): void {
     raw[y * MAP_N + x] = t === "water" || t === "bridge" ? 1 : 0;
   }
   waterMask = raw;
+  // bridge runs (for the arched deck height): contiguous bridge cells along a row (h) or column (v)
+  bridgeRun = new Int16Array(MAP_N * MAP_N * 3).fill(-1);
+  for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
+    const c = grid[y]?.[x];
+    if (!c || c.terrain !== "bridge") continue;
+    const vert = c.bridge === "v";
+    let a = vert ? y : x, b = a;
+    const isB = (i: number) => { const q = vert ? grid[i]?.[x] : grid[y]?.[i]; return q?.terrain === "bridge" && (q.bridge === "v") === vert; };
+    while (a > 0 && isB(a - 1)) a--;
+    while (b < MAP_N - 1 && isB(b + 1)) b++;
+    const k = (y * MAP_N + x) * 3;
+    bridgeRun[k] = a; bridgeRun[k + 1] = b + 1; bridgeRun[k + 2] = vert ? 1 : 0;
+  }
+}
+let bridgeRun: Int16Array = new Int16Array(MAP_N * MAP_N * 3).fill(-1);
+/** Arch profile 0..1 along a bridge span [a, b) at coordinate p. */
+export function archLift(p: number, a: number, b: number): number {
+  const len = Math.max(1, b - a);
+  const t = clamp((p - a) / len, 0, 1);
+  return Math.sin(Math.PI * t) * BRIDGE_ARCH * Math.min(1, len / 4);
+}
+/** Deck height of the arched bridge at world point (x, z); BRIDGE_DECK if unknown. */
+export function bridgeDeckAt(x: number, z: number): number {
+  const tx = Math.floor(x), tz = Math.floor(z);
+  if (tx < 0 || tz < 0 || tx >= MAP_N || tz >= MAP_N) return BRIDGE_DECK;
+  const k = (tz * MAP_N + tx) * 3;
+  if (bridgeRun[k] < 0) return BRIDGE_DECK;
+  return BRIDGE_DECK + archLift(bridgeRun[k + 2] ? z : x, bridgeRun[k], bridgeRun[k + 1]);
 }
 function waterAt(x: number, z: number): number {
   // bilinear sample of the per-tile mask at tile centres
@@ -76,10 +106,10 @@ export function terrainHeight(x: number, z: number): number {
   return Math.max(-0.05, hills) * (1 - w) + rim - w * 0.48;
 }
 
-/** Height a unit stands on (bridges are flat decks above the water). */
+/** Height a unit stands on (bridges are arched decks above the water). */
 export function standHeight(x: number, z: number, grid: any[][] | null): number {
   const c = grid?.[Math.floor(z)]?.[Math.floor(x)];
-  if (c && c.terrain === "bridge") return BRIDGE_DECK + 0.03;
+  if (c && c.terrain === "bridge") return bridgeDeckAt(x, z) + 0.03;
   return Math.max(terrainHeight(x, z), WATER_LEVEL);
 }
 
