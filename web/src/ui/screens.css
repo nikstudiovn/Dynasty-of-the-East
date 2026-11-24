@@ -1,0 +1,347 @@
+/* Pixel Dynasty — Giao diện Ngoài Trận (Cung đình Sơn mài & Vàng khắc Á Đông) */
+
+#modal {
+  background:
+    radial-gradient(circle at 50% 28%, rgba(212, 161, 70, 0.14), transparent 62%),
+    radial-gradient(circle at 50% 100%, rgba(168, 32, 32, 0.14), transparent 58%),
+    rgba(10, 7, 6, 0.86);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+
+.modal-card {
+  position: relative;
+  width: min(680px, 96vw);
+  max-height: 92dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 24px 22px 20px;
+  border-radius: 12px;
+  border: 2px solid #D4A146;
+  outline: 1px solid rgba(212, 161, 70, 0.45);
+  outline-offset: 4px;
+  background-color: #18110E;
+  background-image:
+    /* Góc hồi văn trang trí 4 góc bằng CSS gradient */
+    linear-gradient(90deg, #D4A146 0 18px, transparent 18px),
+    linear-gradient(180deg, #D4A146 0 18px, transparent 18px),
+    linear-gradient(270deg, #D4A146 0 18px, transparent 18px),
+    linear-gradient(180deg, #D4A146 0 18px, transparent 18px),
+    linear-gradient(90deg, #D4A146 0 18px, transparent 18px),
+    linear-gradient(0deg, #D4A146 0 18px, transparent 18px),
+    linear-gradient(270deg, #D4A146 0 18px, transparent 18px),
+    linear-gradient(0deg, #D4A146 0 18px, transparent 18px),
+    repeating-linear-gradient(
+      90deg,
+      rgba(212, 161, 70, 0.08) 0 1px,
+      transparent 1px 28px
+    ),
+    radial-gradient(circle at 50% 0%, rgba(212, 161, 70, 0.14), transparent 55%),
+    linear-gradient(180deg, #221612 0%, #160F0C 52%, #110B09 100%);
+  background-size:
+    22px 3px, 3px 22px,
+    22px 3px, 3px 22px,
+    22px 3px, 3px 22px,
+    22px 3px, 3px 22px,
+    100% 100%, 100% 100%, 100% 100%;
+  background-position:
+    top 8px left 8px, top 8px left 8px,
+    top 8px right 8px, top 8px right 8px,
+    bottom 8px left 8px, bottom 8px left 8px,
+    bottom 8px right 8px, bottom 8px right 8px,
+    0 0, 0 0, 0 0;
+  background-repeat: no-repeat;
+  box-shadow:
+    0 0 0 4px #120C0A,
+    0 0 0 6px rgba(212, 161, 70, 0.65),
+    0 24px 64px rgba(0, 0, 0, 0.88),
+    inset 0 0 38px rgba(212, 161, 70, 0.09);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 161, 70, 0.55) rgba(20, 14, 11, 0.6);
+}
+
+.modal-card::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-card::-webkit-scrollbar-thumb {
+  background: rgba(212, 161, 70, 0.5);
+  border-radius: 999px;
+}
+
+#modal-title {
+  margin: 0 0 8px;
+  font-size: clamp(1.45rem, 3.8vw, 2.05rem);
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  text-align: center;
+  background: linear-gradient(180deg, #FFF5CC 0%, #F5B841 48%, #B97C1B 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.9));
+}
+
+/* Thẻ phe có huy hiệu SVG */
+#opt-faction {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pd-faction-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(212, 161, 70, 0.35);
+  background: linear-gradient(180deg, rgba(44, 30, 24, 0.92), rgba(24, 16, 13, 0.96));
+  color: #FAF5EC;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.pd-faction-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(245, 184, 65, 0.78);
+}
+
+.pd-faction-card.active {
+  border-color: #F5B841;
+  background: linear-gradient(180deg, rgba(84, 52, 24, 0.92), rgba(34, 21, 14, 0.98));
+  box-shadow: 0 0 0 1px rgba(245, 184, 65, 0.45), 0 8px 20px rgba(212, 161, 70, 0.2);
+}
+
+.pd-crest {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 161, 70, 0.18), rgba(0, 0, 0, 0.4));
+  border: 1px solid rgba(212, 161, 70, 0.42);
+  flex-shrink: 0;
+}
+
+.pd-crest svg {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.pd-faction-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #FFF2CF;
+  letter-spacing: 0.02em;
+}
+
+.pd-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #F5B841;
+  background: rgba(212, 161, 70, 0.14);
+  border: 1px solid rgba(212, 161, 70, 0.35);
+}
+
+.pd-faction-stat {
+  font-size: 0.72rem;
+  color: #CBBBA8;
+  line-height: 1.25;
+}
+
+/* Nút & bảng Hướng dẫn nhanh 4 thẻ */
+.pd-guide-wrap {
+  margin-top: 12px;
+}
+
+.pd-guide-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 161, 70, 0.45);
+  background: linear-gradient(90deg, rgba(48, 32, 22, 0.88), rgba(28, 19, 14, 0.92));
+  color: #F5D487;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pd-guide-toggle:hover {
+  border-color: #F5B841;
+}
+
+.pd-guide-grid {
+  display: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pd-guide-grid.is-open {
+  display: grid;
+}
+
+.pd-guide-card {
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 161, 70, 0.3);
+  background: rgba(22, 15, 12, 0.9);
+  text-align: left;
+}
+
+.pd-guide-title {
+  font-size: 0.79rem;
+  font-weight: 700;
+  color: #F5B841;
+  margin-bottom: 3px;
+}
+
+.pd-guide-desc {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #D7C8B6;
+}
+
+/* Bảng điểm xếp hạng S/A/B/C */
+.pd-rank-banner {
+  margin: 12px 0 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(212, 161, 70, 0.65);
+  background:
+    radial-gradient(circle at 12% 50%, rgba(212, 161, 70, 0.14), transparent 45%),
+    linear-gradient(180deg, rgba(36, 24, 18, 0.96), rgba(20, 13, 10, 0.98));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pd-seal {
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 2px solid currentColor;
+  font-size: 1.85rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.55);
+  transform: rotate(-4deg);
+}
+
+.pd-rank-S {
+  color: #FFE074;
+  background: radial-gradient(circle, rgba(200, 40, 40, 0.85), rgba(112, 18, 18, 0.95));
+  border-color: #F5B841;
+}
+
+.pd-rank-A {
+  color: #F5B841;
+  background: radial-gradient(circle, rgba(130, 74, 22, 0.85), rgba(58, 30, 10, 0.95));
+}
+
+.pd-rank-B {
+  color: #6EE7B7;
+  background: radial-gradient(circle, rgba(22, 101, 74, 0.85), rgba(12, 54, 40, 0.95));
+}
+
+.pd-rank-C {
+  color: #CBD5E1;
+  background: radial-gradient(circle, rgba(71, 85, 105, 0.8), rgba(30, 41, 59, 0.95));
+}
+
+.pd-bars {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pd-bar-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+}
+
+.pd-bar-label {
+  color: #E7D9C5;
+  font-weight: 600;
+}
+
+.pd-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(212, 161, 70, 0.25);
+  overflow: hidden;
+}
+
+.pd-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #B87B1E, #F5B841, #FFE394);
+  transition: width 0.35s ease;
+}
+
+.pd-bar-val {
+  text-align: right;
+  color: #F5D487;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .modal-card {
+    padding: 18px 14px 16px;
+  }
+
+  #opt-faction {
+    grid-template-columns: 1fr;
+  }
+
+  .pd-faction-card {
+    flex-direction: row;
+    text-align: left;
+    gap: 10px;
+  }
+
+  .pd-guide-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pd-rank-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pd-seal {
+    align-self: center;
+  }
+}
+
+@media (max-height: 520px) {
+  .modal-card {
+    max-height: 92dvh;
+    padding: 14px 16px;
+  }
+}
