@@ -1,6 +1,8 @@
 // Pixel Dynasty 3D — WebGL2 renderer, golden-hour lighting and the 45° perspective RTS camera.
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { setSurfaceDetail } from "./surfaces";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { MAP_N, isoToTile, tileToIso, clamp, rainWetness, updateLanternMaterials } from "./common";
@@ -82,6 +84,7 @@ export class Scene3D {
   private readonly ray = new THREE.Raycaster();
   private composer: EffectComposer | null = null;
   private bloomPass: UnrealBloomPass | null = null;
+  private outputPass: OutputPass | null = null;
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly probe: THREE.PerspectiveCamera;
   private readonly tmpV = new THREE.Vector3();
@@ -157,6 +160,7 @@ export class Scene3D {
 
   setQuality(preset: QualityPreset): void {
     this.quality = preset === "auto" ? autoQuality() : preset;
+    setSurfaceDetail(this.quality === "high");
     const { shadow, particles } = QUALITY[this.quality];
     const type = this.quality === "high" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     if (this.renderer.shadowMap.type !== type || this.sun.shadow.mapSize.x !== shadow) {
@@ -181,22 +185,31 @@ export class Scene3D {
         composer.addPass(new RenderPass(this.scene, this.camera));
         const bloom = new UnrealBloomPass(
           new THREE.Vector2(this.width, this.height),
-          0.25,
-          0.45,
-          0.88,
+          0.34,
+          0.36,
+          0.95,
         );
         composer.addPass(bloom);
+        this.outputPass = new OutputPass();
+        composer.addPass(this.outputPass);
         this.composer = composer;
         this.bloomPass = bloom;
       }
       this.composer.setPixelRatio(this.pixelRatio);
       this.composer.setSize(this.width, this.height);
       this.bloomPass?.resolution.set(this.width, this.height);
-    } else if (this.composer) {
-      this.composer.dispose();
-      this.composer = null;
-      this.bloomPass = null;
+    } else {
+      this.disposeComposer();
     }
+  }
+
+  private disposeComposer(): void {
+    this.bloomPass?.dispose();
+    this.outputPass?.dispose();
+    this.composer?.dispose();
+    this.composer = null;
+    this.bloomPass = null;
+    this.outputPass = null;
   }
 
   resize(w: number, h: number): void {
@@ -327,11 +340,12 @@ export class Scene3D {
     this.scene.environment = null;
     this.environment.dispose();
     this.scene.clear();
-    this.composer?.dispose();
-    this.composer = null;
-    this.bloomPass = null;
+    this.disposeComposer();
     this.renderer.dispose();
   }
 
-  render(): void{  if (this.quality === "high" && this.composer) { this.composer.render(); return; }{ this.renderer.render(this.scene, this.camera); }}
+  render(): void {
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
+  }
 }
