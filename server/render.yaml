@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: pixel-dynasty-server
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "2567"
