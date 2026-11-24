@@ -9,6 +9,9 @@ import * as valley from "./sim/valley";
 import * as pathfinding from "./sim/pathfinding";
 import * as tactics from "./sim/tactics";
 import * as wildlife from "./sim/wildlife";
+import { nativeBridge } from "./bridge/nativeBridge";
+import * as serverHealth from "./bridge/serverHealth";
+import * as i18n from "./i18n/index";
 
 (window as any).PDSim = steering;
 (window as any).PDInput = pinch;
@@ -17,6 +20,9 @@ import * as wildlife from "./sim/wildlife";
 (window as any).PDPath = pathfinding;
 (window as any).PDTactics = tactics;
 (window as any).PDWild = wildlife;
+(window as any).PDNative = nativeBridge;
+(window as any).PDI18n = i18n;
+(window as any).PDServerHealth = serverHealth;
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initLobbyUI);
