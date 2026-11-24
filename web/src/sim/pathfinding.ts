@@ -4,6 +4,17 @@
 export type BlockedFn = (tx: number, ty: number, team?: string) => boolean;
 export interface PathPt { x: number; y: number }
 
+export interface TerrainCellLike {
+  terrain?: string;
+  bridge?: string;
+}
+
+/** Land units are blocked by deep water (terrain === "water" without a bridge), but can cross shallow water. */
+export function isWalkableTerrain(cell: TerrainCellLike | undefined): boolean {
+  if (!cell) return false;
+  if (cell.terrain === "water" && !cell.bridge) return false;
+  return true;
+}
 /** Binary min-heap of node indices keyed by a priority array (no per-node object allocation). */
 export class MinHeap {
   private items: Int32Array;
