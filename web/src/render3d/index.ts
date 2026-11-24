@@ -27,6 +27,7 @@ export interface Renderer3D {
   placeAnchor(cam: Cam, anchor: { x: number; z: number }, clientX: number, clientY: number, zoom: number): void;
   /** Smooth 45° camera yaw rotation (+1 clockwise, -1 counter-clockwise). */
   rotate(dir: number): void;
+  cycleAtmosphere(): string;
   readonly renderer: THREE.WebGLRenderer;
 }
 
@@ -187,7 +188,8 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       }
     },
 
-    rotate(dir: number): void { s3.rotate(dir); }
+    rotate(dir: number): void { s3.rotate(dir); },
+    cycleAtmosphere(): string { return s3.cycleAtmosphere(); }
   };
   return api;
 }
