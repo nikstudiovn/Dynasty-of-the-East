@@ -47,5 +47,16 @@
   "lobby.quick_guide": "Hướng Dẫn Nhanh",
   "lobby.server_online": "Máy Chủ Hoạt Động",
   "lobby.server_waking": "Đang Đánh Thức Máy Chủ...",
-  "lobby.server_offline": "Máy Chủ Ngoại Tuyến"
+  "lobby.server_offline": "Máy Chủ Ngoại Tuyến",
+  "animal.goat": "Dê Núi",
+  "animal.cattle": "Trâu / Bò",
+  "animal.lion": "Sư Tử",
+  "animal.wild_elephant": "Voi Rừng",
+  "farm.replant": "Gieo Lại",
+  "farm.auto_replant": "Tự Động Gieo Lại",
+  "action.town_bell": "Chuông Báo Động",
+  "action.back_to_work": "Quay Lại Làm Việc",
+  "group.infantry": "Bộ / Thương",
+  "group.archers": "Cung Thủ",
+  "group.cavalry": "Kỵ / Voi"
 }

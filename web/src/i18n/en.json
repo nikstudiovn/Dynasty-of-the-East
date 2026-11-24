@@ -47,5 +47,16 @@
   "lobby.quick_guide": "Quick Guide",
   "lobby.server_online": "Server Online",
   "lobby.server_waking": "Waking Server...",
-  "lobby.server_offline": "Server Offline"
+  "lobby.server_offline": "Server Offline",
+  "animal.goat": "Mountain Goat",
+  "animal.cattle": "Cattle",
+  "animal.lion": "Lion",
+  "animal.wild_elephant": "Wild Elephant",
+  "farm.replant": "Replant",
+  "farm.auto_replant": "Auto Replant",
+  "action.town_bell": "Town Bell",
+  "action.back_to_work": "Back to Work",
+  "group.infantry": "Infantry / Spears",
+  "group.archers": "Archers",
+  "group.cavalry": "Cavalry / Elephants"
 }
