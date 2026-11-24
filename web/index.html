@@ -678,6 +678,7 @@ const updateBattleHud = initBattleHud();
   // =========================================================================
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
+  const battleSetupModal = document.getElementById("modal");
   const miniCanvas = document.getElementById("minimapCanvas");
   const mctx = miniCanvas.getContext("2d");
 
@@ -687,9 +688,8 @@ const updateBattleHud = initBattleHud();
   let lastTime = 0;
 
   const cam = { x: 0, y: 0, zoom: 1.0 };
-  let isDragging = false;
-  let pointerDownPos = { x: 0, y: 0 };
-  let lastPointer = { x: 0, y: 0 };
+  let gesture = null;
+  let lastTap = null;
   let hoverTile = null;
 
   // Sprint 3: Box/Lasso Selection state
@@ -711,10 +711,6 @@ const updateBattleHud = initBattleHud();
   }
 
   function worldToScreen(wx, wy) {
-    if (R3D) {
-      const tx = (wx / (TILE_W / 2) + wy / (TILE_H / 2)) / 2, ty = (wy / (TILE_H / 2) - wx / (TILE_W / 2)) / 2;
-      return R3D.worldToScreen(tx, ty);
-    }
     return {
       x: (wx - cam.x) * cam.zoom + canvas.width / 2,
       y: (wy - cam.y) * cam.zoom + canvas.height / 2
@@ -1836,11 +1832,12 @@ const updateBattleHud = initBattleHud();
     const minY = Math.min(box.y1, box.y2), maxY = Math.max(box.y1, box.y2);
     const picked = [];
     for (const u of state.units) {
-      if (u.team !== "player") continue;
-      const wx = (u.x - u.y) * (TILE_W / 2);
-      const wy = (u.x + u.y) * (TILE_H / 2);
-      const sp = worldToScreen(wx, wy);
-      if (sp.x >= minX && sp.x <= maxX && sp.y >= minY && sp.y <= maxY) picked.push(u.id);
+      if (u.team !== "player" || u.hp <= 0 || u.garrisoned) continue;
+      const span = unitScreenSpan(u);
+      if (!span) continue;
+      const x = (span.top.x + span.foot.x) / 2;
+      const y = (span.top.y + span.foot.y) / 2;
+      if (x >= minX && x <= maxX && y >= minY && y <= maxY) picked.push(u.id);
     }
     if (picked.length > 0) {
       state.selectedIds = picked;
@@ -1854,10 +1851,44 @@ const updateBattleHud = initBattleHud();
     setBoxSelectMode(false);
   }
 
-  function handleTap(clientX, clientY) {
+  function unitScreenSpan(unit) {
+    if (R3D) return R3D.unitScreenSpan(unit.id);
+    const iso = gridToIso(unit.x, unit.y);
+    const groundY = iso.y + TILE_H / 2;
+    const height = unit.type === "war_elephant" || unit.type === "catapult" ? 25 : 20;
+    return {
+      foot: worldToScreen(iso.x, groundY),
+      top: worldToScreen(iso.x, groundY - height)
+    };
+  }
+
+  function unitAtScreen(x, y, pointerType) {
+    let nearest = null;
+    let best = Infinity;
+    for (const unit of state.units) {
+      if (unit.hp <= 0 || unit.garrisoned) continue;
+      if (!R3D && unit.team !== "player" && state.fog[Math.round(unit.y)]?.[Math.round(unit.x)] !== 2) continue;
+      const span = unitScreenSpan(unit);
+      if (!span) continue;
+      const { foot, top } = span;
+      const dx = top.x - foot.x, dy = top.y - foot.y;
+      const height = Math.hypot(dx, dy);
+      const along = Math.max(0, Math.min(1, ((x - foot.x) * dx + (y - foot.y) * dy) / (height * height || 1)));
+      const d = Math.hypot(x - foot.x - along * dx, y - foot.y - along * dy);
+      const reach = Math.max(pointerType === "touch" ? 12 : 6, Math.min(28, height * 0.35));
+      if (d <= reach && d < best) { nearest = unit; best = d; }
+    }
+    return nearest;
+  }
+
+  function handleTap(clientX, clientY, pointerType) {
     ensureAudio();
     const rect = canvas.getBoundingClientRect();
-    const { tx, ty } = screenToTile(clientX - rect.left, clientY - rect.top);
+    const x = clientX - rect.left, y = clientY - rect.top;
+    const { tx, ty } = screenToTile(x, y);
+    const prevTap = state._lastTapUnit;
+    const prevTapTime = state._lastTapUnitTime;
+    clearUnitTap();
 
     if (state.buildMode) {
       const def = BLDG_DEFS[state.buildMode];
@@ -1883,8 +1914,9 @@ const updateBattleHud = initBattleHud();
       return;
     }
 
-    const tappedEnemyUnit = state.units.find(u => u.team === "enemy" && Math.hypot(u.x - (tx + 0.5), u.y - (ty + 0.5)) < 1.15);
-    const tappedEnemyBldg = state.buildings.find(b => b.team === "enemy" && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
+    const tappedUnit = unitAtScreen(x, y, pointerType);
+    const tappedEnemyUnit = tappedUnit?.team === "enemy" ? tappedUnit : null;
+    const tappedEnemyBldg = !tappedUnit && state.buildings.find(b => b.team === "enemy" && b.hp > 0 && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
     const enemyTarget = tappedEnemyUnit || tappedEnemyBldg;
 
     if (enemyTarget && state.selectedIds.length > 0) {
@@ -1911,24 +1943,24 @@ const updateBattleHud = initBattleHud();
       }
     }
 
-    const tappedOwnUnit = state.units.find(u => u.team === "player" && Math.hypot(u.x - (tx + 0.5), u.y - (ty + 0.5)) < 0.95);
+    const tappedOwnUnit = tappedUnit?.team === "player" ? tappedUnit : null;
     if (tappedOwnUnit) {
       const nowTap = performance.now();
-    const prevTap = state._lastTapUnit;
-    if (prevTap && (nowTap - (state._lastTapUnitTime || 0)) <= 320 && (prevTap.id === tappedOwnUnit.id || (prevTap.type === tappedOwnUnit.type && Math.hypot(prevTap.x - tappedOwnUnit.x, prevTap.y - tappedOwnUnit.y) <= 1.5))) {
-      const res = window.PDSelect?.selectSameTypeNearby?.(state.units, tappedOwnUnit, 6) || state.units.filter(u => u.hp > 0 && u.team === "player" && u.type === tappedOwnUnit.type && Math.hypot(u.x - tappedOwnUnit.x, u.y - tappedOwnUnit.y) <= 6);
-      const ids = res.map(x => typeof x === "object" ? x.id : x);
-      state.selectedIds = ids.length ? ids : [tappedOwnUnit.id];
-      state._lastTapUnitTime = 0; state._lastTapUnit = null;
-    } else {
-      state.selectedIds = [tappedOwnUnit.id];
-      state._lastTapUnitTime = nowTap; state._lastTapUnit = { id: tappedOwnUnit.id, type: tappedOwnUnit.type, x: tappedOwnUnit.x, y: tappedOwnUnit.y };
-    }
-    state.selectedBuildingId = null;
+      if (prevTap && nowTap - prevTapTime <= 320 && (prevTap.id === tappedOwnUnit.id || (prevTap.type === tappedOwnUnit.type && Math.hypot(prevTap.x - tappedOwnUnit.x, prevTap.y - tappedOwnUnit.y) <= 1.5))) {
+        const available = state.units.filter(u => !u.garrisoned && u.hp > 0 && u.team === "player");
+        const res = window.PDSelect?.selectSameTypeNearby?.(available, tappedOwnUnit, 6) || available.filter(u => u.type === tappedOwnUnit.type && Math.hypot(u.x - tappedOwnUnit.x, u.y - tappedOwnUnit.y) <= 6);
+        const ids = res.map(x => typeof x === "object" ? x.id : x);
+        state.selectedIds = ids.length ? ids : [tappedOwnUnit.id];
+      } else {
+        state.selectedIds = [tappedOwnUnit.id];
+        state._lastTapUnitTime = nowTap;
+        state._lastTapUnit = { id: tappedOwnUnit.id, type: tappedOwnUnit.type, x: tappedOwnUnit.x, y: tappedOwnUnit.y };
+      }
+      state.selectedBuildingId = null;
       sfxClick(); renderCommandDock(); return;
     }
 
-    const tappedOwnBldg = state.buildings.find(b => b.team === "player" && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
+    const tappedOwnBldg = state.buildings.find(b => b.team === "player" && b.hp > 0 && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
     const selVils = state.units.filter(u => state.selectedIds.includes(u.id) && u.type === "villager");
     if (tappedOwnBldg && !(tappedOwnBldg.type === "farm" && selVils.length > 0)) {
       state.selectedBuildingId = tappedOwnBldg.id; state.selectedIds = [];
@@ -1968,55 +2000,107 @@ const updateBattleHud = initBattleHud();
         sfxClick();
       }
     }
-  }const activePointers = new Map(); let lastPointerDownAt = 0; let lastPointerDownPos = null; let doubleTapHoldBox = false;
-  
+  }
+
+  function clearUnitTap() {
+    if (!state) return;
+    state._lastTapUnit = null;
+    state._lastTapUnitTime = 0;
+  }
+
+  function resetCanvasGesture() {
+    gesture = null;
+    selectionBox = null;
+    if (state) state.boxSelect = null;
+    canvas.classList.remove("dragging");
+  }
+
+  function cancelCanvasGesture() {
+    resetCanvasGesture();
+    lastTap = null;
+    clearUnitTap();
+  }
+
+  function canControlBattle() {
+    return state?.running && !state.gameOver && !paused && battleSetupModal.classList.contains("hidden");
+  }
+
+  function updateGesture(e, rect) {
+    const moved = Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY);
+    if (moved > 8 && !gesture.dragged) {
+      gesture.dragged = true;
+      clearUnitTap();
+    }
+    if (!gesture.dragged) return;
+    if (selectionBox) {
+      selectionBox.x2 = e.clientX - rect.left;
+      selectionBox.y2 = e.clientY - rect.top;
+    } else {
+      canvas.classList.add("dragging");
+      if (R3D) R3D.pan(cam, gesture.lastX, gesture.lastY, e.clientX, e.clientY);
+      else {
+        cam.x -= (e.clientX - gesture.lastX) / cam.zoom;
+        cam.y -= (e.clientY - gesture.lastY) / cam.zoom;
+      }
+    }
+    gesture.lastX = e.clientX;
+    gesture.lastY = e.clientY;
+  }
 
   canvas.addEventListener("pointerdown", e => {
-    const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top; activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (activePointers.size > 1) { doubleTapHoldBox = false; if (selectionBox) { selectionBox = null; if (state) state.boxSelect = null; } return; } const nowTap = performance.now(); const isDoubleTap = lastPointerDownPos && (nowTap - lastPointerDownAt <= 320) && Math.hypot(e.clientX - lastPointerDownPos.x, e.clientY - lastPointerDownPos.y) <= 28; doubleTapHoldBox = Boolean(isDoubleTap); lastPointerDownAt = isDoubleTap ? 0 : nowTap; lastPointerDownPos = { x: e.clientX, y: e.clientY };
-    isDragging = true;
-    pointerDownPos = { x: e.clientX, y: e.clientY };
-    lastPointer = { x: e.clientX, y: e.clientY };
-    canvas.setPointerCapture(e.pointerId);
-    if (boxSelectMode || e.shiftKey || doubleTapHoldBox) {
-      selectionBox = { x1: sx, y1: sy, x2: sx, y2: sy }; if (state) state.boxSelect = selectionBox;
+    if (!canControlBattle() || gesture || e.button !== 0 || !e.isPrimary) return;
+    const { clientX, clientY, pointerId } = e;
+    const doubleTapHold = lastTap?.match === state && lastTap.type === e.pointerType &&
+      performance.now() - lastTap.time <= 320 && Math.hypot(clientX - lastTap.x, clientY - lastTap.y) <= 28;
+    lastTap = null;
+    gesture = { pointerId, match: state, startX: clientX, startY: clientY, lastX: clientX, lastY: clientY, dragged: false };
+    canvas.setPointerCapture(pointerId);
+    if (boxSelectMode || e.shiftKey || doubleTapHold) {
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left, y = clientY - rect.top;
+      selectionBox = { x1: x, y1: y, x2: x, y2: y };
+      state.boxSelect = selectionBox;
     }
   });
 
   canvas.addEventListener("pointermove", e => {
-    const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-    hoverTile = screenToTile(sx, sy); if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (activePointers.size > 1) { doubleTapHoldBox = false; if (selectionBox) { selectionBox = null; if (state) state.boxSelect = null; } return; }
-    if (!isDragging) return;
-    if (selectionBox) {
-      selectionBox.x2 = sx;
-      selectionBox.y2 = sy; if (state) state.boxSelect = selectionBox;
+    if (gesture && gesture.pointerId !== e.pointerId) return;
+    if (!canControlBattle() || (gesture && gesture.match !== state)) {
+      if (gesture) cancelCanvasGesture();
       return;
     }
-    const dx = e.clientX - lastPointer.x, dy = e.clientY - lastPointer.y;
-    if (Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y) > 8) {
-      canvas.classList.add("dragging");
-      if (R3D) R3D.pan(cam, lastPointer.x, lastPointer.y, e.clientX, e.clientY);
-      else { cam.x -= dx / cam.zoom; cam.y -= dy / cam.zoom; }
-    }
-    lastPointer = { x: e.clientX, y: e.clientY };
+    const rect = canvas.getBoundingClientRect();
+    hoverTile = screenToTile(e.clientX - rect.left, e.clientY - rect.top);
+    if (gesture) updateGesture(e, rect);
   });
 
   canvas.addEventListener("pointerup", e => {
-    const moved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
-    isDragging = false; activePointers.delete(e.pointerId);
-    canvas.classList.remove("dragging");
-    if (selectionBox) {
-      const box = selectionBox;
-      selectionBox = null; doubleTapHoldBox = false; if (state) state.boxSelect = null;
-      if (moved > 12) { finishBoxSelect(box); return; }
+    if (gesture?.pointerId !== e.pointerId) return;
+    if (!canControlBattle() || gesture.match !== state) { cancelCanvasGesture(); return; }
+    updateGesture(e, canvas.getBoundingClientRect());
+    const { dragged } = gesture;
+    const box = selectionBox;
+    resetCanvasGesture();
+    if (box) {
+      if (Math.hypot(box.x2 - box.x1, box.y2 - box.y1) > 12) { finishBoxSelect(box); return; }
       setBoxSelectMode(false);
     }
-    if (moved <= 8) handleTap(e.clientX, e.clientY);
+    if (!dragged) {
+      lastTap = { match: state, type: e.pointerType, time: performance.now(), x: e.clientX, y: e.clientY };
+      handleTap(e.clientX, e.clientY, e.pointerType);
+    }
   });
-canvas.addEventListener("pointercancel", e => { activePointers.delete(e.pointerId); isDragging = false; doubleTapHoldBox = false; selectionBox = null; if (state) state.boxSelect = null; canvas.classList.remove("dragging"); });
-  
+
+  const cancelActivePointer = e => {
+    if (gesture?.pointerId === e.pointerId) cancelCanvasGesture();
+  };
+  canvas.addEventListener("pointercancel", cancelActivePointer);
+  canvas.addEventListener("lostpointercapture", cancelActivePointer);
+  window.addEventListener("blur", cancelCanvasGesture);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) cancelCanvasGesture(); });
+
   miniCanvas.addEventListener("pointerdown", e => {
+    if (!canControlBattle() || !e.isPrimary || e.button !== 0) return;
     const r = miniCanvas.getBoundingClientRect();
     const tx = Math.max(0, Math.min(state.mapSize, ((e.clientX - r.left) / r.width) * state.mapSize));
     const ty = Math.max(0, Math.min(state.mapSize, ((e.clientY - r.top) / r.height) * state.mapSize));
@@ -2183,24 +2267,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
   window.onload = () => {
     init3D();
     resize();
-    if (window.PDInput) window.PDInput.install({
-      canvas, cam, minZoom: zoomMin, maxZoom: zoomMax, view: R3D || undefined,
-      onPinchStart: () => {
-        // Pinch zoom consumes both pointer releases before the canvas handlers can see them.
-        activePointers.clear();
-        lastPointerDownAt = 0;
-        lastPointerDownPos = null;
-        doubleTapHoldBox = false;
-        isDragging = false;
-        selectionBox = null;
-        if (state) {
-          state.boxSelect = null;
-          state._lastTapUnit = null;
-          state._lastTapUnitTime = 0;
-        }
-        canvas.classList.remove("dragging");
-      }
-    });
+    if (window.PDInput) window.PDInput.install({ canvas, cam, minZoom: zoomMin, maxZoom: zoomMax, view: R3D || undefined, onPinchStart: cancelCanvasGesture });
     if (window.PDGfx) window.PDGfx.villager.init({ findPath, clink: () => { playTone(1850, 0.05, "square", 0.03); playTone(2750, 0.04, "triangle", 0.02); }, thock: () => playTone(150, 0.07, "triangle", 0.05) });
     initGame();
     if (rafId) cancelAnimationFrame(rafId);
