@@ -49,7 +49,7 @@ export function placeBuildingWithQueue(opts: PlaceBuildingOptions) {
   const { state, building } = opts;
   const selectedVillagerIds = [...(opts.selectedVillagerIds ?? state?.selectedVillagerIds ?? [])];
   const activeBuildType = opts.activeBuildType ?? state?.activeBuildType ?? building?.type ?? null;
-  const cost = opts.cost ?? building?.buildCost ?? building?.cost ?? {};
+  const cost: Record<string, number> = opts.cost ?? building?.buildCost ?? building?.cost ?? {};
   const res = state?.resources;
 
   if (res) {
