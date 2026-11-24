@@ -1,11 +1,16 @@
 // Pixel Dynasty 3D — sculpted seamless terrain, winding river + living lotus lake (shader shimmer, lily pads,
 // lotus blossoms, koi), arched vermilion wooden bridges and instanced resources (bamboo groves, terraced rice,
-// gold crystal outcrops, mossy stone). Everything repeated is an InstancedMesh so 48×48 stays at 60 FPS.
+// gold crystal outcrops, mossy stone). Repeated vegetation and resources share instanced draw calls.
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import type { FX3D } from "./fx3d";
+import { WaterSurface } from "./water3d";
+import { applyWind, chopWind } from "./wind3d";
+import { surfaceMaps } from "./surfaces";
 import { shakeX } from "../graphics/villagerActions";
+import type { Scene3D } from "./scene3d";
 import {
-  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, rockiness, setWaterGrid, archLift, mat, Env3D
+  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, rockiness, setWaterGrid, archLift, mat, Env3D, applyWetness
 } from "./common";
 
 /** Terrain quad density: 3 per tile, 2 per tile on 96×96 to keep vertex count mobile-friendly. */
@@ -21,7 +26,6 @@ class Merger {
   private readonly e = new THREE.Euler();
   add(g: THREE.BufferGeometry, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1, ry = 0, rx = 0, rz = 0): void {
     const c = g.index ? g.toNonIndexed() : g.clone();
-    if (c.getAttribute("uv")) c.deleteAttribute("uv");
     this.e.set(rx, ry, rz);
     this.m.compose(new THREE.Vector3(x, y, z), this.q.setFromEuler(this.e), new THREE.Vector3(sx, sy, sz));
     c.applyMatrix4(this.m);
@@ -44,24 +48,32 @@ class Merger {
 interface Item {
   x: number; y: number; z: number; ry: number; sx: number; sy: number; sz: number; tx: number; ty: number; sway: number;
   /** outward lean (radians, applied before yaw) */ tl?: number;
-  /** height above the parent stalk base + parent yaw: leaves follow the stalk's sway */ lift?: number; pry?: number;
+  /** Height above the parent stalk base. */ lift?: number;
 }
 
 class InstLayer {
   mesh: THREE.InstancedMesh;
+  private depth?: THREE.MeshDepthMaterial;
   items: Item[] = [];
   private readonly m4 = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
   private readonly e = new THREE.Euler(0, 0, 0, "YXZ");
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
-  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64, private shadows = true) {
+  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64, private shadows = true, private windShape?: "stalk" | "leaf" | "rice" | "crown") {
+    if (windShape) applyWind(material, windShape);
     this.mesh = this.make(capacity);
+    if (windShape && shadows) {
+      this.depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: material.side });
+      applyWind(this.depth, windShape);
+      this.mesh.customDepthMaterial = this.depth;
+    }
   }
   private make(n: number): THREE.InstancedMesh {
     const me = new THREE.InstancedMesh(this.geometry, this.material, n);
     me.castShadow = this.shadows; me.receiveShadow = true; me.count = 0; me.frustumCulled = false;
-    me.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (this.windShape === "leaf") this.geometry.setAttribute("aWindLift", new THREE.InstancedBufferAttribute(new Float32Array(n), 1));
+    me.instanceMatrix.setUsage(this.windShape ? THREE.StaticDrawUsage : THREE.DynamicDrawUsage);
     this.group.add(me);
     return me;
   }
@@ -69,6 +81,7 @@ class InstLayer {
     this.group.remove(this.mesh);
     this.mesh.dispose();
     this.geometry.dispose();
+    this.depth?.dispose();
     if (freeMaterial) this.material.dispose();
   }
   set(items: Item[], colors?: THREE.Color[]): void {
@@ -76,26 +89,25 @@ class InstLayer {
     if (items.length > this.capacity) {
       this.group.remove(this.mesh); this.mesh.dispose();
       this.capacity = Math.ceil(items.length * 1.5);
+      if (this.windShape === "leaf") this.geometry.dispose();
       this.mesh = this.make(this.capacity);
+      this.mesh.customDepthMaterial = this.depth;
     }
     this.mesh.count = items.length;
     if (colors) { for (let i = 0; i < items.length; i++) this.mesh.setColorAt(i, colors[i]); if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true; }
+    if (this.windShape === "leaf") {
+      const lift = this.geometry.getAttribute("aWindLift") as THREE.InstancedBufferAttribute;
+      items.forEach((item, i) => lift.setX(i, item.lift ?? 0));
+      lift.needsUpdate = true;
+    }
     this.animate(() => 0);
   }
-  /** Rewrite matrices; `bend(item)` = extra tilt (wind / chopping shake); `carry(item)` = parent stalk bend for leaves. */
-  animate(bend: (it: Item) => number, carry?: (it: Item) => number): void {
+  animate(bend: (it: Item) => number): void {
     for (let i = 0; i < this.items.length; i++) {
       const it = this.items[i];
       const b = bend(it);
-      let x = it.x, y = it.y, z = it.z;
-      if (carry && it.lift) {
-        const cb = carry(it), L = it.lift, ry = it.pry || 0;
-        const lx = -Math.sin(cb) * L, lz = Math.sin(cb * 0.6) * L;
-        const c = Math.cos(ry), s = Math.sin(ry);
-        x += lx * c + lz * s; z += -lx * s + lz * c; y -= (1 - Math.cos(cb)) * L;
-      }
       this.e.set((it.tl || 0) + b * 0.6, it.ry, b);
-      this.m4.compose(this.p.set(x, y, z), this.q.setFromEuler(this.e), this.s.set(it.sx, it.sy, it.sz));
+      this.m4.compose(this.p.set(it.x, it.y, it.z), this.q.setFromEuler(this.e), this.s.set(it.sx, it.sy, it.sz));
       this.mesh.setMatrixAt(i, this.m4);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
@@ -111,6 +123,7 @@ function colorize(g: THREE.BufferGeometry, fn: (x: number, y: number, z: number)
 }
 function strip(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const c = g.index ? g.toNonIndexed() : g;
+  if (c !== g) g.dispose();
   if (c.getAttribute("uv")) c.deleteAttribute("uv");
   return c;
 }
@@ -132,7 +145,9 @@ function bambooStalkGeometry(): THREE.BufferGeometry {
     node.translate(0, y0 + h, 0);
     parts.push(colorize(strip(node), (_x, y) => (y > y0 + h ? [0.78, 0.82, 0.52] : [0.2, 0.34, 0.12])));
   }
-  return mergeGeometries(parts, false)!;
+  const merged = mergeGeometries(parts, false)!;
+  parts.forEach(part => part.dispose());
+  return merged;
 }
 
 /** Airy drooping tuft of 7 lanceolate bamboo leaves radiating from a twig point. */
@@ -152,6 +167,7 @@ function leafTuftGeometry(): THREE.BufferGeometry {
     blades.push(g);
   }
   const g = mergeGeometries(blades, false)!;
+  blades.forEach(blade => blade.dispose());
   // flip normals upward for nicer lighting on both faces
   const n = g.getAttribute("normal");
   for (let i = 0; i < n.count; i++) if (n.getY(i) < 0) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i));
@@ -170,7 +186,9 @@ function riceTuftGeometry(): THREE.BufferGeometry {
   }
   const head = new THREE.SphereGeometry(0.03, 5, 4); head.scale(0.8, 2.2, 0.8); head.rotateZ(0.6); head.translate(0.06, 0.95, 0);
   parts.push(strip(head));
-  return mergeGeometries(parts, false)!;
+  const merged = mergeGeometries(parts, false)!;
+  parts.forEach(part => part.dispose());
+  return merged;
 }
 
 function lotusBloomGeometry(): THREE.BufferGeometry {
@@ -189,17 +207,19 @@ function lotusBloomGeometry(): THREE.BufferGeometry {
   }
   const seed = new THREE.CylinderGeometry(0.028, 0.02, 0.03, 8); seed.translate(0, 0.035, 0);
   parts.push(colorize(strip(seed), () => [0.96, 0.82, 0.25]));
-  return mergeGeometries(parts, false)!;
+  const merged = mergeGeometries(parts, false)!;
+  parts.forEach(part => part.dispose());
+  return merged;
 }
 
 // ---------------------------------------------------------------------------
-interface Koi { g: THREE.Group; tail: THREE.Object3D; cx: number; cz: number; rx: number; rz: number; sp: number; ph: number; dir: number; }
+interface Koi { g: THREE.Group; tail: THREE.Object3D; cx: number; cz: number; rx: number; rz: number; sp: number; ph: number; dir: number; rippleAt?: number; }
 
 export class Terrain3D {
   readonly group = new THREE.Group();
   private terrain: THREE.Mesh | null = null;
   private water: THREE.Mesh | null = null;
-  private readonly waterTime = { value: 0 };
+  private waterSurface: WaterSurface | null = null;
   private lake = new THREE.Group();
   private pads: InstLayer | null = null;
   private blooms: InstLayer | null = null;
@@ -208,6 +228,7 @@ export class Terrain3D {
   private bridges = new THREE.Group();
   private gridRef: any = null;
   private resSig = -1;
+  private nextResourceScan = 0;
   private readonly res = new THREE.Group();
   private stalks: InstLayer;
   private leaves: InstLayer;
@@ -217,6 +238,8 @@ export class Terrain3D {
   private rocks: InstLayer;
   private crystals: InstLayer;
   private moss: InstLayer;
+  private crowns: InstLayer;
+  private branches: InstLayer;
   private readonly crystalMat: THREE.MeshStandardMaterial;
   private footprint: THREE.Mesh;
   private footEdges: THREE.LineSegments;
@@ -226,9 +249,9 @@ export class Terrain3D {
 
   constructor() {
     this.group.add(this.lake, this.bridges, this.res);
-    this.stalks = new InstLayer(this.res, bambooStalkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }), 600);
-    this.leaves = new InstLayer(this.res, leafTuftGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), 1200);
-    this.rice = new InstLayer(this.res, riceTuftGeometry(), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), 600, false);
+    this.stalks = new InstLayer(this.res, bambooStalkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }), 600, true, "stalk");
+    this.leaves = new InstLayer(this.res, leafTuftGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), 1200, true, "leaf");
+    this.rice = new InstLayer(this.res, riceTuftGeometry(), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), 600, false, "rice");
     const bundG = new THREE.BoxGeometry(1, 0.07, 0.09); bundG.translate(0, 0.035, 0);
     this.bunds = new InstLayer(this.res, bundG, mat("#6f5430", { rough: 0.95 }), 200);
     const paddyG = new THREE.BoxGeometry(0.9, 0.02, 0.9); paddyG.translate(0, 0.01, 0);
@@ -240,8 +263,12 @@ export class Terrain3D {
     const mossG = new THREE.SphereGeometry(0.12, 7, 5); mossG.scale(1, 0.4, 1);
     this.moss = new InstLayer(this.res, mossG, mat("#4f7a2c", { rough: 0.95 }), 120);
 
+    this.crowns = new InstLayer(this.res, new THREE.IcosahedronGeometry(0.24, 0),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.84, flatShading: true }), 60, true, "crown");
+    const branch = new THREE.CylinderGeometry(0.026, 0.053, 1, 6).translate(0, 0.5, 0);
+    this.branches = new InstLayer(this.res, branch, new THREE.MeshStandardMaterial({ color: "#75543c", roughness: 0.88 }), 30);
     this.footprint = new THREE.Mesh(new THREE.BoxGeometry(1, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    this.footEdges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 0.08, 1)), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, fog: false }));
+    this.footEdges = new THREE.LineSegments(new THREE.EdgesGeometry(this.footprint.geometry), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, fog: false }));
     this.footprint.add(this.footEdges);
     this.footprint.visible = false; this.footprint.renderOrder = 5;
     this.group.add(this.footprint);
@@ -255,7 +282,9 @@ export class Terrain3D {
     const grid = state.grid;
     setWaterGrid(grid);
     for (let z = 0; z <= MAP_N; z++) for (let x = 0; x <= MAP_N; x++) this.heightCache[z * (MAP_N + 1) + x] = terrainHeight(x, z);
-    if (this.terrain) { this.group.remove(this.terrain); this.terrain.geometry.dispose(); (this.terrain.material as THREE.Material).dispose(); }
+    if (this.terrain) {
+      this.group.remove(this.terrain); this.terrain.geometry.dispose(); (this.terrain.material as THREE.Material).dispose();
+    }
     this.terrain = this.buildTerrain(state);
     this.group.add(this.terrain);
     this.buildLake(grid);
@@ -320,7 +349,7 @@ export class Terrain3D {
         d = Math.min(d, ex * ex + ez * ez);
       }
       const path = 1 - smoothstep(0.06, 0.16, d);
-      if (path > 0) c.lerp(hash2(Math.floor(x * 6), Math.floor(z * 6)) > 0.55 ? cCobble : cDirt, path * 0.85);
+      if (path > 0) c.lerp(cDirt, path * 0.73).lerp(cCobble, path * n * 0.22);
       const rk = rockiness(x, z);
       if (rk > 0) {
         c.lerp(cGravel, Math.min(1, rk * 1.4) * 0.6);
@@ -328,14 +357,19 @@ export class Terrain3D {
         if (h > 1.35) c.lerp(cSnow, smoothstep(1.35, 1.8, h) * 0.8);
       }
       const w = wetness(x, z);
-      if (w > 0) c.lerp(cSand, smoothstep(0, 0.35, w) * 0.9).lerp(cBed, smoothstep(0.45, 0.9, w));
+      if (w > 0) c.lerp(cSand, smoothstep(0, 0.35, w) * 0.9).lerp(cMud, smoothstep(0.25, 0.6, w) * 0.7).lerp(cBed, smoothstep(0.45, 0.9, w));
       const out = Math.max(0, -x, -z, x - MAP_N, z - MAP_N);
       if (out > 0) c.lerp(cMoss, Math.min(1, out * 0.3)).multiplyScalar(Math.max(0.55, 1 - out * 0.12));
       col.set([c.r, c.g, c.b], i * 3);
     }
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
     g.computeVertexNormals();
-    const me = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 }));
+    const uv = g.getAttribute("uv");
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) * 0.7, pos.getZ(i) * 0.7);
+    const maps = surfaceMaps("plaster");
+    const ground = new THREE.MeshStandardMaterial({ vertexColors: true, map: maps.map, bumpMap: maps.bumpMap, bumpScale: 0.016, roughness: 0.92 });
+    applyWetness(ground, 0.32);
+    const me = new THREE.Mesh(g, ground);
     me.receiveShadow = true;
     me.name = "terrain";
     return me;
@@ -344,13 +378,27 @@ export class Terrain3D {
   // -------------------------------------------------------------------------
   private buildWaterMesh(grid: any[][]): THREE.Mesh | null {
     const isW = (x: number, y: number) => { const t = grid[y]?.[x]?.terrain; return t === "water" || t === "bridge"; };
-    const D = 3, pos: number[] = [], idx: number[] = [];
+    const D = 3, pos: number[] = [], idx: number[] = [], depths: number[] = [], piers: number[] = [];
     for (let y = -1; y <= MAP_N; y++) for (let x = -1; x <= MAP_N; x++) {
       let near = false;
       for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) near = isW(x + dx, y + dy);
       if (!near) continue;
       const base = pos.length / 3;
-      for (let j = 0; j <= D; j++) for (let i = 0; i <= D; i++) pos.push(x + i / D, WATER_LEVEL, y + j / D);
+      for (let j = 0; j <= D; j++) for (let i = 0; i <= D; i++) {
+        const px = x + i / D, pz = y + j / D;
+        pos.push(px, WATER_LEVEL, pz);
+        depths.push(WATER_LEVEL - terrainHeight(px, pz));
+        let dist = 1;
+        for (let bz = y - 1; bz <= y + 1; bz++) for (let bx = x - 1; bx <= x + 1; bx++) {
+          const cell = grid[bz]?.[bx];
+          if (cell?.terrain !== "bridge") continue;
+          const vertical = cell.bridge === "v";
+          const along = vertical ? pz - bz - 0.5 : px - bx - 0.5;
+          const across = vertical ? px - bx - 0.5 : pz - bz - 0.5;
+          dist = Math.min(dist, Math.hypot(along, Math.abs(across) - 0.38));
+        }
+        piers.push(dist);
+      }
       for (let j = 0; j < D; j++) for (let i = 0; i < D; i++) {
         const a = base + j * (D + 1) + i, b = a + 1, c = a + D + 1, d = c + 1;
         idx.push(a, c, b, b, c, d);
@@ -359,40 +407,18 @@ export class Terrain3D {
     if (!pos.length) return null;
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute("normal", new THREE.Float32BufferAttribute(new Float32Array(pos.length).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+    g.setAttribute("aDepth", new THREE.Float32BufferAttribute(depths, 1));
+    g.setAttribute("aPier", new THREE.Float32BufferAttribute(piers, 1));
     g.setIndex(idx);
-    const wm = new THREE.MeshStandardMaterial({ color: "#1f8f78", emissive: "#063a30", emissiveIntensity: 0.6, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.74 });
-    const uTime = this.waterTime;
-    wm.onBeforeCompile = shader => {
-      shader.uniforms.uTime = uTime;
-      shader.vertexShader = "uniform float uTime;\nvarying vec2 vWp;\n" + shader.vertexShader
-        .replace("#include <beginnormal_vertex>", `
-          float wx = position.x, wz = position.z;
-          vWp = vec2(wx, wz);
-          float dhx = 0.0372 * cos(wx * 3.1 + uTime * 1.7) + 0.024 * cos((wx + wz) * 6.0 + uTime * 3.0);
-          float dhz = -0.0324 * sin(wz * 2.7 - uTime * 1.3) + 0.024 * cos((wx + wz) * 6.0 + uTime * 3.0);
-          vec3 objectNormal = normalize(vec3(-dhx * 3.0, 1.0, -dhz * 3.0));
-          #ifdef USE_TANGENT
-          vec3 objectTangent = vec3(tangent.xyz);
-          #endif`)
-        .replace("#include <begin_vertex>", `vec3 transformed = vec3(position);
-          transformed.y += sin(wx * 3.1 + uTime * 1.7) * 0.012 + cos(wz * 2.7 - uTime * 1.3) * 0.012 + sin((wx + wz) * 6.0 + uTime * 3.0) * 0.004;`);
-      shader.fragmentShader = "uniform float uTime;\nvarying vec2 vWp;\n" + shader.fragmentShader
-        .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-          float rip = sin(vWp.x * 5.3 + uTime * 2.1) * sin(vWp.y * 4.7 - uTime * 1.7) + sin((vWp.x - vWp.y) * 3.1 + uTime * 1.2) * 0.5;
-          totalEmissiveRadiance += vec3(1.0, 0.92, 0.7) * pow(max(rip, 0.0) * 0.67, 6.0) * 0.55;`);
-    };
-    wm.customProgramCacheKey = () => "pd-water-shimmer";
-    const me = new THREE.Mesh(g, wm);
-    me.receiveShadow = true;
+    this.waterSurface = new WaterSurface();
+    const me = new THREE.Mesh(g, this.waterSurface.material);
     me.renderOrder = 2;
     return me;
   }
 
   private buildLake(grid: any[][]): void {
     this.group.remove(this.lake);
-    this.lake.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !(m as any).isInstancedMesh && m.geometry && m !== (this.water as any)) { /* shared geos */ } });
-    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; }
+    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; this.waterSurface = null; }
     if (this.pads) { this.pads.dispose(); this.pads = null; }
     if (this.blooms) { this.blooms.dispose(); this.blooms = null; }
     for (const g of this.koiGeos) g.dispose();
@@ -544,9 +570,9 @@ export class Terrain3D {
         else timber.add(slat, bx, d - 0.32, bz, 0.05, 0.05, 0.8, 0, 0.35, 0);
       }
     }
-    const pm = planks.build(mat("#a8733f", { rough: 0.8 }));
-    const tm = timber.build(mat("#5a3a22", { rough: 0.85 }));
-    const rm = rails.build(mat("#b91c1c", { rough: 0.45 }));
+    const pm = planks.build(mat("#a8733f", { rough: 0.87, surface: "teak" }));
+    const tm = timber.build(mat("#5a3a22", { rough: 0.85, surface: "teak" }));
+    const rm = rails.build(mat("#b91c1c", { rough: 0.57, surface: "lacquer" }));
     const gm = gold.build(mat("#e8b53a", { metal: 0.75, rough: 0.3 }), false);
     for (const m of [pm, tm, rm, gm]) if (m) this.bridges.add(m);
     slat.dispose(); post.dispose(); knob.dispose();
@@ -556,6 +582,7 @@ export class Terrain3D {
   private rebuildResources(state: any): void {
     const grid = state.grid, fog = state.fog;
     const stalks: Item[] = [], leaves: Item[] = [], rice: Item[] = [], bunds: Item[] = [], paddy: Item[] = [], rocks: Item[] = [], crys: Item[] = [], moss: Item[] = [];
+    const crowns: Item[] = [], branches: Item[] = [], crownColors: THREE.Color[] = [];
     const rockCol: THREE.Color[] = [], riceCol: THREE.Color[] = [];
     const RICE = [new THREE.Color("#8fe08a"), new THREE.Color("#5cb83c"), new THREE.Color("#e2b23a")];
     for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
@@ -564,6 +591,21 @@ export class Terrain3D {
       const h = (wx: number, wz: number) => terrainHeight(wx, wz);
       const amt = Math.max(0.55, Math.min(1, (c.resAmt || 200) / 260));
       if (c.res === "wood") {
+        const seed = hash2(x + 43, y - 25);
+        if (seed > 0.89) {
+          const px = x + 0.5, pz = y + 0.5, base = h(px, pz);
+          const peach = seed > 0.95;
+          const tree = { x: px, y: base, z: pz, ry: seed * TAU, sx: 1, sy: 1.4, sz: 1, tx: x, ty: y, sway: seed };
+          branches.push(tree);
+          for (let b = 0; b < 4; b++) {
+            const angle = b * 2.4;
+            const offset = peach ? 0.23 : 0.30 - b * 0.055;
+            crowns.push({ ...tree, x: px + offset * Math.cos(angle), y: base + 0.72 + 0.21 * b,
+              z: pz + offset * Math.sin(angle), sx: 1.65 - b * 0.17, sy: peach ? 1 : 0.63, sz: 1.4 - b * 0.12 });
+            crownColors.push(new THREE.Color(peach ? (b % 2 ? "#eba7b0" : "#bc6d89") : (b % 2 ? "#416b4c" : "#235344")));
+          }
+          continue;
+        }
         // bamboo clump: 4–6 slender culms leaning slightly outward, layered leaf tufts near the crown
         const n = 4 + Math.floor(hash2(x * 1.3, y * 2.9) * 3);
         const rot = hash2(x, y) * TAU;
@@ -580,7 +622,7 @@ export class Terrain3D {
           for (const [f, s] of [[0.72, 1.05], [0.88, 0.95], [1.0, 0.75]]) {
             if (f === 0.72 && k % 2) continue;
             const L = ht * f, off = Math.sin(tl) * L;
-            leaves.push({ x: px + Math.cos(a) * off, y: base + Math.cos(tl) * L, z: pz + Math.sin(a) * off, ry: hash2(k, x + f) * TAU, sx: s, sy: s, sz: s, tx: x, ty: y, sway, lift: L, pry: ry });
+            leaves.push({ x: px + Math.cos(a) * off, y: base + Math.cos(tl) * L, z: pz + Math.sin(a) * off, ry: hash2(k, x + f) * TAU, sx: s, sy: s, sz: s, tx: x, ty: y, sway, lift: L });
           }
         }
       } else if (c.res === "food") {
@@ -621,6 +663,8 @@ export class Terrain3D {
         }
       }
     }
+    this.crowns.set(crowns, crownColors);
+    this.branches.set(branches);
     this.stalks.set(stalks); this.leaves.set(leaves); this.rice.set(rice, riceCol); this.bunds.set(bunds); this.paddy.set(paddy);
     this.rocks.set(rocks, rockCol); this.crystals.set(crys); this.moss.set(moss);
   }
@@ -642,14 +686,13 @@ export class Terrain3D {
   /** Frees every GPU resource this terrain owns (called when the map size / type changes). */
   dispose(): void {
     if (this.terrain) { this.group.remove(this.terrain); this.terrain.geometry.dispose(); (this.terrain.material as THREE.Material).dispose(); this.terrain = null; }
-    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; }
+    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; this.waterSurface = null; }
     this.pads?.dispose(); this.blooms?.dispose(); this.pads = null; this.blooms = null;
     for (const g of this.koiGeos) g.dispose();
     this.koiGeos = []; this.koi = [];
     this.bridges.traverse(o => { if ((o as THREE.Mesh).geometry && o !== this.bridges) (o as THREE.Mesh).geometry.dispose(); });
-    for (const l of [this.stalks, this.leaves, this.rice, this.rocks, this.crystals]) l.dispose(true);
+    for (const l of [this.stalks, this.leaves, this.rice, this.rocks, this.crystals, this.crowns, this.branches]) l.dispose(true);
     for (const l of [this.bunds, this.paddy, this.moss]) l.dispose(false); // cached materials
-    this.crystalMat.dispose();
     this.footprint.geometry.dispose(); (this.footprint.material as THREE.Material).dispose();
     this.footEdges.geometry.dispose(); (this.footEdges.material as THREE.Material).dispose();
     this.group.clear();
@@ -657,22 +700,26 @@ export class Terrain3D {
   }
 
   // -------------------------------------------------------------------------
-  update(state: any, env: Env3D, t: number): void {
+  update(state: any, env: Env3D, t: number, scene: Scene3D, fx: FX3D): void {
     if (state.grid !== this.gridRef) { this.gridRef = state.grid; this.build(state); }
-    const sig = this.resourceSignature(state);
-    if (sig !== this.resSig) { this.resSig = sig; this.rebuildResources(state); }
+    if (this.resSig === -1 || t >= this.nextResourceScan) {
+      this.nextResourceScan = t + 0.12;
+      const sig = this.resourceSignature(state);
+      if (sig !== this.resSig) { this.resSig = sig; this.rebuildResources(state); }
+    }
 
-    // bamboo sways in the wind (sin(time + seed)) and shakes hard while a villager chops it; rice ripples
-    const wind = (it: Item) => Math.sin(t * 1.5 + it.tx * 0.7 + it.ty * 0.5 + it.sway) * 0.045 + Math.sin(t * 3.7 + it.sway * 2) * 0.008;
-    const chop = (it: Item) => { const s = shakeX(it.tx, it.ty); return s ? clamp(Math.abs(s), 0, 1.5) * 0.16 * Math.sin(t * 38 + it.sway) : 0; };
-    const stalkBend = (it: Item) => wind(it) + chop(it);
-    this.stalks.animate(stalkBend);
-    this.leaves.animate(it => wind(it) * 1.9 + chop(it) * 1.6 + Math.sin(t * 5 + it.sway * 3) * 0.04, stalkBend);
-    this.rice.animate(it => Math.sin(t * 2.2 + it.x * 3 + it.sway) * 0.1);
+    let shakeCount = 0;
+    for (const unit of state.units) {
+      const tile = unit.targetTile;
+      if (shakeCount >= chopWind.value.length) break;
+      if (unit.workStyle !== "chop" || !tile) continue;
+      const shake = shakeX(tile.tx, tile.ty);
+      if (shake) chopWind.value[shakeCount++].set(tile.tx + 0.5, tile.ty + 0.5, Math.abs(shake));
+    }
+    while (shakeCount < chopWind.value.length) chopWind.value[shakeCount++].set(0, 0, 0);
     this.crystalMat.emissiveIntensity = 0.45 + Math.max(0, Math.sin(t * 1.7)) * 0.5;
-
-    // shimmering water, bobbing lotus, swimming koi
-    this.waterTime.value = t;
+    const { weather, quality, sun } = scene;
+    this.waterSurface?.update(t, quality === "high" ? 2 : quality === "medium" ? 1 : 0, weather.rain, weather.horizon, weather.zenith, sun);
     if (this.pads) this.pads.animate(it => Math.sin(t * 1.3 + it.sway) * 0.03);
     if (this.blooms) {
       for (const it of this.blooms.items) it.y = WATER_LEVEL + 0.03 + Math.sin(t * 1.4 + it.sway) * 0.012;
@@ -685,6 +732,12 @@ export class Terrain3D {
       k.g.position.set(x, WATER_LEVEL - 0.055 + Math.sin(t * 0.9 + k.ph) * 0.012, z);
       k.g.rotation.y = Math.atan2(dx, dz) + Math.sin(t * 6 + k.ph) * 0.08;
       k.tail.rotation.y = Math.sin(t * 9 + k.ph) * 0.5;
+      if (quality !== "low" && t >= (k.rippleAt ?? k.ph)) {
+        k.rippleAt = t + 3.6 + k.sp;
+        if (state.fog[Math.floor(z)]?.[Math.floor(x)] === 2 && Math.hypot(scene.target.x - x, scene.target.z - z) < 18) {
+          fx.ripple(x, WATER_LEVEL, z);
+        }
+      }
     }
 
     // glowing placement footprint (only while placing a building)

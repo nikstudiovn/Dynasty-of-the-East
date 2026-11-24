@@ -1,6 +1,8 @@
 // Pixel Dynasty 3D — shared constants, coordinate helpers, height field and material cache.
 // World space: 1 tile = 1 unit. Tile (tx, ty) covers x in [tx, tx+1], z in [ty, ty+1]. y is up.
 import * as THREE from "three";
+import { disposeSurfaceMaps, softMask, surfaceMaps, type Surface } from "./surfaces";
+import { applyWind } from "./wind3d";
 
 /** Live map size (ES live binding): importers always see the current value after setMapSize(). */
 export let MAP_N = 48;
@@ -125,7 +127,39 @@ export function standHeight(x: number, z: number, grid: any[][] | null): number 
 
 // ---- Materials --------------------------------------------------------------
 const matCache = new Map<string, THREE.Material>();
-export interface MatOpts { metal?: number; rough?: number; emissive?: string; emissiveIntensity?: number; transparent?: boolean; opacity?: number; side?: THREE.Side; flat?: boolean; }
+const cachedMaterials = new Set<THREE.Material>();
+const cachedGeometries = new Set<THREE.BufferGeometry>();
+let cacheUsers = 0;
+const lightMaterials = new Map<THREE.MeshStandardMaterial, number>();
+
+export function updateLanternMaterials(boost: number): void {
+  for (const [material, base] of lightMaterials) material.emissiveIntensity = base * (0.23 + 2.5 * boost);
+}
+export const rainWetness = { value: 0 };
+
+export function applyWetness(material: THREE.MeshStandardMaterial, strength: number): void {
+  material.onBeforeCompile = shader => {
+    shader.uniforms.uRainWetness = rainWetness;
+    shader.fragmentShader = "uniform float uRainWetness;\n" + shader.fragmentShader.replace(
+      "#include <roughnessmap_fragment>",
+      `#include <roughnessmap_fragment>
+      roughnessFactor = max(0.13, roughnessFactor * (1.0 - uRainWetness * ${strength.toFixed(2)}));`
+    );
+  };
+  material.customProgramCacheKey = () => `pd-wet-${strength}`;
+}
+
+export function retainRenderAssets(): void { cacheUsers++; }
+
+export function releaseRenderAssets(): void {
+  if (--cacheUsers !== 0) return;
+  for (const material of cachedMaterials) material.dispose();
+  for (const geometry of cachedGeometries) geometry.dispose();
+  matCache.clear(); geoCache.clear(); cachedMaterials.clear(); cachedGeometries.clear();
+  lightMaterials.clear();
+  disposeSurfaceMaps();
+}
+export interface MatOpts { metal?: number; rough?: number; emissive?: string; emissiveIntensity?: number; transparent?: boolean; opacity?: number; side?: THREE.Side; flat?: boolean; surface?: Surface; flagWind?: boolean; lantern?: boolean; }
 export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial {
   const key = color + JSON.stringify(o);
   let m = matCache.get(key) as THREE.MeshStandardMaterial | undefined;
@@ -135,7 +169,19 @@ export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial 
       emissive: o.emissive ? new THREE.Color(o.emissive) : new THREE.Color(0x000000), emissiveIntensity: o.emissiveIntensity ?? 1,
       transparent: !!o.transparent, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide, flatShading: !!o.flat
     });
+    if (o.surface) {
+      const maps = surfaceMaps(o.surface);
+      m.map = maps.map;
+      m.bumpMap = maps.bumpMap;
+      m.roughnessMap = maps.roughnessMap;
+      m.bumpScale = o.surface === "thatch" ? 0.024 : 0.015;
+      if (o.surface === "lattice") m.emissiveMap = maps.map;
+      else if (o.surface !== "silk") applyWetness(m, 0.26);
+    }
+    if (o.flagWind) applyWind(m, "flag");
+    if (o.lantern) lightMaterials.set(m, o.emissiveIntensity ?? 1);
     matCache.set(key, m);
+    cachedMaterials.add(m);
   }
   return m;
 }
@@ -149,7 +195,7 @@ export function shade(hex: string, k: number): string {
 const geoCache = new Map<string, THREE.BufferGeometry>();
 export function geo<T extends THREE.BufferGeometry>(key: string, make: () => T): T {
   let g = geoCache.get(key) as T | undefined;
-  if (!g) { g = make(); geoCache.set(key, g); }
+  if (!g) { g = make(); geoCache.set(key, g); cachedGeometries.add(g); }
   return g;
 }
 export const box = (w: number, h: number, d: number) => geo(`box${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d));
@@ -166,17 +212,41 @@ export function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z
 }
 
 // ---- Disposal -----------------------------------------------------------------
-/** Disposes every geometry, material and texture under `root` and detaches it (three.js re-uploads on reuse, so shared caches stay safe). */
+/** Frees resources owned by the subtree, keeping renderer-wide caches alive. */
 export function disposeTree(root: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
   root.traverse(o => {
     const m = o as THREE.Mesh;
-    if (m.geometry) m.geometry.dispose();
+    if (m.geometry && !(o as THREE.Sprite).isSprite && !cachedGeometries.has(m.geometry)) geometries.add(m.geometry);
     const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
-    for (const mt of mats) {
-      for (const v of Object.values(mt as any)) if (v && (v as THREE.Texture).isTexture) (v as THREE.Texture).dispose();
-      mt.dispose();
-    }
+    for (const mt of mats) if (!cachedMaterials.has(mt)) materials.add(mt);
     if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
   });
-  root.parent?.remove(root);
+  for (const m of materials) {
+    for (const v of Object.values(m)) if (v?.isTexture && !m.userData.sharedTexture) textures.add(v);
+    m.dispose();
+  }
+  for (const texture of textures) texture.dispose();
+  for (const geometry of geometries) geometry.dispose();
+  root.removeFromParent();
+}
+
+export function contactShadow(width: number, depth: number): THREE.Mesh {
+  const key = "contact-shadow";
+  let material = matCache.get(key);
+  if (!material) {
+    material = new THREE.MeshBasicMaterial({
+      color: 0x292018, map: softMask(), transparent: true, opacity: 0.48,
+      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1
+    });
+    matCache.set(key, material);
+    cachedMaterials.add(material);
+  }
+  const geometry = geo(key, () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2));
+  const shadow = mesh(geometry, material, 0, 0.022, 0, false);
+  shadow.scale.set(width, 1, depth);
+  shadow.renderOrder = 1;
+  return shadow;
 }

@@ -1,6 +1,7 @@
 // Pixel Dynasty 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
 import * as THREE from "three";
-import { box, cyl, cone, sphere, geo, mat, mesh, shade, standHeight, Env3D, MAP_N } from "./common";
+import { box, cyl, cone, sphere, geo, mat, mesh, shade, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep } from "./common";
+import { softMask } from "./surfaces";
 import type { FX3D } from "./fx3d";
 
 const SKIN = "#e8c39e", PANTS = "#3a2a1e", WOOD = "#7a4f2a", STEEL = "#cbd5e1", IRON = "#6b7280", GOLD = "#e8b53a", BAMBOO = "#d4b06a";
@@ -10,9 +11,9 @@ interface Rig {
   root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group;
   legL: THREE.Group | null; legR: THREE.Group | null;
   tools: Record<string, THREE.Object3D>; carry: Record<string, THREE.Object3D>;
-  legs4: THREE.Group[]; trunk: THREE.Group[]; arm: THREE.Group | null; wheels: THREE.Object3D[]; flags: THREE.Mesh[];
+  legs4: THREE.Group[]; trunk: THREE.Group[]; arm: THREE.Group | null; wheels: THREE.Object3D[];
   ring: THREE.Mesh; height: number; type: string; key: string;
-  yaw: number; walk: number; lastPhase: number; atk: number; melee: number; px: number; pz: number; init: boolean; u: any;
+  yaw: number; walk: number; lastPhase: number; atk: number; melee: number; nextPose: number; lastPose: number; dustT: number; previousCooldown: number; px: number; pz: number; init: boolean; u: any;
 }
 
 function limb(len: number, w: number, m: THREE.Material, x: number, y: number, z: number): THREE.Group {
@@ -28,8 +29,9 @@ function newRig(type: string, key: string): Rig {
   const ringM = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const ring = new THREE.Mesh(geo("selring", () => { const g = new THREE.RingGeometry(0.26, 0.33, 32); g.rotateX(-Math.PI / 2); return g; }), ringM);
   ring.position.y = 0.03; ring.visible = false; ring.renderOrder = 4;
-  root.add(ring);
-  return { root, body, armL: new THREE.Group(), armR: new THREE.Group(), legL: null, legR: null, tools: {}, carry: {}, legs4: [], trunk: [], arm: null, wheels: [], flags: [], ring, height: 0.6, type, key, yaw: 0, walk: 0, lastPhase: 0, atk: 0, melee: 0, px: 0, pz: 0, init: false, u: null };
+  const large = type === "war_elephant", mounted = type === "cavalry" || type === "horse_archer";
+  root.add(ring, contactShadow(large ? 0.97 : mounted ? 0.68 : 0.51, large ? 1.48 : mounted ? 0.99 : 0.54));
+  return { root, body, armL: new THREE.Group(), armR: new THREE.Group(), legL: null, legR: null, tools: {}, carry: {}, legs4: [], trunk: [], arm: null, wheels: [], ring, height: 0.6, type, key, yaw: 0, walk: 0, lastPhase: 0, atk: 0, melee: 0, nextPose: 0, lastPose: 0, dustT: 0, previousCooldown: 0, px: 0, pz: 0, init: false, u: null };
 }
 
 /** Humanoid torso/head/limbs into `parent` (feet at y=0). */
@@ -42,7 +44,10 @@ function humanoid(r: Rig, parent: THREE.Group, tunic: string, opts: { armor?: bo
   parent.add(mesh(box(0.17, 0.2, 0.11), opts.armor ? mat(IRON, { metal: 0.55, rough: 0.45 }) : tm, 0, 0.27, 0));
   if (opts.armor) {
     // lamellar plates: team-coloured bands over iron
-    for (let k = 0; k < 3; k++) parent.add(mesh(box(0.18, 0.025, 0.12), tm, 0, 0.2 + k * 0.06, 0, false));
+    for (let k = 0; k < 3; k++) parent.add(mesh(box(0.18, 0.027, 0.12), tm, 0, 0.2 + k * 0.06, 0, false));
+    const crest = mesh(box(0.094, 0.031, 0.12), mat(shade(tunic, 0.12), { surface: "lacquer", rough: 0.56 }),
+      0, 0.502, 0, false);
+    parent.add(crest);
   } else parent.add(mesh(box(0.18, 0.08, 0.12), mat(shade(tunic, -0.25)), 0, 0.2, 0, false));
   parent.add(mesh(box(0.175, 0.025, 0.115), mat("#2a1a10"), 0, 0.235, 0, false));
   parent.add(mesh(sphere(0.065, 12, 10), sm, 0, 0.44, 0));
@@ -60,6 +65,11 @@ function tool(kind: string): THREE.Group {
   if (kind === "axe") g.add(mesh(box(0.012, 0.08, 0.06), sm, 0, 0.03, 0.19));
   else if (kind === "pick") { const p = mesh(box(0.016, 0.02, 0.2), sm, 0, 0.01, 0.2); p.rotation.x = Math.PI / 2; g.add(p); }
   else if (kind === "sickle") { const s = mesh(geo("sickle", () => new THREE.TorusGeometry(0.06, 0.008, 4, 10, Math.PI * 1.2)), sm, 0, 0.05, 0.2); s.rotation.y = Math.PI / 2; g.add(s); }
+  else if (kind === "spear") {
+    const tip = mesh(cone(0.026, 0.10, 4), sm, 0, 0, 0.24);
+    tip.rotation.x = Math.PI / 2;
+    g.add(tip);
+  }
   else if (kind === "hammer") g.add(mesh(box(0.05, 0.05, 0.08), mat("#57534e", { metal: 0.6 }), 0, 0, 0.17));
   return g;
 }
@@ -75,13 +85,12 @@ function carryBundle(kind: string): THREE.Group {
   return g;
 }
 
-function flag(r: Rig, parent: THREE.Object3D, x: number, y: number, z: number, color: string, h = 0.35): void {
+function flag(parent: THREE.Object3D, x: number, y: number, z: number, color: string, h = 0.35): void {
   parent.add(mesh(cyl(0.008, 0.008, h, 5), mat("#3a2412"), x, y + h / 2, z));
-  const g = new THREE.PlaneGeometry(0.16, 0.1, 5, 1); g.translate(0.08, 0, 0);
-  const f = new THREE.Mesh(g, mat(color, { side: THREE.DoubleSide }));
-  f.position.set(x, y + h - 0.06, z); f.rotation.y = Math.PI / 2; f.castShadow = true;
-  f.userData.base = Float32Array.from(g.getAttribute("position").array as ArrayLike<number>);
-  parent.add(f); r.flags.push(f);
+  const g = geo("unit-flag", () => new THREE.PlaneGeometry(0.16, 0.1, 5, 1).translate(0.08, 0, 0));
+  const f = mesh(g, mat(color, { side: THREE.DoubleSide, surface: "silk", flagWind: true }), x, y + h - 0.06, z, false);
+  f.rotation.y = Math.PI / 2;
+  parent.add(f);
 }
 
 function horse(r: Rig, parent: THREE.Group): THREE.Group {
@@ -106,7 +115,7 @@ function buildUnit(type: string, team: string): Rig {
       humanoid(r, b, shade(team, -0.05));
       b.add(mesh(cone(0.15, 0.08, 14), mat(BAMBOO, { rough: 0.8 }), 0, 0.51, 0));
       b.add(mesh(cyl(0.05, 0.05, 0.015, 10), mat("#8a6a3a"), 0, 0.475, 0, false));
-      for (const k of ["axe", "pick", "sickle", "hammer"]) { r.tools[k] = hand(r.armR, tool(k)); r.tools[k].visible = false; }
+      for (const k of ["axe", "pick", "sickle", "hammer", "spear"]) { r.tools[k] = hand(r.armR, tool(k)); r.tools[k].visible = false; }
       for (const k of ["wood", "food", "gold", "stone"]) { r.carry[k] = carryBundle(k); b.add(r.carry[k]); }
       r.height = 0.6;
       break;
@@ -178,7 +187,7 @@ function buildUnit(type: string, team: string): Rig {
         r.tools.weapon = hand(r.armL, bow);
       }
       b.add(rider);
-      flag(r, rider, -0.08, 0.3, -0.07, team, 0.4);
+      flag(rider, -0.08, 0.3, -0.07, team, 0.4);
       r.height = 0.95;
       break;
     }
@@ -214,8 +223,8 @@ function buildUnit(type: string, team: string): Rig {
       const rider = new THREE.Group(); rider.position.set(0, 0.62, -0.05); rider.scale.setScalar(0.65);
       humanoid(r, rider, team, { armor: true, legs: false });
       e.add(rider);
-      flag(r, e, -0.13, 0.74, -0.17, team, 0.35);
-      flag(r, e, 0.13, 0.74, -0.17, team, 0.35);
+      flag(e, -0.13, 0.74, -0.17, team, 0.35);
+      flag(e, 0.13, 0.74, -0.17, team, 0.35);
       b.add(e);
       r.height = 1.3;
       break;
@@ -236,7 +245,7 @@ function buildUnit(type: string, team: string): Rig {
       arm.add(mesh(box(0.1, 0.1, 0.1), mat("#57534e"), 0, -0.05, -0.14));
       arm.rotation.x = -0.9;
       b.add(arm); r.arm = arm;
-      flag(r, b, -0.15, 0.14, -0.24, team, 0.4);
+      flag(b, -0.15, 0.14, -0.24, team, 0.4);
       r.height = 0.7;
       break;
     }
@@ -256,7 +265,7 @@ interface AnimalRig { root: THREE.Group; legs: THREE.Group[]; body: THREE.Group;
 /** Stylized low-poly deer (antlered stag with spotted flanks) and wild boar (bristled, tusked). */
 function buildAnimal(type: string): AnimalRig {
   const root = new THREE.Group(), body = new THREE.Group();
-  root.add(body);
+  root.add(body, contactShadow(type === "deer" ? 0.56 : 0.61, type === "deer" ? 0.81 : 0.7));
   const legs: THREE.Group[] = [];
   if (type === "deer") {
     const fur = mat("#b8793a"), dark = mat("#7b4a22"), belly = mat("#efe0c4"), white = mat("#fbf5e8");
@@ -304,6 +313,9 @@ export class Units3D {
   private readonly projs = new Map<object, Proj>();
   private readonly pool: Record<string, THREE.Object3D[]> = { arrow: [], bolt: [], boulder: [] };
   private readonly tmp = new THREE.Vector3();
+  private readonly frustum = new THREE.Frustum();
+  private readonly frustumMatrix = new THREE.Matrix4();
+  private readonly bounds = new THREE.Sphere(new THREE.Vector3(), 1.3);
   private readonly animals = new Map<number, AnimalRig>();
 
   constructor(private readonly fx: FX3D) {}
@@ -312,18 +324,29 @@ export class Units3D {
   allRigs(): IterableIterator<Rig> { return this.rigs.values(); }
 
   clear(): void {
-    for (const r of this.rigs.values()) this.group.remove(r.root);
+    for (const r of this.rigs.values()) disposeTree(r.root);
     this.rigs.clear();
-    for (const a of this.animals.values()) this.group.remove(a.root);
+    for (const a of this.animals.values()) disposeTree(a.root);
     this.animals.clear();
-    for (const p of this.projs.values()) p.mesh.visible = false;
+    for (const list of Object.values(this.pool)) {
+      for (const mesh of list) disposeTree(mesh);
+      list.length = 0;
+    }
     this.projs.clear();
+  }
+
+  dispose(): void { this.clear(); this.group.removeFromParent(); }
+
+  private onScreen(root: THREE.Object3D): boolean {
+    this.bounds.center.copy(root.position);
+    this.bounds.center.y += 0.48;
+    return this.frustum.intersectsSphere(this.bounds);
   }
 
   private projMesh(kind: string): THREE.Object3D {
     const list = this.pool[kind] || this.pool.arrow;
-    const free = list.find(o => !o.visible);
-    if (free) { free.visible = true; return free; }
+    const free = list.find(o => !o.userData.inFlight);
+    if (free) { free.userData.inFlight = true; return free; }
     let o: THREE.Object3D;
     if (kind === "boulder") {
       o = mesh(geo("boulder", () => new THREE.DodecahedronGeometry(0.1, 0)), mat("#9aa1a9", { rough: 0.85, flat: true }));
@@ -333,14 +356,27 @@ export class Units3D {
       g.add(mesh(cone(0.02, 0.06, 4), mat(STEEL, { metal: 0.9 }), 0, 0.18, 0, false));
       g.add(mesh(box(0.04, 0.05, 0.004), mat("#f8fafc"), 0, -0.14, 0, false));
       g.children.forEach(c => { c.rotation.x = Math.PI / 2; c.position.z = c.position.y; c.position.y = 0; });
+      const ribbon = new THREE.MeshBasicMaterial({
+        color: kind === "bolt" ? 0xffbf69 : 0xffeed8, map: softMask(), opacity: 0.52,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+      });
+      ribbon.userData.sharedTexture = true;
+      const plane = geo("projectile-trail", () => new THREE.PlaneGeometry(0.069, 0.67).rotateX(Math.PI / 2));
+      const trail = mesh(plane, ribbon, 0, 0, -0.35, false);
+      const edge = mesh(plane, ribbon, 0, 0, -0.35, false);
+      edge.rotation.z = Math.PI / 2;
+      trail.renderOrder = edge.renderOrder = 4;
+      g.add(trail, edge);
       o = g;
     }
+    o.userData.inFlight = true;
     list.push(o);
     this.group.add(o);
     return o;
   }
 
-  update(state: any, env: Env3D, t: number, dt: number): void {
+  update(state: any, env: Env3D, t: number, dt: number, camera: THREE.Camera): void {
+    this.frustum.setFromProjectionMatrix(this.frustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const seen = new Set<number>();
     const fog = state.fog;
     const fogAt = (x: number, z: number) => fog[Math.max(0, Math.min(MAP_N - 1, Math.floor(z)))]?.[Math.max(0, Math.min(MAP_N - 1, Math.floor(x)))] ?? 0;
@@ -368,12 +404,17 @@ export class Units3D {
       else { this.tmp.set(x + (x - pr.lx), y + (y - pr.ly), z + (z - pr.lz)); if (this.tmp.distanceToSquared(pr.mesh.position) > 1e-8) pr.mesh.lookAt(this.tmp); }
       pr.lx = x; pr.ly = y; pr.lz = z; pr.tx = p.tx; pr.tz = p.ty;
       pr.mesh.visible = fogAt(x, z) === 2;
+      if (pr.mesh.visible && p.kind === "boulder" && t >= (pr.mesh.userData.trailAt ?? 0)) {
+        pr.mesh.userData.trailAt = t + 0.065;
+        this.fx.smoke.emit(x, y, z, 0, 0.07, 0, 0.33, 0.64, 0xb89d81, 0, 1.2);
+      }
     }
     for (const [p, pr] of this.projs) {
       if (live.has(p)) continue;
       if (pr.kind === "boulder" && fogAt(pr.tx, pr.tz) > 0) this.fx.impact(pr.tx, standHeight(pr.tx, pr.tz, state.grid), pr.tz, 1.7);
       else if (fogAt(pr.tx, pr.tz) === 2) this.fx.glow.burst(pr.tx, standHeight(pr.tx, pr.tz, state.grid) + 0.3, pr.tz, 4, 0.8, 1, 0.25, 0.6, [0xfff1a8, 0xffffff], -4);
       pr.mesh.visible = false;
+      pr.mesh.userData.inFlight = false;
       this.projs.delete(p);
     }
 
@@ -384,7 +425,7 @@ export class Units3D {
       const key = `${u.type}|${color}`;
       let r = this.rigs.get(u.id);
       if (!r || r.key !== key) {
-        if (r) this.group.remove(r.root);
+        if (r) disposeTree(r.root);
         r = buildUnit(u.type, color);
         this.group.add(r.root);
         this.rigs.set(u.id, r);
@@ -402,7 +443,8 @@ export class Units3D {
       r.px = u.x; r.pz = u.y;
       const speed = Math.hypot(vx, vz);
       const moving = speed > 0.12;
-      if (!vis) continue;
+      r.root.visible = vis && this.onScreen(r.root);
+      if (!r.root.visible) continue;
 
       // facing: movement direction, or the attack target when standing
       let want = r.yaw;
@@ -427,7 +469,13 @@ export class Units3D {
       r.ring.visible = selected.has(u.id);
       if (r.ring.visible) (r.ring.material as THREE.MeshBasicMaterial).opacity = 0.65 + Math.sin(t * 6) * 0.3;
 
-      this.animate(r, u, state, t, dt, moving, speed, target);
+      const dist = camera.position.distanceToSquared(r.root.position);
+      if (t >= r.nextPose || r.ring.visible) {
+        const elapsed = r.lastPose === 0 ? dt : Math.min(0.12, t - r.lastPose);
+        r.lastPose = t;
+        r.nextPose = t + (dist > 1600 ? 0.063 : dist > 500 ? 0.033 : 0);
+        this.animate(r, u, state, t, elapsed, moving, speed, target);
+      }
     }
 
     this.updateAnimals(state, t, dt, fogAt);
@@ -435,7 +483,7 @@ export class Units3D {
     for (const [id, r] of this.rigs) {
       if (seen.has(id)) continue;
       if (r.root.visible) this.fx.debris.burst(r.root.position.x, r.root.position.y + 0.2, r.root.position.z, 10, 0.9, 1.6, 0.8, 1, [0x8a7a66, 0x5b4a3a, 0xb91c1c], -7);
-      this.group.remove(r.root);
+      disposeTree(r.root);
       this.rigs.delete(id);
     }
   }
@@ -456,7 +504,8 @@ export class Units3D {
       r.root.position.y += (gy - r.root.position.y) * k;
       const vx = (a.x - r.px) / Math.max(dt, 1e-3), vz = (a.y - r.pz) / Math.max(dt, 1e-3);
       r.px = a.x; r.pz = a.y;
-      if (!vis) continue;
+      r.root.visible = vis && this.onScreen(r.root);
+      if (!r.root.visible) continue;
       const speed = Math.hypot(vx, vz);
       const moving = speed > 0.1 && !a.dead;
       if (moving) {
@@ -475,7 +524,7 @@ export class Units3D {
       // carcass: topple onto its side and shrink as the meat is harvested
       const target = a.dead ? 1 : 0;
       r.dead += (target - r.dead) * Math.min(1, dt * 5);
-      r.root.rotation.z = r.dead * 1.45;
+      r.body.rotation.z = r.dead * 1.45;
       const meat = a.dead ? 0.55 + 0.45 * Math.max(0, a.food / (a.type === "deer" ? 140 : 240)) : 1;
       r.root.scale.setScalar(meat);
       // fresh hurt flash for charging boar: raise head
@@ -483,7 +532,7 @@ export class Units3D {
     }
     for (const [id, r] of this.animals) {
       if (seenA.has(id)) continue;
-      this.group.remove(r.root);
+      disposeTree(r.root);
       this.animals.delete(id);
     }
   }
@@ -491,47 +540,63 @@ export class Units3D {
   private animate(r: Rig, u: any, state: any, t: number, dt: number, moving: boolean, speed: number, target: any): void {
     r.walk += dt * (moving ? 6 + speed * 5 : 0);
     const sw = moving ? Math.sin(r.walk) : 0;
-    r.atk = Math.max(0, r.atk - dt * 1.6);
+    r.atk = Math.max(0, r.atk - dt * 2.2);
     const inMelee = u.task === "attack" && !moving && target && (target.hp ?? 1) > 0;
-    r.melee = inMelee ? r.melee + dt * 7 : 0;
+    const cooldown = u.atkCooldown ?? 0;
+    const hit = inMelee && cooldown - r.previousCooldown > 0.35;
+    if (hit) {
+      r.melee = 1;
+      if (r.type === "swordsman" || r.type === "cavalry") {
+        const { x, y, z } = r.root.position;
+        this.fx.slash(x + Math.sin(r.yaw) * 0.32, y, z + Math.cos(r.yaw) * 0.32, r.yaw);
+      }
+    } else r.melee = Math.max(0, r.melee - dt * 2.4);
+    r.previousCooldown = cooldown;
 
     if (r.legL && r.legR) { r.legL.rotation.x = sw * 0.6; r.legR.rotation.x = -sw * 0.6; }
     r.body.position.y = moving ? Math.abs(Math.sin(r.walk)) * 0.02 : 0;
+    r.body.rotation.x = 0;
     r.armL.rotation.set(-sw * 0.5, 0, 0);
     r.armR.rotation.set(sw * 0.5, 0, 0);
-    for (const f of r.flags) {
-      const p = f.geometry.getAttribute("position") as THREE.BufferAttribute, base = f.userData.base as Float32Array, arr = p.array as Float32Array;
-      for (let i = 0; i < p.count; i++) { const x = base[i * 3]; arr[i * 3 + 2] = Math.sin(t * 7 + x * 30 + u.id) * 0.02 * (x / 0.16); }
-      p.needsUpdate = true;
+    if (moving && r.legs4.length && t >= r.dustT) {
+      r.dustT = t + 0.25;
+      const { x, y, z } = r.root.position;
+      this.fx.smoke.emit(x - Math.sin(r.yaw) * 0.28, y + 0.04, z - Math.cos(r.yaw) * 0.28,
+        0, 0.19, 0, 0.53, 0.70, 0xaa9272, 0, 1.1);
     }
 
     switch (r.type) {
       case "villager": this.animVillager(r, u, state, moving); break;
       case "swordsman": case "spearman":
         if (inMelee) {
-          const k = (Math.sin(r.melee) + 1) / 2;
+          const recover = smoothstep(0.05, 0.9, r.melee);
+          const windup = smoothstep(0.73, 0.03, cooldown);
+          const k = r.melee > 0 ? recover : 1 - windup;
           r.armR.rotation.x = r.type === "spearman" ? -1.2 + k * 0.4 : -2.3 + k * 2.1;
           if (r.type === "spearman") r.armR.position.z = k * 0.06;
           if (r.type === "swordsman") r.armL.rotation.x = -0.9;
-        } else if (r.type === "spearman") r.armR.rotation.x = -0.3 + sw * 0.2;
+        } else if (r.type === "spearman") {
+          r.armR.rotation.x = -0.3 + sw * 0.2;
+          r.armR.position.z = 0;
+        }
         break;
       case "archer": case "chuko_nu":
-        if (r.atk > 0 || inMelee) { r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.4 + r.atk * 0.25; }
+        if (r.atk > 0 || inMelee) { r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.1 - smoothstep(0.8, 0.05, cooldown) * 0.7 + smoothstep(0, 0.65, r.atk) * 0.78; }
         break;
       case "cavalry": case "horse_archer": {
         const gal = moving ? r.walk * 1.4 : 0;
         r.legs4.forEach((l, i) => { l.rotation.x = moving ? Math.sin(gal + (i < 2 ? 0 : Math.PI) + (i % 2) * 0.6) * 0.7 : 0; });
         r.body.position.y = moving ? Math.abs(Math.sin(gal)) * 0.05 : 0;
         r.body.rotation.x = moving ? Math.sin(gal) * 0.05 : 0;
-        if (r.type === "cavalry" && inMelee) r.armR.rotation.x = -0.6 + Math.sin(r.melee) * 0.5;
-        if (r.type === "horse_archer" && (r.atk > 0 || inMelee)) { r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.3; }
+        if (r.type === "cavalry" && inMelee) r.armR.rotation.x = -0.6 + smoothstep(0.05, 0.9, r.melee) * 0.5;
+        if (r.type === "horse_archer" && (r.atk > 0 || inMelee)) { r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.2 - smoothstep(0.8, 0.05, cooldown) * 0.54 + r.atk * 0.5; }
         break;
       }
       case "war_elephant": {
         const st = moving ? r.walk * 0.7 : 0;
         r.legs4.forEach((l, i) => { l.rotation.x = moving ? Math.sin(st + ((i === 0 || i === 3) ? 0 : Math.PI)) * 0.35 : 0; });
         r.body.position.y = moving ? Math.abs(Math.sin(st)) * 0.03 : 0;
-        const swing = inMelee ? Math.sin(r.melee) * 0.6 : Math.sin(t * 1.8 + u.id) * 0.18;
+        const swing = inMelee ? smoothstep(0.05, 0.9, r.melee) * 0.6 : Math.sin(t * 1.8 + u.id) * 0.18;
         r.trunk.forEach((s, i) => { s.rotation.x = swing * (0.5 + i * 0.25) + (i === 0 ? 0.2 : 0.12); s.rotation.z = Math.sin(t * 1.3 + i) * 0.06; });
         break;
       }
@@ -550,9 +615,19 @@ export class Units3D {
 
   private animVillager(r: Rig, u: any, state: any, moving: boolean): void {
     const style: string = u.workStyle || "idle";
-    const working = !moving && style !== "idle" && style !== "carry";
-    const toolKey = style === "chop" ? "axe" : style === "mine" ? "pick" : style === "harvest" ? "sickle" : style === "build" ? "hammer" : "";
-    for (const k in r.tools) r.tools[k].visible = working && k === toolKey;
+    const hunting = u.task === "hunt" && u.huntBusy && !moving;
+    const working = !moving && u.task !== "hunt" && style !== "idle" && style !== "carry";
+    const toolKey = hunting ? "spear" : working ? (
+      style === "chop" ? "axe" : style === "mine" ? "pick" : style === "harvest" ? "sickle" : style === "build" ? "hammer" : ""
+    ) : "";
+    for (const k in r.tools) r.tools[k].visible = k === toolKey;
+    if (hunting) {
+      const cooldown = u.atkCooldown ?? 0;
+      const thrust = smoothstep(0.62, 0.02, cooldown) - smoothstep(0.67, 0.97, cooldown) * 0.8;
+      r.armL.rotation.x = -0.94;
+      r.armR.rotation.x = -1.44 + thrust * 0.65;
+      r.body.rotation.x = 0.05 - thrust * 0.16;
+    }
     const carrying = u.task === "return" && u.carryAmt > 0;
     for (const k in r.carry) r.carry[k].visible = carrying && (u.carryType || "wood") === k;
     if (carrying) { r.armR.rotation.x = -2.6; r.armR.rotation.z = 0.25; }
@@ -560,10 +635,10 @@ export class Units3D {
 
     const phase = u.workPhase || 0, k = phase / TAU;
     // slow wind-up, fast strike that lands as the phase wraps (same moment the 2D sim plays the hit)
-    const strike = k < 0.72 ? k / 0.72 : 1 - (k - 0.72) / 0.28;
+    const strike = smoothstep(0.08, 0.72, k) * (1 - smoothstep(0.72, 0.98, k));
     if (style === "chop") { r.armR.rotation.x = -0.3 - strike * 2.3; r.armL.rotation.x = -0.4 - strike * 1.6; r.body.rotation.x = (1 - strike) * 0.15; }
     else if (style === "mine") { r.armR.rotation.x = -0.4 - strike * 2.7; r.armL.rotation.x = -0.4 - strike * 2.4; r.body.rotation.x = (1 - strike) * 0.22; }
-    else if (style === "harvest") { r.armR.rotation.x = -1.1; r.armR.rotation.y = Math.sin(phase) * 0.9; r.body.rotation.x = 0.35; }
+    else if (style === "harvest") { r.armR.rotation.x = -1.1; r.armR.rotation.y = (strike - 0.5) * 1.6; r.body.rotation.x = 0.35; }
     else if (style === "build") { r.armR.rotation.x = -0.5 - strike * 1.8; r.body.rotation.x = 0.1; }
 
     if (phase < r.lastPhase) this.strikeFx(r, u, state, style);

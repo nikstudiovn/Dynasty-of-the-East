@@ -1,6 +1,7 @@
 // Pixel Dynasty 3D — WebGL2 renderer, golden-hour lighting and the 45° perspective RTS camera.
 import * as THREE from "three";
-import { MAP_N, isoToTile, tileToIso, clamp } from "./common";
+import { MAP_N, isoToTile, tileToIso, clamp, rainWetness, updateLanternMaterials } from "./common";
+import { wind } from "./wind3d";
 import { Weather3D, type AtmosphereMode } from "./weather3d";
 
 const HAZE = 0xcbb998;
@@ -8,7 +9,7 @@ const SUN_OFFSET = new THREE.Vector3(-15, 19, -3);
 const SHADOW_R = 28;
 
 /** Gradient sky dome: warm pale horizon haze -> soft jade-blue zenith, with a golden glow toward the sun. */
-function makeSky(): THREE.Mesh {
+function makeSky(): THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial> {
   const m = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: { uHorizon: { value: new THREE.Color(HAZE) }, uZenith: { value: new THREE.Color(0x7fa9c2) }, uSun: { value: new THREE.Color(0xffd79a) } },
@@ -26,6 +27,21 @@ function makeSky(): THREE.Mesh {
   const me = new THREE.Mesh(new THREE.SphereGeometry(280, 24, 12), m);
   me.renderOrder = -10; me.frustumCulled = false;
   return me;
+}
+
+export type QualityPreset = "auto" | "low" | "medium" | "high";
+type ResolvedQuality = Exclude<QualityPreset, "auto">;
+
+const QUALITY = {
+  low: { dpr: 1.25, shadow: 0, particles: 0.25 },
+  medium: { dpr: 1.5, shadow: 1024, particles: 0.55 },
+  high: { dpr: 2, shadow: 2048, particles: 1 }
+};
+
+function autoQuality(): ResolvedQuality {
+  const { userAgent, platform, maxTouchPoints } = navigator;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
+    (platform === "MacIntel" && maxTouchPoints > 1) || matchMedia("(pointer: coarse)").matches ? "medium" : "high";
 }
 
 export interface Cam { x: number; y: number; zoom: number; shake?: number; }
@@ -48,8 +64,12 @@ export class Scene3D {
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
   readonly weather = new Weather3D();
-  private lastWeatherTime = performance.now();
-  readonly sky: THREE.Mesh;
+  readonly sky: ReturnType<typeof makeSky>;
+  private readonly environment: THREE.WebGLRenderTarget;
+  private time = 0;
+  private shadowElapsed = 0;
+  quality: ResolvedQuality = "high";
+  pixelRatio = 1;
   readonly target = new THREE.Vector3(MAP_N / 2, 0, MAP_N / 2);
   yaw = DEFAULT_YAW;
   yawTarget = DEFAULT_YAW;
@@ -64,9 +84,6 @@ export class Scene3D {
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const r = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
-    r.shadowMap.enabled = true;
-    r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.12;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -78,6 +95,19 @@ export class Scene3D {
     this.scene.fog = new THREE.FogExp2(HAZE, 0.0085);
     this.sky = makeSky();
     this.scene.add(this.sky);
+    const capture = new THREE.Scene();
+    const dome = makeSky();
+    dome.scale.setScalar(0.13);
+    capture.add(dome);
+    const pmrem = new THREE.PMREMGenerator(r);
+    try {
+      this.environment = pmrem.fromScene(capture, 0.035, 0.1, 50);
+      this.scene.environment = this.environment.texture;
+    } finally {
+      pmrem.dispose();
+      dome.geometry.dispose();
+      dome.material.dispose();
+    }
 
     this.camera = new THREE.PerspectiveCamera(36, 1, 0.3, 320);
     this.probe = new THREE.PerspectiveCamera(36, 1, 0.01, 50);
@@ -107,6 +137,7 @@ export class Scene3D {
     rim.target.position.set(MAP_N / 2, 0, MAP_N / 2);
     this.rim = rim;
     this.scene.add(rim, rim.target);
+    this.setQuality("auto");
   }
 
   private rim!: THREE.DirectionalLight;
@@ -119,10 +150,28 @@ export class Scene3D {
     this.rim.target.updateMatrixWorld();
   }
 
+  setQuality(preset: QualityPreset): void {
+    this.quality = preset === "auto" ? autoQuality() : preset;
+    const { shadow, particles } = QUALITY[this.quality];
+    const type = this.quality === "high" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    if (this.renderer.shadowMap.type !== type || this.sun.shadow.mapSize.x !== shadow) {
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    this.sun.castShadow = this.renderer.shadowMap.enabled = shadow > 0;
+    this.renderer.shadowMap.type = type;
+    this.renderer.shadowMap.autoUpdate = this.quality === "high";
+    this.renderer.shadowMap.needsUpdate = shadow > 0;
+    this.shadowElapsed = 0;
+    this.sun.shadow.mapSize.setScalar(shadow);
+    this.weather.particleFraction = particles;
+    this.resize(this.width, this.height);
+  }
+
   resize(w: number, h: number): void {
     this.width = Math.max(1, w); this.height = Math.max(1, h);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
-    this.renderer.setSize(this.width, this.height, false);
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, QUALITY[this.quality].dpr);
+    this.renderer.setDrawingBufferSize(this.width, this.height, this.pixelRatio);
     this.camera.aspect = this.width / this.height;
     this.camera.updateProjectionMatrix();
     this.probe.aspect = this.camera.aspect;
@@ -151,16 +200,30 @@ export class Scene3D {
     }
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
-    // shadow frustum follows the view; wider when zoomed out
-    const sr = SHADOW_R, tex = (sr * 2) / 2048;
-    const sc = this.sun.shadow.camera;
-    if (Math.abs(sc.right - sr) > 0.5) { sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr; sc.updateProjectionMatrix(); }
+    // Keep the shadow frustum centred on the view and aligned to shadow texels.
+    const tex = this.sun.castShadow ? SHADOW_R * 2 / this.sun.shadow.mapSize.x : 0.1;
     const fx = Math.round(this.target.x / tex) * tex, fz = Math.round(this.target.z / tex) * tex;
     this.sun.target.position.set(fx, 0, fz);
     this.sun.position.set(fx + SUN_OFFSET.x, SUN_OFFSET.y, fz + SUN_OFFSET.z);
     this.sun.target.updateMatrixWorld();
+    if (this.quality === "medium") {
+      this.shadowElapsed += dt;
+      if (this.shadowElapsed >= 1 / 30) {
+        this.renderer.shadowMap.needsUpdate = true;
+        this.shadowElapsed %= 1 / 30;
+      }
+    }
     this.sky.position.set(this.camera.position.x, 0, this.camera.position.z);
     this.weather.update(dt, this.scene, this.sun, this.hemi, this.target.x, this.target.z);
+    this.sky.material.uniforms.uHorizon.value.copy(this.weather.horizon);
+    this.sky.material.uniforms.uZenith.value.copy(this.weather.zenith);
+    this.sky.material.uniforms.uSun.value.copy(this.sun.color).multiplyScalar(this.sun.intensity * 0.6);
+    this.time += dt;
+    wind.uTime.value = this.time;
+    wind.uWindDir.value.set(Math.cos(0.36 + this.time * 0.03), Math.sin(0.36 + this.time * 0.03));
+    wind.uWindStrength.value = this.quality === "low" ? 0 : 0.085 + 0.11 * this.weather.rain;
+    rainWetness.value = this.weather.rain;
+    updateLanternMaterials(this.weather.lanternBoost);
   }
 
   private setNdc(clientX: number, clientY: number): void {
@@ -213,6 +276,17 @@ export class Scene3D {
   project(x: number, y: number, z: number): { x: number; y: number; visible: boolean } {
     this.tmpV.set(x, y, z).project(this.camera);
     return { x: (this.tmpV.x + 1) * 0.5 * this.width, y: (1 - this.tmpV.y) * 0.5 * this.height, visible: this.tmpV.z < 1 && this.tmpV.z > -1 };
+  }
+
+  dispose(): void {
+    this.weather.dispose();
+    this.sky.geometry.dispose();
+    this.sky.material.dispose();
+    this.sun.shadow.dispose();
+    this.scene.environment = null;
+    this.environment.dispose();
+    this.scene.clear();
+    this.renderer.dispose();
   }
 
   render(): void { this.renderer.render(this.scene, this.camera); }

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { wind } from "./wind3d";
 
 export type AtmosphereMode = "auto" | "golden" | "night";
 export type WeatherKind = "clear" | "mist" | "rain";
@@ -58,9 +59,14 @@ export class Weather3D {
   private rainMat: THREE.LineBasicMaterial | null = null;
   private rainSeeds: Float32Array;
   private tmpColor = new THREE.Color();
-  private lanternTimer = 0;
-  private lanternMats: Array<{ mat: THREE.MeshStandardMaterial; base: number }> = [];
-  private lanternLights: Array<{ light: THREE.PointLight; base: number }> = [];
+  lanternBoost = 0;
+  rain = 0;
+  particleFraction = 1;
+  readonly horizon = new THREE.Color();
+  readonly zenith = new THREE.Color();
+  private readonly daySky = new THREE.Color("#88b5cf");
+  private readonly duskSky = new THREE.Color("#7985aa");
+  private readonly nightSky = new THREE.Color("#131e3b");
 
   constructor() {
     this.rainSeeds = new Float32Array(RAIN_COUNT * 3);
@@ -105,32 +111,6 @@ export class Weather3D {
     this.rainLines.frustumCulled = false;
     this.rainLines.visible = false;
     scene.add(this.rainLines);
-  }
-
-  private collectLanterns(scene: THREE.Scene): void {
-    this.lanternMats.length = 0;
-    this.lanternLights.length = 0;
-    scene.traverse((obj) => {
-      if (obj instanceof THREE.PointLight) {
-        if (obj.userData._baseIntensity === undefined) {
-          obj.userData._baseIntensity = obj.intensity;
-        }
-        this.lanternLights.push({ light: obj, base: obj.userData._baseIntensity as number });
-      } else if (obj instanceof THREE.Mesh) {
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats) {
-          if (m instanceof THREE.MeshStandardMaterial && m.emissive && m.emissive.getHex() !== 0) {
-            const isWarm = m.emissive.r > 0.55 && m.emissive.g > 0.15 && m.emissive.b < 0.45;
-            if (isWarm || obj.userData.isLantern || obj.name.toLowerCase().includes("lantern")) {
-              if (m.userData._baseEmissive === undefined) {
-                m.userData._baseEmissive = m.emissiveIntensity;
-              }
-              this.lanternMats.push({ mat: m, base: m.userData._baseEmissive as number });
-            }
-          }
-        }
-      }
-    });
   }
 
   private sampleCycle(): { a: LightPreset; b: LightPreset; t: number } {
@@ -196,19 +176,12 @@ export class Weather3D {
       scene.fog.density = 0.0085 + mistWeight * 0.009 + rainWeight * 0.003;
     }
 
-    this.lanternTimer -= safeDt;
-    if (this.lanternTimer <= 0) {
-      this.collectLanterns(scene);
-      this.lanternTimer = 2.0;
-    }
-    const emissiveScale = 1.0 + lanternBoost * 2.2;
-    for (const item of this.lanternMats) {
-      item.mat.emissiveIntensity = item.base * emissiveScale;
-    }
-    const lightScale = 0.35 + lanternBoost * 1.65;
-    for (const item of this.lanternLights) {
-      item.light.intensity = item.base * lightScale;
-    }
+    this.lanternBoost += (lanternBoost - this.lanternBoost) * (1 - Math.exp(-safeDt * 2));
+    this.rain = rainWeight;
+    this.horizon.copy(this.tmpColor);
+    this.zenith.copy(this.daySky).lerp(this.duskSky, Math.min(1, this.lanternBoost / 0.65))
+      .lerp(this.nightSky, Math.max(0, (this.lanternBoost - 0.65) / 0.35));
+    scene.environmentIntensity = 0.58 - this.lanternBoost * 0.37 - mistWeight * 0.10;
 
     this.ensureRain(scene);
     if (this.rainLines && this.rainGeo && this.rainMat) {
@@ -218,11 +191,15 @@ export class Weather3D {
         const attr = this.rainGeo.getAttribute("position") as THREE.BufferAttribute;
         const arr = attr.array as Float32Array;
         const half = RAIN_AREA * 0.5;
-        for (let i = 0; i < RAIN_COUNT; i++) {
+        const count = Math.round(RAIN_COUNT * this.particleFraction);
+        this.rainGeo.setDrawRange(0, count * 2);
+        const dx = wind.uWindDir.value.x * (2.6 + rainWeight * 2);
+        const dz = wind.uWindDir.value.y * (2.6 + rainWeight * 2);
+        for (let i = 0; i < count; i++) {
           const idx = i * 3;
-          let ox = this.rainSeeds[idx] - 2.6 * safeDt;
+          let ox = this.rainSeeds[idx] + dx * safeDt;
           let oy = this.rainSeeds[idx + 1] - 17.5 * safeDt;
-          let oz = this.rainSeeds[idx + 2] - 1.1 * safeDt;
+          let oz = this.rainSeeds[idx + 2] + dz * safeDt;
           if (oy < 0) oy += RAIN_HEIGHT;
           if (ox < -half) ox += RAIN_AREA;
           if (ox > half) ox -= RAIN_AREA;
@@ -239,9 +216,9 @@ export class Weather3D {
           arr[v] = px;
           arr[v + 1] = py;
           arr[v + 2] = pz;
-          arr[v + 3] = px - 0.16;
+          arr[v + 3] = px + dx * 0.053;
           arr[v + 4] = py - 0.92;
-          arr[v + 5] = pz - 0.07;
+          arr[v + 5] = pz + dz * 0.053;
         }
         attr.needsUpdate = true;
       } else {
@@ -263,7 +240,5 @@ export class Weather3D {
       this.rainMat = null;
     }
     this.rainLines = null;
-    this.lanternMats.length = 0;
-    this.lanternLights.length = 0;
   }
 }

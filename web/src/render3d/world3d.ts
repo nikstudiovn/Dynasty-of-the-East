@@ -2,6 +2,8 @@
 // map island, drifting mist bands, a flock of 5 white cranes gliding high above, and golden pollen /
 // bamboo-leaf motes floating across the view. All cheap: 1 ridge mesh, 2 mist strips, 1 Points cloud.
 import * as THREE from "three";
+import { softMask } from "./surfaces";
+import { wind } from "./wind3d";
 import { MAP_N, fbm, hash2, smoothstep, terrainHeight, mat, disposeTree } from "./common";
 
 const TAU = Math.PI * 2;
@@ -95,6 +97,7 @@ export class World3D {
   readonly group = new THREE.Group();
   private cranes: Crane[] = [];
   private pollen: THREE.Points;
+  private fireflies: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
   private pVel: Float32Array;
   private mist: THREE.Mesh[] = [];
   private readonly N = 220;
@@ -137,12 +140,23 @@ export class World3D {
     }));
     this.pollen.frustumCulled = false;
     this.group.add(this.pollen);
+    const fireflyGeometry = new THREE.BufferGeometry();
+    fireflyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(42 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    const fireflyMaterial = new THREE.PointsMaterial({
+      color: 0xffdd79, size: 0.19, map: softMask(), transparent: true,
+      depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    fireflyMaterial.userData.sharedTexture = true;
+    this.fireflies = new THREE.Points(fireflyGeometry, fireflyMaterial);
+    this.fireflies.frustumCulled = false;
+    this.fireflies.renderOrder = 4;
+    this.group.add(this.fireflies);
   }
 
   /** Frees ridges, mist, cranes and pollen (called when the map size / type changes). */
   dispose(): void { disposeTree(this.group); }
 
-  update(t: number, dt: number, target: THREE.Vector3): void {
+  update(t: number, dt: number, target: THREE.Vector3, dusk: number, density: number, lake: THREE.Vector3): void {
     // cranes circle the valley in a slow, wide loop with glide/flap phases
     const cx = MAP_N / 2, cz = MAP_N / 2, R = MAP_N * 0.32, w = 0.045;
     const a = t * w;
@@ -162,18 +176,35 @@ export class World3D {
     // pollen drifts with the breeze, wobbling, wrapped around the camera target
     const p = this.pollen.geometry.getAttribute("position") as THREE.BufferAttribute;
     const arr = p.array as Float32Array;
-    for (let i = 0; i < this.N; i++) {
+    const count = Math.round(this.N * density);
+    this.pollen.geometry.setDrawRange(0, count);
+    const windDir = wind.uWindDir.value;
+    for (let i = 0; i < count; i++) {
       const k = i * 3;
-      arr[k] += (this.pVel[k] + Math.sin(t * 0.9 + i) * 0.1) * dt;
+      arr[k] += (this.pVel[k] * windDir.x + Math.sin(t * 0.9 + i) * 0.1) * dt;
       arr[k + 1] += (this.pVel[k + 1] + Math.sin(t * 1.3 + i * 0.7) * 0.05) * dt;
-      arr[k + 2] += (this.pVel[k + 2] + Math.cos(t * 0.7 + i) * 0.1) * dt;
+      arr[k + 2] += (this.pVel[k + 2] * windDir.y + Math.cos(t * 0.7 + i) * 0.1) * dt;
       for (const [o, c] of [[0, target.x], [2, target.z]] as const) {
         if (arr[k + o] > c + 16) arr[k + o] -= 32; else if (arr[k + o] < c - 16) arr[k + o] += 32;
       }
       if (arr[k + 1] > 3.6) arr[k + 1] = 0.3; else if (arr[k + 1] < 0.2) arr[k + 1] = 3.4;
     }
     p.needsUpdate = true;
-    (this.pollen.material as THREE.PointsMaterial).opacity = 0.75 + Math.sin(t * 2) * 0.15;
+    (this.pollen.material as THREE.PointsMaterial).opacity = 0.72 - dusk * 0.43 + Math.sin(t * 2) * 0.09;
+    this.fireflies.visible = dusk > 0.16;
+    if (this.fireflies.visible) {
+      const p = this.fireflies.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const n = Math.round(p.count * density);
+      this.fireflies.geometry.setDrawRange(0, n);
+      for (let i = 0; i < n; i++) {
+        const a = i * 2.399 + t * (0.12 + i % 3 * 0.06);
+        const r = 3 + (i % 9) * 0.72;
+        const x = lake.x + Math.cos(a) * r, z = lake.z + Math.sin(a) * r;
+        p.setXYZ(i, x, 0.52 + (i % 5) * 0.19 + Math.sin(a * 2.7 + i) * 0.25, z);
+      }
+      p.needsUpdate = true;
+      this.fireflies.material.opacity = dusk * (0.66 + 0.28 * Math.sin(t * 2.4));
+    }
     this.mist[0].rotation.y = t * 0.004; this.mist[1].rotation.y = -t * 0.003;
   }
 }

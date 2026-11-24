@@ -41,14 +41,14 @@ function emit(kind: number, x: number, y: number, vx: number, vy: number, life: 
 export function activeParticles(): number { let n = 0; for (let i = 0; i < MAXP; i++) if (pk[i]) n++; return n; }
 
 export function reset(): void {
-  pk.fill(0); shake.fill(0); sites.length = 0;
+  pk.fill(0); shake.clear(); sites.length = 0;
 }
 
 // ---- bamboo shake --------------------------------------------------------
-const shake = new Float32Array(64 * 64);
-const MAPW = 64;
+const shake = new Map<number, number>();
+const tileKey = (tx: number, ty: number) => ty * 256 + tx;
 export function shakeX(tx: number, ty: number): number {
-  const s = shake[ty * MAPW + tx];
+  const s = shake.get(tileKey(tx, ty)) ?? 0;
   if (s <= 0.02) return 0;
   return Math.round(Math.sin(performance.now() * 0.06) * 2.2 * s);
 }
@@ -127,7 +127,7 @@ function strike(u: any, state: any, style: WorkStyle) {
   if (!t || !seen(state, t.tx, t.ty)) return;
   const bx = isoX(t.tx + 0.5, t.ty + 0.5), by = isoY(t.tx + 0.5, t.ty + 0.5) - 8;
   if (style === "chop") {
-    shake[t.ty * MAPW + t.tx] = 1;
+    shake.set(tileKey(t.tx, t.ty), 1);
     for (let k = 0; k < 5; k++) emit(P.Splinter, bx + (Math.random() - 0.5) * 8, by, (Math.random() - 0.5) * 80, -50 - Math.random() * 50, 0.55);
     for (let k = 0; k < 3; k++) emit(P.Leaf, bx + (Math.random() - 0.5) * 12, by - 10, (Math.random() - 0.5) * 40, -10 - Math.random() * 20, 0.8);
     thock();
@@ -147,7 +147,11 @@ function strike(u: any, state: any, style: WorkStyle) {
 export function update(dt: number, state: any): void {
   if (!state || !state.units) return;
   // decay shakes
-  for (let i = 0; i < shake.length; i++) if (shake[i] > 0) shake[i] = Math.max(0, shake[i] - dt * 4.5);
+  for (const [key, value] of shake) {
+    const next = value - dt * 4.5;
+    if (next <= 0.02) shake.delete(key);
+    else shake.set(key, next);
+  }
 
   // build sites: recruit the nearest idle player villager
   for (let i = sites.length - 1; i >= 0; i--) {

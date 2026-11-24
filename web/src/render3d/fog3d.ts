@@ -3,7 +3,7 @@
 import * as THREE from "three";
 import { MAP_N, terrainHeight, bridgeDeckAt } from "./common";
 
-const ALPHA = [0.92, 0.48, 0]; // unexplored / explored / visible
+const ALPHA = [0.98, 0.38, 0]; // unexplored / explored / visible
 /** Veil quads per side: 2 per tile (1.5 on 96×96) keeps the veil smooth and cheap on mobile GPUs. */
 const segFor = () => (MAP_N >= 96 ? Math.round(MAP_N * 1.5) : MAP_N * 2);
 
@@ -15,6 +15,7 @@ export class Fog3D {
   private readonly mat: THREE.ShaderMaterial;
   private heightsFor: any = null;
   private first = true;
+  private pendingDt = 0;
 
   constructor() {
     const SEG = segFor();
@@ -54,13 +55,19 @@ export class Fog3D {
         float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
         void main() {
-          vec4 f = texture2D(uFog, vUv);
           vec2 p = vUv * uN;
-          float cloud = n2(p * 0.7 + vec2(uTime * 0.05, uTime * 0.03)) * 0.6 + n2(p * 1.7 - vec2(uTime * 0.04, 0.0)) * 0.4;
-          float a = f.g * (0.86 + 0.22 * cloud);
-          vec3 ink = vec3(0.035, 0.04, 0.035) + cloud * 0.05;
-          vec3 sepia = vec3(0.16, 0.12, 0.08) + cloud * 0.04;
-          gl_FragColor = vec4(mix(sepia, ink, f.r), clamp(a, 0.0, 1.0));
+          vec2 drift = vec2(uTime * 0.052, uTime * 0.026);
+          float cloud = 0.72 * n2(p * 0.54 + drift) + 0.28 * n2(p * 1.85 - drift * 1.4);
+          vec2 bleed = vec2(cloud - 0.5, n2(p * 0.59 - drift.yx + 9.7) - 0.5);
+          vec4 center = texture2D(uFog, vUv);
+          vec4 brush = texture2D(uFog, vUv + bleed * 0.91 / uN);
+          vec2 tint = mix(center.rg, brush.rg, 0.69);
+          float paper = n2(p * 7.4 + cloud * 3.0);
+          float a = tint.y * mix(0.93, 1.06, cloud);
+          vec3 ink = mix(vec3(0.012, 0.017, 0.018), vec3(0.078, 0.098, 0.094), cloud * (0.81 + paper * 0.19));
+          vec3 wash = mix(vec3(0.095, 0.101, 0.092), vec3(0.21, 0.225, 0.193), cloud);
+          gl_FragColor = vec4(mix(wash, ink, tint.x), clamp(a, 0.0, 1.0));
+          #include <colorspace_fragment>
         }`
     });
     this.mesh = new THREE.Mesh(g, this.mat);
@@ -95,8 +102,11 @@ export class Fog3D {
   update(state: any, t: number, dt: number): void {
     if (state.grid !== this.heightsFor) { this.heightsFor = state.grid; this.conform(state.grid); this.first = true; }
     this.mat.uniforms.uTime.value = t;
+    this.pendingDt += dt;
+    if (!this.first && this.pendingDt < 0.042) return;
     const fog = state.fog;
-    const k = this.first ? 1 : 1 - Math.exp(-dt * 6);
+    const k = this.first ? 1 : 1 - Math.exp(-this.pendingDt * 7);
+    this.pendingDt = 0;
     let dirty = false;
     for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
       const f = fog[y]?.[x] ?? 0;

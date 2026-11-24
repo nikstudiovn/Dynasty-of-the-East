@@ -1,11 +1,16 @@
 // Pixel Dynasty 3D — pooled instanced particles, shockwave rings and scorch decals (zero per-frame allocation).
 import * as THREE from "three";
+import { disposeTree } from "./common";
+import { softMask } from "./surfaces";
 
-interface PoolOpts { capacity: number; glow: boolean; size: number; }
+interface PoolOpts { capacity: number; style: "chip" | "smoke" | "spark"; size: number; }
 
 class ParticlePool {
   readonly mesh: THREE.InstancedMesh;
   private readonly n: number;
+  private readonly opacity?: THREE.InstancedBufferAttribute;
+  private readonly style: PoolOpts["style"];
+  density = 1;
   private readonly p: Float32Array; // x y z
   private readonly v: Float32Array; // vx vy vz
   private readonly life: Float32Array;
@@ -24,12 +29,34 @@ class ParticlePool {
 
   constructor(o: PoolOpts) {
     this.n = o.capacity;
-    const g = new THREE.BoxGeometry(o.size, o.size, o.size);
-    const m = o.glow
-      ? new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })
-      : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0.05 });
+    this.style = o.style;
+    const billboard = o.style !== "chip";
+    const g = billboard ? new THREE.PlaneGeometry(o.size, o.size) : new THREE.TetrahedronGeometry(o.size, 0);
+    const m = billboard
+      ? new THREE.MeshBasicMaterial({ map: softMask(), color: 0xffffff, transparent: true,
+          blending: o.style === "spark" ? THREE.AdditiveBlending : THREE.NormalBlending, depthWrite: false })
+      : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.87, flatShading: true });
+    if (billboard) {
+      m.userData.sharedTexture = true;
+      this.opacity = new THREE.InstancedBufferAttribute(new Float32Array(this.n), 1).setUsage(THREE.DynamicDrawUsage);
+      g.setAttribute("aParticleOpacity", this.opacity);
+      m.onBeforeCompile = shader => {
+        shader.vertexShader = "attribute float aParticleOpacity; varying float vParticleOpacity;\n" +
+          shader.vertexShader.replace("#include <project_vertex>", `
+            vParticleOpacity = aParticleOpacity;
+            vec4 mvPosition = modelViewMatrix * instanceMatrix[3];
+            mvPosition.xy += transformed.xy * vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));
+            gl_Position = projectionMatrix * mvPosition;
+          `);
+        shader.fragmentShader = "varying float vParticleOpacity;\n" + shader.fragmentShader.replace(
+          "#include <map_fragment>", "#include <map_fragment>\ndiffuseColor.a *= vParticleOpacity;"
+        );
+      };
+    }
     this.mesh = new THREE.InstancedMesh(g, m, this.n);
     this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    this.mesh.renderOrder = o.style === "smoke" ? 4 : 5;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;
     this.p = new Float32Array(this.n * 3); this.v = new Float32Array(this.n * 3);
@@ -51,7 +78,7 @@ class ParticlePool {
   }
 
   burst(x: number, y: number, z: number, count: number, speed: number, up: number, life: number, size: number, colors: (number | string)[], gravity = -6, grow = 0): void {
-    for (let k = 0; k < count; k++) {
+    for (let k = 0; k < Math.max(1, Math.round(count * this.density)); k++) {
       const a = Math.random() * Math.PI * 2, s = speed * (0.4 + Math.random() * 0.6);
       this.emit(x, y, z, Math.cos(a) * s, up * (0.5 + Math.random() * 0.7), Math.sin(a) * s, life * (0.6 + Math.random() * 0.5), size * (0.6 + Math.random() * 0.6), colors[k % colors.length], gravity, grow);
     }
@@ -60,6 +87,7 @@ class ParticlePool {
   update(dt: number): void {
     if (this.alive <= 0) return;
     let alive = 0;
+    this.mesh.visible = true;
     for (let i = 0; i < this.n; i++) {
       if (this.life[i] <= 0) continue;
       this.life[i] -= dt;
@@ -74,16 +102,21 @@ class ParticlePool {
       const age = this.maxLife[i] - this.life[i];
       this.e.set(age * 3 + i, age * 2.3 + i * 0.7, 0);
       this.q.setFromEuler(this.e);
-      this.m4.compose(this.t.set(this.p[j], this.p[j + 1], this.p[j + 2]), this.q, this.s.set(sz, sz, sz));
+      const spark = this.style === "spark";
+      this.m4.compose(this.t.set(this.p[j], this.p[j + 1], this.p[j + 2]), this.q, this.s.set(sz, sz * (spark ? 2.5 : 1), sz));
+      this.opacity?.setX(i, Math.min(1, k * 1.8) * (spark ? 0.9 : 0.55));
       this.mesh.setMatrixAt(i, this.m4);
     }
     this.alive = alive;
+    this.mesh.visible = alive > 0;
+    if (this.opacity) this.opacity.needsUpdate = true;
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
   clear(): void {
     for (let i = 0; i < this.n; i++) { this.life[i] = 0; this.mesh.setMatrixAt(i, this.m4.makeScale(0, 0, 0)); }
     this.alive = 0;
+    this.mesh.visible = false;
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 }
@@ -92,22 +125,37 @@ interface Ring { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; life: number; m
 
 export class FX3D {
   readonly group = new THREE.Group();
-  /** Lit debris: smoke cubes, bamboo splinters, wood chips, chaff, ore chunks. */
-  readonly debris = new ParticlePool({ capacity: 420, glow: false, size: 0.07 });
+  readonly debris = new ParticlePool({ capacity: 260, style: "chip", size: 0.060 });
+  readonly smoke = new ParticlePool({ capacity: 128, style: "smoke", size: 0.26 });
   /** Additive glow: fire, sparks, embers, muzzle flashes. */
-  readonly glow = new ParticlePool({ capacity: 360, glow: true, size: 0.06 });
+  readonly glow = new ParticlePool({ capacity: 210, style: "spark", size: 0.076 });
   private readonly rings: Ring[] = [];
+  private readonly accents: Ring[] = [];
+  private accentHead = 0;
   private readonly scorch: Ring[] = [];
   private ringHead = 0;
   private scorchHead = 0;
 
   constructor() {
-    this.group.add(this.debris.mesh, this.glow.mesh);
+    this.group.add(this.debris.mesh, this.glow.mesh, this.smoke.mesh);
     const rg = new THREE.RingGeometry(0.7, 1, 40); rg.rotateX(-Math.PI / 2);
     for (let i = 0; i < 8; i++) {
       const m = new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
       const me = new THREE.Mesh(rg, m); me.visible = false; me.renderOrder = 3;
       this.rings.push({ mesh: me, mat: m, life: 0, max: 0.7, scale: 2.2 }); this.group.add(me);
+    }
+    const arc = new THREE.RingGeometry(0.79, 1, 24, 1, 0.22, Math.PI * 0.64).rotateX(-Math.PI / 2);
+    for (let i = 0; i < 12; i++) {
+      const m = new THREE.MeshBasicMaterial({
+        color: 0xffedd3, map: softMask(), transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+      });
+      m.userData.sharedTexture = true;
+      const mesh = new THREE.Mesh(arc, m);
+      mesh.visible = false;
+      mesh.renderOrder = 5;
+      this.accents.push({ mesh, mat: m, life: 0, max: 0.22, scale: 1 });
+      this.group.add(mesh);
     }
     const dg = new THREE.CircleGeometry(1, 24); dg.rotateX(-Math.PI / 2);
     for (let i = 0; i < 12; i++) {
@@ -116,6 +164,30 @@ export class FX3D {
       this.scorch.push({ mesh: me, mat: m, life: 0, max: 9, scale: 1 }); this.group.add(me);
     }
   }
+
+  setDensity(fraction: number): void {
+    this.debris.density = this.glow.density = this.smoke.density = fraction;
+  }
+
+  slash(x: number, y: number, z: number, yaw: number): void {
+    const r = this.accents[this.accentHead];
+    this.accentHead = (this.accentHead + 1) % this.accents.length;
+    r.life = r.max;
+    r.mesh.position.set(x, y + 0.26, z);
+    r.mesh.rotation.set(0.26, yaw + Math.PI * 0.43, -0.25);
+    r.mesh.visible = true;
+  }
+
+  ripple(x: number, y: number, z: number): void {
+    const r = this.rings[this.ringHead];
+    this.ringHead = (this.ringHead + 1) % this.rings.length;
+    r.life = r.max;
+    r.scale = 0.52;
+    r.mesh.position.set(x, y + 0.017, z);
+    r.mesh.visible = true;
+  }
+
+  dispose(): void { disposeTree(this.group); }
 
   /** Catapult boulder impact: expanding fiery shockwave + scorched decal + embers. */
   impact(x: number, y: number, z: number, radius = 2.1): void {
@@ -133,14 +205,26 @@ export class FX3D {
   update(dt: number): void {
     this.debris.update(dt);
     this.glow.update(dt);
+    this.smoke.update(dt);
+    for (const r of this.accents) {
+      if (r.life <= 0) continue;
+      r.life -= dt;
+      r.mesh.visible = r.life > 0;
+      const k = Math.max(0, r.life / r.max);
+      r.mesh.scale.setScalar(0.48 + (1 - k) * 0.25);
+      r.mat.opacity = k * 0.86;
+      r.mesh.rotation.y -= dt * 3;
+    }
     for (const r of this.rings) {
       if (r.life <= 0) continue;
       r.life -= dt;
       if (r.life <= 0) { r.mesh.visible = false; continue; }
       const k = 1 - r.life / r.max;
       r.mesh.scale.setScalar(0.2 + k * r.scale);
-      r.mat.opacity = (1 - k) * 0.9;
-      r.mat.color.setHSL(0.07 - k * 0.04, 1, 0.55 - k * 0.2);
+      const water = r.scale < 0.6;
+      r.mat.opacity = (1 - k) * (water ? 0.21 : 0.9);
+      if (water) r.mat.color.set(0xb5ece2);
+      else r.mat.color.setHSL(0.07 - k * 0.04, 1, 0.55 - k * 0.2);
     }
     for (const d of this.scorch) {
       if (d.life <= 0) continue;
@@ -151,7 +235,8 @@ export class FX3D {
   }
 
   clear(): void {
-    this.debris.clear(); this.glow.clear();
+    this.debris.clear(); this.glow.clear(); this.smoke.clear();
+    for (const r of this.accents) { r.life = 0; r.mesh.visible = false; }
     for (const r of this.rings) { r.life = 0; r.mesh.visible = false; }
     for (const d of this.scorch) { d.life = 0; d.mesh.visible = false; }
   }
