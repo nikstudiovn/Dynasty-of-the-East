@@ -264,7 +264,7 @@ export class Scene3D {
     this.scene.environmentIntensity =
       lb <= 0.65
         ? THREE.MathUtils.lerp(1.0, 0.7, lb / 0.65)
-        : THREE.MathUtils.lerp(0.7, 0.32, (lb - 0.65) / 0.35)); // ;st);
+        : THREE.MathUtils.lerp(0.7, 0.32, (lb - 0.65) / 0.35);
   }
 
   private setNdc(clientX: number, clientY: number): void {
