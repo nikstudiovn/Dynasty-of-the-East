@@ -1,7 +1,9 @@
 // Pixel Dynasty 3D — procedural stylized East Asian architecture for all 11 building types (4-age evolution).
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D, MAP_N, contactShadow, disposeTree } from "./common";
+import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D, MAP_N, contactShadow, disposeTree, renderFaction, type Faction, smoothstep } from "./common";
+import { paddyMaterial, RICE_COLORS, riceTuftGeometry } from "./terrain3d";
+import { applyWind } from "./wind3d";
 import { softMask } from "./surfaces";
 import type { Scene3D } from "./scene3d";
 import type { FX3D } from "./fx3d";
@@ -9,7 +11,7 @@ import type { FX3D } from "./fx3d";
 const VERMILION = "#B91C1C", PLASTER = "#eadfc8", STONE = "#8f8a80", STONE_D = "#6b665e", TIMBER = "#5a3a22", GOLD = "#e8b53a";
 const LATTICE = "#ffb347", BAMBOO = "#c9a36a", THATCH = "#b8955a", TERRACOTTA = "#b4532f";
 
-export interface BuildingParts { fires: THREE.Mesh[]; spin: THREE.Object3D[]; top: number; lanterns: THREE.Object3D[]; chimney?: THREE.Vector3; doors?: THREE.Object3D[]; }
+export interface BuildingParts { fires: THREE.Mesh[]; spin: THREE.Object3D[]; top: number; lanterns: THREE.Object3D[]; chimney?: THREE.Vector3; doors?: THREE.Object3D[]; rice?: THREE.InstancedMesh; }
 /** Collector for the building currently being assembled (lanterns register themselves to sway). */
 let curParts: BuildingParts | null = null;
 
@@ -63,10 +65,12 @@ function roof(parent: THREE.Object3D, w: number, d: number, h: number, y: number
 }
 
 function foundation(parent: THREE.Object3D, w: number, d: number, steps = 2): number {
-  let y = 0; const groundPad = mesh(box(w * 1.2, 0.018, d * 1.2), mat(shade(STONE_D, -0.18), { rough: 0.98, surface: "stone" }), 0, 0.048, 0, false); groundPad.receiveShadow = true; parent.add(groundPad);
+  let y = 0; const groundPad = mesh(box(w * 1.2, 0.018, d * 1.2), mat(shade(STONE_D, -0.18), { rough: 0.98, surface: "stone" }), 0, 0.048, 0, false); groundPad.receiveShadow = true; groundPad.userData.foundation = true; parent.add(groundPad);
   for (let k = 0; k < steps; k++) {
     const s = 1 - k * 0.07, h = 0.08;
-    parent.add(mesh(box(w * s, h + (k === 0 ? 0.5 : 0), d * s), mat(k === 0 ? STONE_D : STONE, { rough: 0.92, surface: "stone" }), 0, y + h / 2 - (k === 0 ? 0.25 : 0), 0));
+    const step = mesh(box(w * s, h + (k === 0 ? 0.5 : 0), d * s), mat(k === 0 ? STONE_D : STONE, { rough: 0.92, surface: "stone" }), 0, y + h / 2 - (k === 0 ? 0.25 : 0), 0);
+    step.userData.foundation = true;
+    parent.add(step);
     y += h;
   }
   return y;
@@ -151,10 +155,18 @@ function fire(parent: THREE.Object3D, parts: BuildingParts, x: number, y: number
 // ---------------------------------------------------------------------------
 interface Style { wall: string; roof: string; ridge: string; gilded: boolean; tiers: number; lanterns: boolean; }
 
-function styleFor(age: number, team: string): Style {
+function styleFor(age: number, team: string, faction: Faction): Style {
+  if (faction === "trung_nguyen") return {
+    wall: age === 1 ? "#d5bd9e" : PLASTER, roof: age === 4 ? "#dcb549" : "#377972",
+    ridge: age >= 3 ? GOLD : "#982a23", gilded: age === 4, tiers: age >= 2 ? 2 : 1, lanterns: age >= 2
+  };
+  if (faction === "bac_cuong") return {
+    wall: age >= 3 ? "#a0a79c" : "#8b6543", roof: age >= 3 ? "#39484b" : THATCH,
+    ridge: "#82623f", gilded: false, tiers: age === 4 ? 2 : 1, lanterns: age >= 3
+  };
   if (age <= 1) return { wall: BAMBOO, roof: THATCH, ridge: "#7a5a32", gilded: false, tiers: 1, lanterns: false };
   if (age === 2) return { wall: PLASTER, roof: TERRACOTTA, ridge: "#5a2a18", gilded: false, tiers: 1, lanterns: false };
-  if (age === 3) return { wall: PLASTER, roof: "#42745b", ridge: GOLD, gilded: false, tiers: 2, lanterns: true };
+  if (age === 3) return { wall: PLASTER, roof: TERRACOTTA, ridge: GOLD, gilded: false, tiers: 2, lanterns: true };
   return { wall: "#f2e6cc", roof: GOLD, ridge: shade(team, -0.1), gilded: true, tiers: 2, lanterns: true };
 }
 
@@ -186,20 +198,33 @@ function hall(g: THREE.Group, parts: BuildingParts, w: number, d: number, wallH:
   return top;
 }
 
-export function buildBuilding(type: string, team: string, age: number, size: number, cropStage: number, mask = 0): { group: THREE.Group; parts: BuildingParts } {
+export function buildBuilding(type: string, team: string, age: number, size: number, cropStage: number, mask = 0, faction: Faction = "dai_viet"): { group: THREE.Group; parts: BuildingParts } {
   const g = new THREE.Group();
   const parts: BuildingParts = { fires: [], spin: [], top: 1, lanterns: [] };
   curParts = parts;
   const S = size * 0.92;
   const teamRoof = shade(team, -0.25);
-  const ageStyle = styleFor(age, team);
+  const ageStyle = styleFor(age, team, faction);
   const milStyle: Style = {
     ...ageStyle,
-    wall: age === 1 ? BAMBOO : PLASTER,
-    roof: age === 3 ? teamRoof : ageStyle.roof,
-    tiers: age === 4 ? 2 : 1
+    wall: ageStyle.wall,
+    roof: ageStyle.roof,
+    tiers: ageStyle.tiers
   };
 
+  if (faction === "bac_cuong" && age === 1 && ["town_center", "house", "depot", "barracks", "archery_range", "stable"].includes(type)) {
+    const radius = S * 0.40;
+    const bottom = foundation(g, S * 0.93, S * 0.91, 1);
+    const felt = mat("#c7b18c", { surface: "silk", rough: 0.86 });
+    g.add(mesh(cyl(radius * 0.94, radius, 0.35, 16), felt, 0, bottom + 0.175, 0));
+    g.add(mesh(cyl(radius * 0.22, radius * 1.04, 0.29, 16), felt, 0, bottom + 0.485, 0));
+    g.add(mesh(cyl(radius * 1.01, radius * 1.01, 0.044, 16), mat(team, { surface: "silk" }), 0, bottom + 0.27, 0));
+    g.add(mesh(box(radius * 0.58, 0.27, 0.07), mat(TIMBER, { surface: "teak" }), 0, bottom + 0.135, radius));
+    banner(g, radius * 0.8, bottom, -radius * 0.76, team, 0.72);
+    parts.top = bottom + 0.67;
+    curParts = null;
+    return { group: g, parts };
+  }
   switch (type) {
     case "town_center": {
       const top = hall(g, parts, S * 0.82, S * 0.62, 0.42, ageStyle);
@@ -249,22 +274,47 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       break;
     }
     case "farm": {
-      const grow = [0.3, 0.62, 1][Math.max(0, Math.min(2, cropStage))];
-      const riceCol = cropStage >= 2 ? "#e2b23a" : cropStage === 1 ? "#4caf3c" : "#8fe08a";
-      for (let row = 0; row < 3; row++) {
-        const z = -0.3 + row * 0.3, y = row * 0.035;
-        g.add(mesh(box(0.88, 0.07 + y, 0.28), mat("#6b4a26", { rough: 0.95 }), 0, (0.07 + y) / 2, z));
-        g.add(mesh(box(0.8, 0.01, 0.22), mat("#5e8f86", { rough: 0.15, metal: 0.2, transparent: true, opacity: 0.85 }), 0, 0.075 + y, z, false));
-        for (let k = 0; k < 6; k++) {
-          const st = mesh(cone(0.04, 0.3 * grow, 5), mat(riceCol, { flat: true }), -0.34 + k * 0.136, 0.08 + y + 0.15 * grow, z);
-          g.add(st);
-          parts.spin.push(st);
+      const footprint = size / 2;
+      const dry = cropStage === -1;
+      const stage = Math.max(0, Math.min(2, cropStage));
+      const bed = mat("#735539", { surface: "plaster", rough: 0.95 });
+      for (const [tx, tz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const x = tx * footprint / 2, z = tz * footprint / 2;
+        g.add(mesh(box(footprint * 0.96, 0.07, footprint * 0.96), bed, x, 0.025, z));
+        if (tx === 1 && tz === -1) {
+          const hut = new THREE.Group();
+          hut.position.set(x, 0.06, z);
+          pillars(hut, footprint * 0.47, footprint * 0.46, 0.30, 0, TIMBER);
+          roof(hut, footprint * 0.77, footprint * 0.75, 0.17, 0.28, THATCH, TIMBER, false, 0.05);
+          g.add(hut);
+          continue;
+        }
+        g.add(mesh(box(footprint * 0.88, 0.016, footprint * 0.88), paddyMaterial(dry), x, 0.064, z, false));
+        for (const sign of [-1, 1]) {
+          g.add(mesh(box(footprint * 0.97, 0.073, footprint * 0.08), bed, x, 0.065, z + sign * footprint * 0.44));
+          g.add(mesh(box(footprint * 0.08, 0.073, footprint * 0.9), bed, x + sign * footprint * 0.44, 0.065, z));
         }
       }
-      // little scarecrow
-      g.add(mesh(cyl(0.012, 0.012, 0.36, 5), mat(TIMBER, { surface: "teak" }), 0.4, 0.18, 0.4));
-      g.add(mesh(cone(0.07, 0.05, 8), mat(THATCH), 0.4, 0.37, 0.4));
-      parts.top = 0.45;
+      const riceMaterial = new THREE.MeshStandardMaterial({ color: dry ? "#ae955a" : RICE_COLORS[stage], roughness: 0.6 });
+      applyWind(riceMaterial, "rice");
+      const tufts = new THREE.InstancedMesh(geo("farm-rice", riceTuftGeometry), riceMaterial, 27);
+      const matrix = new THREE.Matrix4();
+      const position = new THREE.Vector3(), scale = new THREE.Vector3();
+      const rotation = new THREE.Quaternion(), axis = new THREE.Vector3(0, 1, 0);
+      let i = 0;
+      for (const [tx, tz] of [[-1, -1], [-1, 1], [1, 1]]) {
+        for (let row = -1; row <= 1; row++) for (let col = -1; col <= 1; col++) {
+          position.set((tx * 0.5 + col * 0.26) * footprint, 0, (tz * 0.5 + row * 0.26) * footprint);
+          rotation.setFromAxisAngle(axis, i * 2.399);
+          scale.set(footprint, dry ? 0.049 : [0.13, 0.25, 0.38][stage], footprint);
+          tufts.setMatrixAt(i++, matrix.compose(position, rotation, scale));
+        }
+      }
+      tufts.position.y = 0.077;
+      tufts.receiveShadow = true;
+      g.add(tufts);
+      parts.rice = tufts;
+      parts.top = 0.49;
       break;
     }
     case "barracks": {
@@ -516,7 +566,7 @@ function batchStaticMeshes(root: THREE.Group, parts: BuildingParts, key: string)
   const moving = new Set<THREE.Object3D>([...parts.fires, ...parts.spin]);
   for (const child of root.children) {
     const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh || Array.isArray(mesh.material) || mesh.userData.wind || moving.has(mesh)) continue;
+    if (!mesh.isMesh || Array.isArray(mesh.material) || mesh.userData.wind || mesh.userData.foundation || (mesh as THREE.InstancedMesh).isInstancedMesh || moving.has(mesh)) continue;
     if (mesh.material.transparent) continue;
     const id = `${mesh.material.id}/${mesh.castShadow}/${mesh.receiveShadow}`;
     const batch = batches.get(id);
@@ -560,7 +610,7 @@ function scaffold(size: number, height: number): THREE.Group {
   return group;
 }
 
-interface Entry { group: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
+interface Entry { group: THREE.Group; rising: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
 
 function linkMask(state: any, b: any): number {
   let m = 0;
@@ -642,15 +692,26 @@ export class Buildings3D {
       const color = env.teamColor(b);
       const aiAge = b.team === "enemy" ? state.aiStates?.find((ai: { idx: number }) => ai.idx === b.aiIndex + 1)?.age : undefined;
       const age = Math.min(4, Math.max(1, aiAge ?? env.ageOf(b) ?? 1));
-      const stage = b.type === "farm" ? (b.cropStage === undefined ? 1 : b.cropStage) : 0;
+      const faction = renderFaction(b, state);
+      const stage = b.type === "farm" ? (b.depleted || b.cropAmount === 0 ? -1 : Math.max(0, Math.min(2, b.cropStage ?? 1))) : 0;
       const ageKey = b.type === "town_center" || b.type === "house" || b.type === "depot" || b.type === "stable" || b.type === "barracks" || b.type === "archery_range" || b.type === "watch_tower" || b.type === "blacksmith" || b.type === "siege_workshop" ? age : 0;
       const mask = b.type === "wall" || b.type === "gate" ? linkMask(state, b) : 0;
-      const key = `${b.type}|${color}|${ageKey}|${stage}|${mask}|${b.size || 1}`;
+      const key = `${b.type}|${faction}|${color}|${ageKey}|${stage}|${mask}|${b.size || 1}`;
       let e = this.map.get(b.id);
       if (!e || e.key !== key) {
         if (e) this.remove(e);
-        const built = buildBuilding(b.type, color, Math.min(4, age), b.size || 1, stage, mask);
+        const built = buildBuilding(b.type, color, Math.min(4, age), b.size || 1, stage, mask, faction);
         batchStaticMeshes(built.group, built.parts, key);
+        const rising = new THREE.Group();
+        if (b.type !== "farm") {
+          if (!built.group.children.some(child => child.userData.foundation)) {
+            const footing = mesh(box((b.size || 1) * 0.83, 0.055, (b.size || 1) * 0.8), mat(STONE_D, { surface: "stone", rough: 0.91 }), 0, 0.019, 0);
+            footing.userData.foundation = true;
+            built.group.add(footing);
+          }
+          for (const child of [...built.group.children]) if (!child.userData.foundation) rising.add(child);
+          built.group.add(rising);
+        }
         const ring = new THREE.LineLoop(this.ringGeo, this.ringMat);
         ring.renderOrder = 6;
         built.group.add(ring);
@@ -658,7 +719,7 @@ export class Buildings3D {
         const base = contactShadow(size * 1.56, size * 1.4);
         const scorch = contactShadow(size * 1.21, size * 1.17);
         this.group.add(base, scorch);
-        e = { group: built.group, parts: built.parts, key, ring, base, scorch, dustT: 0, smokeT: 0, fireT: 0, b };
+        e = { group: built.group, rising, parts: built.parts, key, ring, base, scorch, dustT: 0, smokeT: 0, fireT: 0, b };
         this.group.add(e.group);
         this.map.set(b.id, e);
       }
@@ -684,10 +745,16 @@ export class Buildings3D {
         e.scaffold.visible = building && e.group.visible;
         e.scaffold.position.set(cx, gy, cz);
       }
-      e.group.scale.set(1, building ? 0.25 + 0.75 * Math.max(0, b.progress) : 1, 1);
+      const progress = building ? Math.max(0, Math.min(1, b.progress)) : 1;
+      e.rising.scale.y = Math.max(0.04, progress);
+      e.rising.visible = progress > 0.025;
+      if (e.parts.rice) {
+        e.parts.rice.scale.y = Math.max(0.035, smoothstep(0.22, 1, progress));
+        e.parts.rice.visible = progress > 0.22;
+      }
       const sel = state.selectedBuildingId === b.id;
       e.ring.visible = sel;
-      if (sel) { e.ring.scale.set(size * 1.04, 1, size * 1.04); e.ring.position.y = 0.04 / Math.max(0.25, e.group.scale.y); (e.ring.material as THREE.LineBasicMaterial).opacity = 0.7 + Math.sin(t * 6) * 0.3; }
+      if (sel) { e.ring.scale.set(size * 1.04, 1, size * 1.04); e.ring.position.y = 0.04; (e.ring.material as THREE.LineBasicMaterial).opacity = 0.7 + Math.sin(t * 6) * 0.3; }
       if (!e.group.visible) continue;
 
       if (building) {
@@ -719,7 +786,8 @@ export class Buildings3D {
         l.rotation.x = Math.sin(t * 1.2 + l.userData.ph * 1.3) * 0.08;
         const halo = l.userData.halo as THREE.Sprite;
         halo.visible = scene.quality !== "low" && scene.weather.lanternBoost > 0.08;
-        halo.material.opacity = scene.weather.lanternBoost * (scene.quality === "high" ? 0.77 : 0.56);
+        halo.material.color.setHex(0xffa055).multiplyScalar(scene.quality === "high" ? 2.4 : 1);
+        halo.material.opacity = scene.weather.lanternBoost * (scene.quality === "high" ? 0.87 : 0.56);
       }
       // blacksmith chimney: rising, swelling 3D smoke puffs
       if (e.parts.chimney && !building) {
@@ -734,7 +802,7 @@ export class Buildings3D {
 
       // damage VFX: smoke < 50% HP, fire < 25% HP
       const hpk = b.hp / b.maxHp;
-      const top = gy + e.parts.top * e.group.scale.y;
+      const top = gy + e.parts.top * (b.type === "farm" ? 1 : e.rising.scale.y);
       if (hpk < 0.5) {
         e.smokeT -= dt;
         if (e.smokeT <= 0) {

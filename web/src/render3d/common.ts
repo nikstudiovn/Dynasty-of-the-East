@@ -1,7 +1,7 @@
 // Pixel Dynasty 3D — shared constants, coordinate helpers, height field and material cache.
 // World space: 1 tile = 1 unit. Tile (tx, ty) covers x in [tx, tx+1], z in [ty, ty+1]. y is up.
 import * as THREE from "three";
-import { disposeSurfaceMaps, softMask, surfaceMaps, type Surface } from "./surfaces";
+import { disposeSurfaceMaps, softMask, bindSurface, type Surface } from "./surfaces";
 import { applyWind } from "./wind3d";
 
 /** Live map size (ES live binding): importers always see the current value after setMapSize(). */
@@ -52,14 +52,27 @@ export function fbm(x: number, y: number): number {
 
 // ---- Height field -----------------------------------------------------------
 let waterMask: Float32Array = new Float32Array(MAP_N * MAP_N);
+let foundationTiles = new Map<number, { x: number; z: number; size: number; height: number }[]>();
+let shallowMask: Float32Array = new Float32Array(MAP_N * MAP_N);
 let rockMask: Float32Array = new Float32Array(MAP_N * MAP_N);
 
 /** Rebuild the blurred water mask from the grid (called when a new map is loaded). */
-export function setWaterGrid(grid: any[][]): void {
+export function setWaterGrid(grid: any[][], seed = 0): void {
+  foundationTiles = new Map();
+  shallowMask = new Float32Array(MAP_N * MAP_N);
   const raw = new Float32Array(MAP_N * MAP_N);
   for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
     const t = grid[y]?.[x]?.terrain;
     raw[y * MAP_N + x] = t === "water" || t === "bridge" ? 1 : 0;
+  }
+  for (let z = 1; z < MAP_N - 1; z++) for (let x = 1; x < MAP_N - 1; x++) {
+    const cell = grid[z]?.[x];
+    if (!cell || cell.terrain !== "grass" || cell.res) continue;
+    const explicit = cell.waterDepth === "shallow" || (typeof cell.waterDepth === "number" && cell.waterDepth > 0);
+    const valley = fbm(x * 0.21 + seed % 79, z * 0.19 - seed % 53);
+    const bog = hash2(Math.floor(x / 9) + seed % 29, Math.floor(z / 9));
+    const awayFromSpawns = cornerBlend(x + 0.5, z + 0.5) > 0.98;
+    if (explicit || (awayFromSpawns && bog > 0.55 && valley > 0.66)) shallowMask[z * MAP_N + x] = 1;
   }
   waterMask = raw;
   const rock = new Float32Array(MAP_N * MAP_N);
@@ -107,15 +120,70 @@ export function wetness(x: number, z: number): number { return smoothstep(0.18, 
 /** 0 off the ridges, 1 on solid rock (highland_passes). */
 export function rockiness(x: number, z: number): number { return smoothstep(0.2, 0.85, maskAt(rockMask, x, z)); }
 
-/** Gentle rolling hills (kept low so the y=0 ground-plane raycast stays tile-accurate). */
-export function terrainHeight(x: number, z: number): number {
-  const hills = (fbm(x * 0.16, z * 0.16) - 0.35) * 0.42 + Math.sin(x * 0.31 + 1.3) * Math.cos(z * 0.27 - 0.4) * 0.07;
+function cornerBlend(x: number, z: number): number {
+  const margin = Math.round(MAP_N * 0.12) + 1, far = MAP_N - margin;
+  return smoothstep(4.6, 9.2, Math.hypot(Math.min(Math.abs(x - margin), Math.abs(x - far)),
+    Math.min(Math.abs(z - margin), Math.abs(z - far))));
+}
+
+export function shallowAt(x: number, z: number): number {
+  return smoothstep(0.24, 0.8, maskAt(shallowMask, x, z));
+}
+
+function naturalHeight(x: number, z: number): number {
+  const hills = (fbm(x * 0.105, z * 0.105) - 0.32) * 0.86 +
+    (fbm(x * 0.39 + 13, z * 0.39 - 6) - 0.5) * 0.16;
   const edge = Math.min(x, z, MAP_N - x, MAP_N - z);
-  const rim = smoothstep(2.5, 0, edge) * 0.25; // valley rim rises a little at the map edge
-  const w = wetness(x, z);
-  const rk = rockiness(x, z);
-  const peak = rk > 0 ? rk * (0.9 + fbm(x * 0.55 + 3, z * 0.55 + 7) * 0.9) : 0; // mountain ridges (kept < ~1.8)
-  return Math.max(-0.05, hills) * (1 - w) + rim - w * 0.48 + peak;
+  const rim = smoothstep(2.5, 0, edge) * 0.24;
+  const w = wetness(x, z), rock = rockiness(x, z);
+  const relief = cornerBlend(x, z);
+  const peak = rock > 0 ? rock * (0.9 + fbm(x * 0.55 + 3, z * 0.55 + 7) * 0.9) : 0;
+  const land = 0.07 + (Math.max(-0.06, hills) + peak + rim) * relief;
+  const shallow = shallowAt(x, z);
+  return (land * (1 - shallow) - shallow * 0.155) * (1 - w) - w * 0.63;
+}
+
+export function setFoundations(buildings: readonly { tx: number; ty: number; size?: number; hp?: number; type?: string }[]): void {
+  foundationTiles.clear();
+  for (const b of buildings) {
+    if ((b.hp ?? 1) <= 0) continue;
+    const size = b.size || 1;
+    const height = (naturalHeight(b.tx, b.ty) + naturalHeight(b.tx + size, b.ty) +
+      naturalHeight(b.tx, b.ty + size) + naturalHeight(b.tx + size, b.ty + size) +
+      naturalHeight(b.tx + size / 2, b.ty + size / 2)) / 5;
+    const pad = { x: b.tx, z: b.ty, size, height: Math.max(0.025, height) };
+    for (let z = b.ty - 1; z <= b.ty + size; z++) for (let x = b.tx - 1; x <= b.tx + size; x++) {
+      const key = z * (MAP_N + 4) + x;
+      const nearby = foundationTiles.get(key);
+      if (nearby) nearby.push(pad);
+      else foundationTiles.set(key, [pad]);
+    }
+  }
+}
+
+export function terrainHeight(x: number, z: number): number {
+  const natural = naturalHeight(x, z);
+  const pads = foundationTiles.get(Math.floor(z) * (MAP_N + 4) + Math.floor(x));
+  if (!pads) return natural;
+  let blend = 0, height = natural;
+  for (const pad of pads) {
+    const distance = Math.max(pad.x - x, x - pad.x - pad.size, pad.z - z, z - pad.z - pad.size);
+    const weight = 1 - smoothstep(0, 0.85, distance);
+    if (weight > blend) { blend = weight; height = pad.height; }
+  }
+  return THREE.MathUtils.lerp(natural, height, blend);
+}
+
+export type Faction = "dai_viet" | "trung_nguyen" | "bac_cuong";
+const factions: Faction[] = ["dai_viet", "trung_nguyen", "bac_cuong"];
+export function renderFaction(entity: any, state: any): Faction {
+  const explicit = entity.factionId ?? entity.faction?.id ?? entity.faction;
+  if (factions.includes(explicit)) return explicit;
+  if (entity.team === "player") return factions.includes(state.factionId) ? state.factionId : "dai_viet";
+  const ai = Math.max(0, entity.aiIndex ?? 0);
+  const record = state.aiStates?.find((item: { idx: number }) => item.idx === ai + 1);
+  const faction = record?.factionId ?? record?.faction;
+  return factions.includes(faction) ? faction : factions[(ai + 1) % factions.length];
 }
 
 /** Height a unit stands on (bridges are arched decks above the water). */
@@ -159,7 +227,7 @@ export function releaseRenderAssets(): void {
   lightMaterials.clear();
   disposeSurfaceMaps();
 }
-export interface MatOpts { metal?: number; rough?: number; emissive?: string; emissiveIntensity?: number; transparent?: boolean; opacity?: number; side?: THREE.Side; flat?: boolean; surface?: Surface; flagWind?: boolean; lantern?: boolean; }
+export interface MatOpts { metal?: number; rough?: number; emissive?: string; emissiveIntensity?: number; transparent?: boolean; opacity?: number; side?: THREE.Side; flat?: boolean; surface?: Surface; flagWind?: boolean; lantern?: boolean; rim?: string; }
 export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial {
   const key = color + JSON.stringify(o);
   let m = matCache.get(key) as THREE.MeshStandardMaterial | undefined;
@@ -170,13 +238,24 @@ export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial 
       transparent: !!o.transparent, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide, flatShading: !!o.flat
     });
     if (o.surface) {
-      const maps = surfaceMaps(o.surface);
-      m.map = maps.map;
-      m.bumpMap = maps.bumpMap;
-      m.roughnessMap = maps.roughnessMap;
-      m.bumpScale = o.surface === "thatch" ? 0.024 : 0.015;
-      if (o.surface === "lattice") m.emissiveMap = maps.map;
-      else if (o.surface !== "silk") applyWetness(m, 0.26);
+      bindSurface(m, o.surface);
+      m.bumpScale = o.surface === "thatch" ? 0.024 : o.surface === "scale" ? 0.021 : 0.015;
+      if (o.surface !== "lattice" && o.surface !== "silk") applyWetness(m, 0.26);
+    }
+    if (o.rim) {
+      const tint = new THREE.Color(o.rim);
+      const previous = m.onBeforeCompile;
+      const program = m.customProgramCacheKey();
+      m.onBeforeCompile = (shader, renderer) => {
+        previous.call(m!, shader, renderer);
+        shader.uniforms.uFactionRim = { value: tint };
+        shader.fragmentShader = "uniform vec3 uFactionRim;\n" + shader.fragmentShader.replace(
+          "#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+          float grazing = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+          totalEmissiveRadiance += uFactionRim * grazing * 0.24;`
+        );
+      };
+      m.customProgramCacheKey = () => `${program}|faction-rim`;
     }
     if (o.flagWind) applyWind(m, "flag");
     if (o.lantern) lightMaterials.set(m, o.emissiveIntensity ?? 1);

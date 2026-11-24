@@ -5,12 +5,12 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { FX3D } from "./fx3d";
 import { WaterSurface } from "./water3d";
-import { applyWind, chopWind } from "./wind3d";
-import { surfaceMaps } from "./surfaces";
+import { applyWind, chopWind, grassUnits } from "./wind3d";
+import { bindSurface } from "./surfaces";
 import { shakeX } from "../graphics/villagerActions";
 import type { Scene3D } from "./scene3d";
 import {
-  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, rockiness, setWaterGrid, archLift, mat, Env3D, applyWetness
+  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, shallowAt, rockiness, setWaterGrid, setFoundations, archLift, mat, Env3D, applyWetness
 } from "./common";
 
 /** Terrain quad density: 3 per tile, 2 per tile on 96×96 to keep vertex count mobile-friendly. */
@@ -60,7 +60,7 @@ class InstLayer {
   private readonly e = new THREE.Euler(0, 0, 0, "YXZ");
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
-  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64, private shadows = true, private windShape?: "stalk" | "leaf" | "rice" | "crown") {
+  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64, private shadows = true, private windShape?: "stalk" | "leaf" | "rice" | "crown" | "grass") {
     if (windShape) applyWind(material, windShape);
     this.mesh = this.make(capacity);
     if (windShape && shadows) {
@@ -175,7 +175,7 @@ function leafTuftGeometry(): THREE.BufferGeometry {
 }
 
 /** Rice tuft (height 1): 5 thin blades + a drooping grain head. */
-function riceTuftGeometry(): THREE.BufferGeometry {
+export function riceTuftGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   for (let k = 0; k < 5; k++) {
     const b = new THREE.BoxGeometry(0.012, 1, 0.005);
@@ -189,6 +189,26 @@ function riceTuftGeometry(): THREE.BufferGeometry {
   const merged = mergeGeometries(parts, false)!;
   parts.forEach(part => part.dispose());
   return merged;
+}
+
+export const RICE_COLORS = ["#8fe08a", "#5cb83c", "#e2b23a"];
+export function paddyMaterial(dry = false): THREE.MeshStandardMaterial {
+  return dry ? mat("#766347", { rough: 0.92, surface: "plaster" }) : mat("#5f7046", { rough: 0.22, metal: 0.15 });
+}
+
+function grassGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const angle = i * 2.399, h = 0.42 + hash2(i, 27) * 0.58;
+    const x = Math.cos(angle), z = Math.sin(angle);
+    positions.push(x * 0.10 - z * 0.048, 0, z * 0.10 + x * 0.048,
+      x * 0.31, h, z * 0.31,
+      x * 0.10 + z * 0.048, 0, z * 0.10 - x * 0.048);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 function lotusBloomGeometry(): THREE.BufferGeometry {
@@ -236,10 +256,18 @@ export class Terrain3D {
   private bunds: InstLayer;
   private paddy: InstLayer;
   private rocks: InstLayer;
+  private angularRocks: InstLayer;
   private crystals: InstLayer;
   private moss: InstLayer;
   private crowns: InstLayer;
   private branches: InstLayer;
+  private grass: InstLayer;
+  private flowers: InstLayer;
+  private pebbles: InstLayer;
+  private occupied = new Set<number>();
+  private foundationKey: string | null = null;
+  private decorationQuality = "";
+  private readonly previousUnits = new Map<number, { x: number; y: number; force: number }>();
   private readonly crystalMat: THREE.MeshStandardMaterial;
   private footprint: THREE.Mesh;
   private footEdges: THREE.LineSegments;
@@ -255,8 +283,10 @@ export class Terrain3D {
     const bundG = new THREE.BoxGeometry(1, 0.07, 0.09); bundG.translate(0, 0.035, 0);
     this.bunds = new InstLayer(this.res, bundG, mat("#6f5430", { rough: 0.95 }), 200);
     const paddyG = new THREE.BoxGeometry(0.9, 0.02, 0.9); paddyG.translate(0, 0.01, 0);
-    this.paddy = new InstLayer(this.res, paddyG, mat("#5f7046", { rough: 0.22, metal: 0.15 }), 60, false);
+    this.paddy = new InstLayer(this.res, paddyG, paddyMaterial(), 60, false);
     this.rocks = new InstLayer(this.res, new THREE.DodecahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true }), 160);
+    this.angularRocks = new InstLayer(this.res, new THREE.IcosahedronGeometry(0.22, 0),
+      new THREE.MeshStandardMaterial({ roughness: 0.84, flatShading: true }), 160);
     const crysG = new THREE.OctahedronGeometry(0.08, 0); crysG.scale(1, 2.2, 1);
     this.crystalMat = new THREE.MeshStandardMaterial({ color: 0xf5b830, metalness: 0.85, roughness: 0.22, emissive: 0x7a4200, emissiveIntensity: 0.6, flatShading: true });
     this.crystals = new InstLayer(this.res, crysG, this.crystalMat, 200);
@@ -267,6 +297,12 @@ export class Terrain3D {
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.84, flatShading: true }), 60, true, "crown");
     const branch = new THREE.CylinderGeometry(0.026, 0.053, 1, 6).translate(0, 0.5, 0);
     this.branches = new InstLayer(this.res, branch, new THREE.MeshStandardMaterial({ color: "#75543c", roughness: 0.88 }), 30);
+    this.grass = new InstLayer(this.res, grassGeometry(),
+      new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.93 }), 200, false, "grass");
+    this.flowers = new InstLayer(this.res, new THREE.IcosahedronGeometry(0.085, 0),
+      new THREE.MeshStandardMaterial({ roughness: 0.77 }), 120, false);
+    this.pebbles = new InstLayer(this.res, new THREE.DodecahedronGeometry(0.11, 0),
+      new THREE.MeshStandardMaterial({ roughness: 0.9 }), 120, false);
     this.footprint = new THREE.Mesh(new THREE.BoxGeometry(1, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     this.footEdges = new THREE.LineSegments(new THREE.EdgesGeometry(this.footprint.geometry), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, fog: false }));
     this.footprint.add(this.footEdges);
@@ -280,7 +316,8 @@ export class Terrain3D {
   // -------------------------------------------------------------------------
   private build(state: any): void {
     const grid = state.grid;
-    setWaterGrid(grid);
+    setWaterGrid(grid, state.mapSeed || 0);
+    this.refreshFoundations(state);
     for (let z = 0; z <= MAP_N; z++) for (let x = 0; x <= MAP_N; x++) this.heightCache[z * (MAP_N + 1) + x] = terrainHeight(x, z);
     if (this.terrain) {
       this.group.remove(this.terrain); this.terrain.geometry.dispose(); (this.terrain.material as THREE.Material).dispose();
@@ -290,6 +327,74 @@ export class Terrain3D {
     this.buildLake(grid);
     this.buildBridges(grid);
     this.resSig = -1;
+  }
+
+  private refreshFoundations(state: any): boolean {
+    const buildings = state.buildings || [];
+    const key = buildings.map((b: any) => `${b.tx}/${b.ty}/${b.size || 1}`).join("|");
+    if (key === this.foundationKey && this.gridRef && this.terrain) return false;
+    this.foundationKey = key;
+    setFoundations(buildings);
+    this.occupied.clear();
+    for (const b of buildings) {
+      const size = b.size || 1;
+      for (let z = b.ty; z < b.ty + size; z++) for (let x = b.tx; x < b.tx + size; x++) this.occupied.add(z * MAP_N + x);
+    }
+    return true;
+  }
+
+  private decorate(state: any, quality: Scene3D["quality"]): void {
+    const grass: Item[] = [], flowers: Item[] = [], pebbles: Item[] = [];
+    const greens: THREE.Color[] = [], petals: THREE.Color[] = [], stones: THREE.Color[] = [];
+    const seed = state.mapSeed || 0;
+    const density = quality === "high" ? 0.36 : quality === "medium" ? 0.19 : 0.075;
+    for (let z = 0; z < MAP_N; z++) for (let x = 0; x < MAP_N; x++) {
+      const cell = state.grid[z]?.[x];
+      if (cell?.terrain !== "grass" || cell.res || this.occupied.has(z * MAP_N + x)) continue;
+      const rand = hash2(x + seed % 257, z);
+      if (rand >= density) continue;
+      const px = x + 0.19 + hash2(x, z + 17) * 0.61, pz = z + 0.19 + hash2(x - 23, z) * 0.61;
+      if (wetness(px, pz) > 0.09 || shallowAt(px, pz) > 0.25) continue;
+      const h = terrainHeight(px, pz);
+      const item = { x: px, y: h, z: pz, ry: rand * 19, sx: 0.41, sy: 0.18 + rand * 0.32, sz: 0.43, tx: x, ty: z, sway: rand };
+      grass.push(item);
+      greens.push(new THREE.Color(rand < density * 0.45 ? "#6d873e" : "#a6aa5d"));
+      if (quality !== "low" && rand < density * 0.34) {
+        flowers.push({ ...item, x: px + 0.12, y: h + 0.10, sx: 0.55, sy: 0.83, sz: 0.62 });
+        petals.push(new THREE.Color(hash2(z, x + 43) > 0.45 ? "#dfb881" : "#e795a1"));
+      } else if (rand < density * 0.52) {
+        pebbles.push({ ...item, x: px - 0.11, y: h + 0.018, sx: 0.88, sy: 0.45, sz: 0.72 });
+        stones.push(new THREE.Color("#8c8672").multiplyScalar(0.85 + rand));
+      }
+    }
+    this.grass.set(grass, greens);
+    this.flowers.set(flowers, petals);
+    this.pebbles.set(pebbles, stones);
+  }
+
+  private updateGrassUnits(state: any, target: THREE.Vector3): void {
+    const live = new Set<number>();
+    const nearby: { x: number; y: number; force: number; distance: number }[] = [];
+    for (const u of state.units || []) {
+      if (u.garrisoned || u.hp <= 0) continue;
+      const x = u.x, y = u.y;
+      if (u.team !== "player" && state.fog[Math.floor(y)]?.[Math.floor(x)] !== 2) continue;
+      const distance = (x - target.x) ** 2 + (y - target.z) ** 2;
+      if (distance > 23 ** 2) continue;
+      const prev = this.previousUnits.get(u.id);
+      const motion = prev ? Math.hypot(x - prev.x, y - prev.y) : 0;
+      const force = Math.max(Math.min(1, motion * 34), (prev?.force || 0) * 0.81);
+      this.previousUnits.set(u.id, { x, y, force });
+      live.add(u.id);
+      if (force > 0.025) nearby.push({ x, y, force, distance });
+    }
+    for (const id of this.previousUnits.keys()) if (!live.has(id)) this.previousUnits.delete(id);
+    nearby.sort((a, b) => a.distance - b.distance);
+    grassUnits.value.forEach((slot, i) => {
+      const unit = nearby[i];
+      if (unit) slot.set(unit.x, unit.y, 0, unit.force);
+      else slot.setScalar(0);
+    });
   }
 
   private pathSegments(state: any): number[][] {
@@ -325,9 +430,9 @@ export class Terrain3D {
     const pos = g.getAttribute("position");
     const col = new Float32Array(pos.count * 3);
     const segs = this.pathSegments(state);
-    const cMeadow = new THREE.Color("#6f9a34"), cMoss = new THREE.Color("#3f6b25"), cSun = new THREE.Color("#9cb84a");
+    const cMeadow = new THREE.Color("#7c974c"), cMoss = new THREE.Color("#485e35"), cSun = new THREE.Color("#abb76b");
     const cSand = new THREE.Color("#cdb27a"), cBed = new THREE.Color("#2c4a3c"), cDirt = new THREE.Color("#8a6a45"), cCobble = new THREE.Color("#a5927a");
-    const cForest = new THREE.Color("#2f5420"), cGravel = new THREE.Color("#7a7468"), cMud = new THREE.Color("#6b5a34");
+    const cForest = new THREE.Color("#3b5035"), cGravel = new THREE.Color("#7a7468"), cMud = new THREE.Color("#756044");
     const cRock = new THREE.Color("#6d6a66"), cRockDark = new THREE.Color("#4a4743"), cSnow = new THREE.Color("#e7ecee");
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
@@ -337,9 +442,9 @@ export class Terrain3D {
       const n = fbm(x * 0.35, z * 0.35);
       c.copy(cMoss).lerp(cMeadow, smoothstep(0.25, 0.7, n)).lerp(cSun, smoothstep(0.05, 0.3, h) * 0.55);
       const cell = grid[Math.floor(z)]?.[Math.floor(x)];
-      if (cell?.res === "wood") c.lerp(cForest, 0.45);
-      else if (cell?.res === "gold" || cell?.res === "stone") c.lerp(cGravel, 0.35);
-      else if (cell?.res === "food") c.lerp(cMud, 0.3);
+      if (cell?.res === "wood") c.lerp(cForest, 0.24);
+      else if (cell?.res === "gold" || cell?.res === "stone") c.lerp(cGravel, 0.24);
+      else if (cell?.res === "food") c.lerp(cMud, 0.18);
       let d = 9;
       for (const s of segs) {
         if (Math.abs(s[0] - x) > 2 && Math.abs(s[2] - x) > 2) continue;
@@ -358,6 +463,7 @@ export class Terrain3D {
       }
       const w = wetness(x, z);
       if (w > 0) c.lerp(cSand, smoothstep(0, 0.35, w) * 0.9).lerp(cMud, smoothstep(0.25, 0.6, w) * 0.7).lerp(cBed, smoothstep(0.45, 0.9, w));
+      c.lerp(cMud, shallowAt(x, z) * 0.65);
       const out = Math.max(0, -x, -z, x - MAP_N, z - MAP_N);
       if (out > 0) c.lerp(cMoss, Math.min(1, out * 0.3)).multiplyScalar(Math.max(0.55, 1 - out * 0.12));
       col.set([c.r, c.g, c.b], i * 3);
@@ -366,8 +472,8 @@ export class Terrain3D {
     g.computeVertexNormals();
     const uv = g.getAttribute("uv");
     for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) * 0.7, pos.getZ(i) * 0.7);
-    const maps = surfaceMaps("plaster");
-    const ground = new THREE.MeshStandardMaterial({ vertexColors: true, map: maps.map, bumpMap: maps.bumpMap, bumpScale: 0.016, roughness: 0.92 });
+    const ground = new THREE.MeshStandardMaterial({ vertexColors: true, bumpScale: 0.016, roughness: 0.92 });
+    bindSurface(ground, "plaster");
     applyWetness(ground, 0.32);
     const me = new THREE.Mesh(g, ground);
     me.receiveShadow = true;
@@ -378,16 +484,17 @@ export class Terrain3D {
   // -------------------------------------------------------------------------
   private buildWaterMesh(grid: any[][]): THREE.Mesh | null {
     const isW = (x: number, y: number) => { const t = grid[y]?.[x]?.terrain; return t === "water" || t === "bridge"; };
-    const D = 3, pos: number[] = [], idx: number[] = [], depths: number[] = [], piers: number[] = [];
+    const D = 3, pos: number[] = [], idx: number[] = [], depths: number[] = [], piers: number[] = [], shallows: number[] = [];
     for (let y = -1; y <= MAP_N; y++) for (let x = -1; x <= MAP_N; x++) {
       let near = false;
-      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) near = isW(x + dx, y + dy);
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1 && !near; dx++) near = isW(x + dx, y + dy) || shallowAt(x + dx + 0.5, y + dy + 0.5) > 0.5;
       if (!near) continue;
       const base = pos.length / 3;
       for (let j = 0; j <= D; j++) for (let i = 0; i <= D; i++) {
         const px = x + i / D, pz = y + j / D;
         pos.push(px, WATER_LEVEL, pz);
         depths.push(WATER_LEVEL - terrainHeight(px, pz));
+        shallows.push(shallowAt(px, pz) * (1 - wetness(px, pz)));
         let dist = 1;
         for (let bz = y - 1; bz <= y + 1; bz++) for (let bx = x - 1; bx <= x + 1; bx++) {
           const cell = grid[bz]?.[bx];
@@ -409,6 +516,7 @@ export class Terrain3D {
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute("aDepth", new THREE.Float32BufferAttribute(depths, 1));
     g.setAttribute("aPier", new THREE.Float32BufferAttribute(piers, 1));
+    g.setAttribute("aShallow", new THREE.Float32BufferAttribute(shallows, 1));
     g.setIndex(idx);
     this.waterSurface = new WaterSurface();
     const me = new THREE.Mesh(g, this.waterSurface.material);
@@ -583,20 +691,64 @@ export class Terrain3D {
     const grid = state.grid, fog = state.fog;
     const stalks: Item[] = [], leaves: Item[] = [], rice: Item[] = [], bunds: Item[] = [], paddy: Item[] = [], rocks: Item[] = [], crys: Item[] = [], moss: Item[] = [];
     const crowns: Item[] = [], branches: Item[] = [], crownColors: THREE.Color[] = [];
+    const angular: Item[] = [], angularColors: THREE.Color[] = [];
+    const grouped = new Set<number>();
+    const seed = state.mapSeed || 0;
     const rockCol: THREE.Color[] = [], riceCol: THREE.Color[] = [];
-    const RICE = [new THREE.Color("#8fe08a"), new THREE.Color("#5cb83c"), new THREE.Color("#e2b23a")];
+    const RICE = RICE_COLORS.map(color => new THREE.Color(color));
     for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
       const c = grid[y][x];
       if (!c.res || (fog[y]?.[x] ?? 0) === 0) continue;
       const h = (wx: number, wz: number) => terrainHeight(wx, wz);
       const amt = Math.max(0.55, Math.min(1, (c.resAmt || 200) / 260));
+      if (grouped.has(y * MAP_N + x)) continue;
+      const clusterable = c.res === "wood" || c.res === "gold" || c.res === "stone";
+      const clusterSeed = hash2(x + seed % 97, y + 17);
+      const large = clusterable && (c.resourceSize === 2 || clusterSeed > (c.res === "wood" ? 0.78 : 0.69)) &&
+        [[1, 0], [0, 1], [1, 1]].every(([dx, dy]) =>
+          grid[y + dy]?.[x + dx]?.res === c.res && (fog[y + dy]?.[x + dx] ?? 0) > 0 && !grouped.has((y + dy) * MAP_N + x + dx));
+      if (large) {
+        grouped.add(y * MAP_N + x + 1); grouped.add((y + 1) * MAP_N + x); grouped.add((y + 1) * MAP_N + x + 1);
+        const px = x + 1, pz = y + 1, base = h(px, pz);
+        const item = { x: px, y: base, z: pz, ry: clusterSeed * TAU, sx: 1, sy: 1, sz: 1, tx: x, ty: y, sway: 0 };
+        if (c.res === "wood") {
+          branches.push({ ...item, sx: 4.2, sy: 2.65, sz: 4.2 });
+          for (let i = 0; i < 8; i++) {
+            const a = i * 2.399;
+            const dx = Math.cos(a), dz = Math.sin(a);
+            crowns.push({ ...item, x: px + dx * 0.60, z: pz + dz * 0.60, y: base + 1.75 + i * 0.12, sx: 2.9, sy: 1.8, sz: 2.9 });
+            crownColors.push(new THREE.Color(i % 2 ? "#50723d" : "#315133"));
+            angular.push({ ...item, x: px + dx * 0.32, z: pz + dz * 0.32, y: base + 0.04, ry: -a, sx: 2.2, sy: 0.3, sz: 0.42 });
+            angularColors.push(new THREE.Color("#6d5438"));
+          }
+        } else {
+          const isGold = c.res === "gold";
+          for (let i = 0; i < 8; i++) {
+            const a = i * 2.399 + item.ry, radius = 0.37 + hash2(i, y) * 0.44;
+            const rx = px + Math.cos(a) * radius, rz = pz + Math.sin(a) * radius;
+            const value = 1.06 + hash2(x, i + y) * 1.34;
+            angular.push({ ...item, x: rx, y: h(rx, rz) + 0.11, z: rz, ry: a, sx: value, sy: value * 0.71, sz: value * 0.91 });
+            angularColors.push(new THREE.Color(isGold ? "#675748" : "#8e9394").multiplyScalar(0.83 + hash2(i, x) * 0.31));
+            if (isGold) for (let j = 0; j < 3; j++) crys.push({ ...item, x: rx + j * 0.12, y: h(rx, rz) + 0.19 + j * 0.056, z: rz - j * 0.05, ry: a + j, tl: 0.24 + j * 0.17, sx: 1.28, sy: 1.25 + j * 0.21, sz: 1.12 });
+            else moss.push({ ...item, x: rx - 0.07, y: h(rx, rz) + 0.26, z: rz, sx: 1.38, sy: 0.77, sz: 1.3 });
+          }
+        }
+        continue;
+      }
       if (c.res === "wood") {
-        const seed = hash2(x + 43, y - 25);
-        if (seed > 0.89) {
+        const treeSeed = hash2(x + 43 + seed % 101, y - 25);
+        if (treeSeed > 0.48) {
+          const seed = treeSeed;
           const px = x + 0.5, pz = y + 0.5, base = h(px, pz);
-          const peach = seed > 0.95;
+          const peach = seed > 0.86;
+          const grove = seed < 0.69;
           const tree = { x: px, y: base, z: pz, ry: seed * TAU, sx: 1, sy: 1.4, sz: 1, tx: x, ty: y, sway: seed };
           branches.push(tree);
+          if (grove) for (const side of [-1, 1]) {
+            branches.push({ ...tree, x: px + side * 0.28, z: pz - 0.11, sy: 0.82 });
+            crowns.push({ ...tree, x: px + side * 0.28, y: base + 0.68, z: pz - 0.11, sx: 1.2, sy: 0.92, sz: 1 });
+            crownColors.push(new THREE.Color("#50703f"));
+          }
           for (let b = 0; b < 4; b++) {
             const angle = b * 2.4;
             const offset = peach ? 0.23 : 0.30 - b * 0.055;
@@ -646,8 +798,9 @@ export class Terrain3D {
         for (let k = 0; k < 3; k++) {
           const px = x + 0.3 + hash2(x + k, y * 2) * 0.4, pz = y + 0.3 + hash2(x * 2, y + k) * 0.4;
           const s = (k === 0 ? 1.55 : 1) * (0.85 + hash2(x + k * 3, y) * 0.4) * amt;
-          rocks.push({ x: px, y: h(px, pz) + 0.08 * s, z: pz, ry: hash2(k, x) * 6, sx: s, sy: s * 0.8, sz: s, tx: x, ty: y, sway: 0 });
-          rockCol.push(new THREE.Color(gold ? "#4d4740" : "#8d949c").multiplyScalar(0.85 + hash2(x, y + k) * 0.3));
+          const rockShape = hash2(x + k + seed % 57, y) > 0.48;
+          (rockShape ? angular : rocks).push({ x: px, y: h(px, pz) + 0.08 * s, z: pz, ry: hash2(k, x) * 6, sx: s, sy: s * 0.8, sz: s, tx: x, ty: y, sway: 0 });
+          (rockShape ? angularColors : rockCol).push(new THREE.Color(gold ? "#4d4740" : "#8d949c").multiplyScalar(0.85 + hash2(x, y + k) * 0.3));
           if (!gold) {
             // moss cushions on top of the boulder
             moss.push({ x: px + 0.02, y: h(px, pz) + 0.08 * s + 0.13 * s, z: pz - 0.02, ry: 0, sx: s * 0.9, sy: s, sz: s * 0.9, tx: x, ty: y, sway: 0 });
@@ -666,6 +819,7 @@ export class Terrain3D {
     this.crowns.set(crowns, crownColors);
     this.branches.set(branches);
     this.stalks.set(stalks); this.leaves.set(leaves); this.rice.set(rice, riceCol); this.bunds.set(bunds); this.paddy.set(paddy);
+    this.angularRocks.set(angular, angularColors);
     this.rocks.set(rocks, rockCol); this.crystals.set(crys); this.moss.set(moss);
   }
 
@@ -691,7 +845,7 @@ export class Terrain3D {
     for (const g of this.koiGeos) g.dispose();
     this.koiGeos = []; this.koi = [];
     this.bridges.traverse(o => { if ((o as THREE.Mesh).geometry && o !== this.bridges) (o as THREE.Mesh).geometry.dispose(); });
-    for (const l of [this.stalks, this.leaves, this.rice, this.rocks, this.crystals, this.crowns, this.branches]) l.dispose(true);
+    for (const l of [this.stalks, this.leaves, this.rice, this.rocks, this.angularRocks, this.crystals, this.crowns, this.branches, this.grass, this.flowers, this.pebbles]) l.dispose(true);
     for (const l of [this.bunds, this.paddy, this.moss]) l.dispose(false); // cached materials
     this.footprint.geometry.dispose(); (this.footprint.material as THREE.Material).dispose();
     this.footEdges.geometry.dispose(); (this.footEdges.material as THREE.Material).dispose();
@@ -701,7 +855,27 @@ export class Terrain3D {
 
   // -------------------------------------------------------------------------
   update(state: any, env: Env3D, t: number, scene: Scene3D, fx: FX3D): void {
-    if (state.grid !== this.gridRef) { this.gridRef = state.grid; this.build(state); }
+    let terrainChanged = false;
+    if (state.grid !== this.gridRef) {
+      this.gridRef = state.grid;
+      this.foundationKey = null;
+      this.build(state);
+      terrainChanged = true;
+    } else if (this.refreshFoundations(state) && this.terrain) {
+      const geometry = this.terrain.geometry;
+      const vertices = geometry.getAttribute("position");
+      for (let i = 0; i < vertices.count; i++) vertices.setY(i, terrainHeight(vertices.getX(i), vertices.getZ(i)));
+      vertices.needsUpdate = true;
+      geometry.computeVertexNormals();
+      this.resSig = -1;
+      terrainChanged = true;
+    }
+    if (terrainChanged || scene.quality !== this.decorationQuality) {
+      this.decorate(state, scene.quality);
+      this.decorationQuality = scene.quality;
+    }
+    if (scene.quality !== "low") this.updateGrassUnits(state, scene.target);
+    else for (const slot of grassUnits.value) slot.setScalar(0);
     if (this.resSig === -1 || t >= this.nextResourceScan) {
       this.nextResourceScan = t + 0.12;
       const sig = this.resourceSignature(state);
