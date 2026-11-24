@@ -33,6 +33,11 @@
     <string>UIInterfaceOrientationLandscapeLeft</string>
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
+  <key>UISupportedInterfaceOrientations~ipad</key>
+  <array>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
   <key>NSLocalNetworkUsageDescription</key>
   <string>Pixel Dynasty uses your local Wi-Fi network to discover and connect nearby players for LAN skirmish matches.</string>
   <key>NSBonjourServices</key>
