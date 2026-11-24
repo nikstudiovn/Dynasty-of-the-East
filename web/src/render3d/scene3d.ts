@@ -1,10 +1,11 @@
 // Pixel Dynasty 3D — WebGL2 renderer, golden-hour lighting and the 45° perspective RTS camera.
 import * as THREE from "three";
 import { MAP_N, isoToTile, tileToIso, clamp } from "./common";
+import { Weather3D, type AtmosphereMode } from "./weather3d";
 
 const HAZE = 0xcbb998;
 const SUN_OFFSET = new THREE.Vector3(-15, 19, -3);
-const SHADOW_R = 22;
+const SHADOW_R = 28;
 
 /** Gradient sky dome: warm pale horizon haze -> soft jade-blue zenith, with a golden glow toward the sun. */
 function makeSky(): THREE.Mesh {
@@ -44,7 +45,9 @@ export class Scene3D {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly sun: THREE.DirectionalLight;
-  readonly hemi: THREE.HemisphereLight;
+  readonly hemi: THREE.HemisphereLihgt;
+  readonly weather = new Weather3D();
+  private lastWeatherTime = performance.now();
   readonly sky: THREE.Mesh;
   readonly target = new THREE.Vector3(MAP_N / 2, 0, MAP_N / 2);
   yaw = DEFAULT_YAW;
@@ -137,7 +140,7 @@ export class Scene3D {
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
     // shadow frustum follows the view; wider when zoomed out
-    const sr = clamp(this.dist * 0.95, 14, 30), tex = (sr * 2) / 2048;
+    const sr = SHADOW_R, tex = (sr * 2) / 2048;
     const sc = this.sun.shadow.camera;
     if (Math.abs(sc.right - sr) > 0.5) { sc.left = -sr; sc.right = sr; sc.top = sr; sc.bottom = -sr; sc.updateProjectionMatrix(); }
     const fx = Math.round(this.target.x / tex) * tex, fz = Math.round(this.target.z / tex) * tex;
@@ -145,6 +148,7 @@ export class Scene3D {
     this.sun.position.set(fx + SUN_OFFSET.x, SUN_OFFSET.y, fz + SUN_OFFSET.z);
     this.sun.target.updateMatrixWorld();
     this.sky.position.set(this.camera.position.x, 0, this.camera.position.z);
+    this.weather.update(dt, this.scene, this.sun, this.hemi, this.target.x, this.target.z);
   }
 
   private setNdc(clientX: number, clientY: number): void {
@@ -187,6 +191,10 @@ export class Scene3D {
   anchorAt(sx: number, sy: number): { x: number; z: number } {
     const g = this.groundOffset(sx, sy) || { x: 0, z: 0 };
     return { x: this.target.x + g.x * this.dist, z: this.target.z + g.z * this.dist };
+  }
+
+  cycleAtmosphere(): AtmosphereMode {
+    return this.weather.cycleMode();
   }
 
   /** Project a world point to local CSS-pixel screen coordinates. */
