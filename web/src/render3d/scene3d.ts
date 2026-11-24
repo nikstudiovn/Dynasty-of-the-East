@@ -333,5 +333,5 @@ export class Scene3D {
     this.renderer.dispose();
   }
 
-  render(): void{  if (this.quality === "high" && this.composer) { this.composer.render(); return; }{ this.renderer.render(this.scene, this.camera); }
+  render(): void{  if (this.quality === "high" && this.composer) { this.composer.render(); return; }{ this.renderer.render(this.scene, this.camera); }}
 }
