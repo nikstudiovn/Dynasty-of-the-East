@@ -2,7 +2,7 @@
 // Animals live in `state.animals` (never in `state.units`, so soldiers never auto-target them).
 import { rng } from "./valley";
 
-export type AnimalType = "deer" | "boar";
+export type AnimalType = "deer" | "boar | "goat" | "cattle" | "lion" | "wild_elephant";
 
 export interface Animal {
   id: number; type: AnimalType; x: number; y: number; hp: number; maxHp: number;
@@ -16,6 +16,10 @@ export interface Animal {
 export const ANIMAL_DEFS: Record<AnimalType, { name: string; hp: number; food: number; atk: number; walk: number; run: number; startle: number }> = {
   deer: { name: "Hươu", hp: 18, food: 140, atk: 0, walk: 0.5, run: 2.7, startle: 3.2 },
   boar: { name: "Lợn Rừng", hp: 65, food: 240, atk: 7, walk: 0.45, run: 2.5, startle: 0 },
+  goat: { name: "Dê Núi", hp: 22, food: 110, atk: 0, walk: 0.55, run: 2.5, startle: 2.8 },
+  cattle: { name: "Bò Rừng", hp: 40, food: 180, atk: 0, walk: 0.4, run: 2.0, startle: 2.4 },
+  lion: { name: "Sư Tử", hp: 95, food: 260, atk: 13, walk: 0.6, run: 3.0, startle: 0 },
+  wild_elephant: { name: "Voi Rừng", hp: 180, food: 420, atk: 18, walk: 0.38, run: 2.1, startle: 0 },
 };
 
 /** Villagers butcher a carcass this much faster than they gather ordinary food. */
@@ -60,8 +64,64 @@ export function spawnWildlife(grid: any[][], n: number, seed: number, bases: Arr
   }
   for (let b = 0; b < boars; b++) {
     const p = pick(); if (!p) break;
-    out.push(mkAnimal(nextId(), "boar", p.x + 0.5, p.y + 0.5, p.x + 0.5, p.y + 0.5));
+        out.push(mkAnimal(nextId(), "boar", p.x + 0.5, p.y + 0.5, p.x + 0.5, p.y + 0.5));
   }
+  for (const b of bases) {
+    let placed = 0;
+    for (let k = 0; k < 80 && placed < 2; k++) {
+      const ang = r() * TAU;
+      const dist = 5 + r() * 6;
+      const tx = Math.floor(b.tx + Math.cos(ang) * dist);
+      const ty = Math.floor(b.ty + Math.sin(ang) * dist);
+      const c = grid[ty]?.[tx];
+      if (!c || c.terrain !== "grass" || c.res) continue;
+      const kind: AnimalType = placed === 0 ? "goat" : "cattle";
+      const cnt = kind === "goat" ? 2 : 1;
+      for (let i = 0; i < cnt; i++) {
+        out.push(mkAnimal(nextId(), kind, tx + 0.5 + (r() - 0.5) * 1.4, ty + 0.5 + (r() - 0.5) * 1.4, tx + 0.5, ty + 0.5));
+      }
+      placed++;
+    }
+  }
+  const guards: Array<{ x: number; y: number }> = [];
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if (!grid[y]?.[x]?.treasureGuarded) continue;
+      if (guards.some((g) => Math.hypot(g.x - x, g.y - y) < 6)) continue;
+      guards.push({ x, y });
+    }
+  }
+  if (guards.length > 0) {
+    for (let i = 0; i < guards.length; i++) {
+      const g = guards[i];
+      let gx = g.x, gy = g.y;
+      for (let rad = 1; rad <= 3; rad++) {
+        let found = false;
+        for (let dy = -rad; dy <= rad && !found; dy++) {
+          for (let dx = -rad; dx <= rad && !found; dx++) {
+            const c = grid[g.y + dy]?.[g.x + dx];
+            if (c && c.terrain === "grass" && !c.res) { gx = g.x + dx; gy = g.y + dy; found = true; }
+          }
+        }
+        if (found) break;
+      }
+      const pred: AnimalType = i % 2 === 0 ? "lion" : "wild_elephant";
+      out.push(mkAnimal(nextId(), pred, gx + 0.5, gy + 0.5, gx + 0.5, gy + 0.5));
+    }
+  } else {
+    const cMin = Math.floor(n * 0.35), cMax = Math.floor(n * 0.65);
+    let spawned = 0;
+    for (let k = 0; k < 200 && spawned < 4; k++) {
+      const x = cMin + Math.floor(r() * Math.max(1, cMax - cMin));
+      const y = cMin + Math.floor(r() * Math.max(1, cMax - cMin));
+      if (!okSpot(x, y)) continue;
+      spots.push({ x, y });
+      const pred: AnimalType = spawned % 2 === 0 ? "lion" : "wild_elephant";
+      out.push(mkAnimal(nextId(), pred, x + 0.5, y + 0.5, x + 0.5, y + 0.5));
+      spawned++;
+    }
+  }
+  
   return out;
 }
 
@@ -101,7 +161,7 @@ export function damageAnimal(a: Animal, dmg: number, attacker: any): boolean {
   if (a.dead) return false;
   a.hp -= dmg;
   if (a.hp <= 0) { a.hp = 0; a.dead = true; a.aggroId = null; a.fleeT = 0; return true; }
-  if (a.type === "deer") {
+  if (ANIMAL_DEFS[a.type].atk <= 0) {
     a.fleeT = 1.6 + Math.random() * 0.9;
     if (attacker) a.heading = Math.atan2(a.y - attacker.y, a.x - attacker.x) + (Math.random() - 0.5) * 0.7;
   } else if (attacker) {
@@ -132,7 +192,7 @@ export function stepAnimals(state: any, dt: number, blocked: Blocked, hurt: (u: 
     const def = ANIMAL_DEFS[a.type];
     if (a.atkCd > 0) a.atkCd -= dt;
 
-    if (a.type === "deer") {
+    if (def.atk <= 0) {
       // startled by anyone walking close
       if (a.fleeT <= 0) {
         for (const u of state.units) {
