@@ -840,6 +840,11 @@
   }
 
   function findPath(sx, sy, gx, gy) {
+    const raw = findPathRaw(sx, sy, gx, gy);
+    return window.PDSim ? window.PDSim.smoothPath(sx, sy, raw, isTileBlocked) : raw;
+  }
+
+  function findPathRaw(sx, sy, gx, gy) {
     const startX = Math.max(0, Math.min(MAP_N - 1, Math.floor(sx)));
     const startY = Math.max(0, Math.min(MAP_N - 1, Math.floor(sy)));
     let goalX = Math.max(0, Math.min(MAP_N - 1, Math.floor(gx)));
@@ -1025,6 +1030,7 @@
     }
 
     // Units
+    if (window.PDSim) window.PDSim.relaxIdle(state.units, dt, isTileBlocked);
     for (const u of state.units) {
       const def = UNIT_DEFS[u.type];
       if (u.atkCooldown > 0) u.atkCooldown -= dt;
@@ -1055,7 +1061,8 @@
         if (u.team === "player" && u.type === "villager") mult = state.faction.vilSpeedMult;
         if (u.team === "player" && def.role === "cavalry") mult = state.faction.cavSpeedMult;
         const step = def.speed * mult * dt;
-        if (dist <= step) { u.x = next.x; u.y = next.y; u.path.shift(); }
+        if (window.PDSim) { window.PDSim.moveUnit(u, dt, def.speed * mult, state.units, isTileBlocked); }
+        else if (dist <= step) { u.x = next.x; u.y = next.y; u.path.shift(); }
         else { u.x += (dx / dist) * step; u.y += (dy / dist) * step; }
         continue;
       }
@@ -1205,6 +1212,8 @@
   // =========================================================================
   // 6. RENDERER (Watch Tower, Blacksmith Forge, Imperial Citadel, Box Select)
   // =========================================================================
+  function addDiamond(p, x, y, e) { p.moveTo(x, y - e); p.lineTo(x + TILE_W / 2 + e, y + TILE_H / 2); p.lineTo(x, y + TILE_H + e); p.lineTo(x - TILE_W / 2 - e, y + TILE_H / 2); p.closePath(); }
+
   function drawDiamond(x, y, fill, stroke) {
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -1235,6 +1244,7 @@
       ctx.ellipse(wx, wy + 1, big ? 18 : 11, 6, 0, 0, Math.PI * 2); ctx.stroke();
     }
     G.atlas.drawSprite(ctx, spr, wx, wy + 1, u.facing < 0);
+    if (u.type === "villager" && G.villager) G.villager.drawOverlay(ctx, u, wx, wy);
     if (u.hp < u.maxHp) {
       const top = wy + 1 - spr.ay, bw = big ? 24 : 18;
       ctx.fillStyle = "#111"; ctx.fillRect(wx - bw / 2, top - 4, bw, 3);
@@ -1248,6 +1258,7 @@
     const fState = state.fog[Math.min(MAP_N - 1, b.ty)]?.[Math.min(MAP_N - 1, b.tx)] ?? 0;
     if (fState === 0) return;
     const isP = b.team === "player";
+    if (b.type === "farm" && G.villager) { G.villager.drawFarm(ctx, b, state.selectedBuildingId === b.id, isP); return; }
     const age = isP ? state.age : ((state.aiStates && state.aiStates[b.aiIndex] && state.aiStates[b.aiIndex].age) || state.aiAge || 1);
     const color = teamColor(b);
     const spr = G.atlas.getSprite(b.type, color, age, 0);
@@ -1298,27 +1309,39 @@
     ctx.scale(cam.zoom, cam.zoom);
     ctx.translate(-cam.x + (cam.shake ? (Math.random() - 0.5) * cam.shake * 8 : 0), -cam.y + (cam.shake ? (Math.random() - 0.5) * cam.shake * 8 : 0));
 
+    const SEAM = GFX && GFX.seamless;
+    const fogP0 = new Path2D(), fogP1 = new Path2D();
+    if (SEAM) { SEAM.ensure(state, MAP_N); SEAM.drawBase(ctx); }
     for (let y = 0; y < MAP_N; y++) {
       for (let x = 0; x < MAP_N; x++) {
         const f = state.fog[y][x];
-        const wx = (x - y) * (TILE_W / 2);
-        const wy = (x + y) * (TILE_H / 2);
-        if (f === 0) { drawDiamond(wx, wy, "#0B0D0B", "rgba(255,255,255,0.03)"); continue; }
-        const cell = state.grid[y][x];
-        let fill = (x + y) % 2 === 0 ? "#4D7C0F" : "#45700E";
-        if (cell.terrain === "water") { drawDiamond(wx, wy, "#7C5D3B", "rgba(20, 35, 10, 0.28)"); ctx.fillStyle = "#0D5C5C"; ctx.beginPath(); ctx.moveTo(wx, wy + 2); ctx.lineTo(wx + TILE_W / 2 - 4, wy + TILE_H / 2); ctx.lineTo(wx, wy + TILE_H - 2); ctx.lineTo(wx - TILE_W / 2 + 4, wy + TILE_H / 2); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#148484"; ctx.beginPath(); ctx.moveTo(wx, wy + 5); ctx.lineTo(wx + TILE_W / 2 - 10, wy + TILE_H / 2); ctx.lineTo(wx, wy + TILE_H - 5); ctx.lineTo(wx - TILE_W / 2 + 10, wy + TILE_H / 2); ctx.closePath(); ctx.fill(); const wt = Date.now() * 0.0025 + x * 0.9 + y * 1.3; const rx = Math.sin(wt) * 3; ctx.fillStyle = "rgba(186, 230, 253, 0.45)"; ctx.fillRect(wx - 7 + rx, wy + TILE_H / 2 - 3, 6, 1.5); ctx.fillRect(wx + 2 - rx * 0.7, wy + TILE_H / 2 + 3, 5, 1.5); if ((x * 7 + y * 13) % 3 === 0) { const lx = wx - 5 + ((x % 2) * 6), ly = wy + TILE_H / 2 - 1; ctx.fillStyle = "#1A120E"; ctx.fillRect(lx - 4, ly - 2, 8, 5); ctx.fillStyle = "#22C55E"; ctx.fillRect(lx - 3, ly - 1, 6, 3); ctx.fillStyle = "#148484"; ctx.fillRect(lx + 1, ly, 2, 1); if ((x + y) % 2 === 0) { ctx.fillStyle = "#1A120E"; ctx.fillRect(lx - 3, ly - 6, 7, 5); ctx.fillStyle = "#F472B6"; ctx.fillRect(lx - 2, ly - 5, 5, 3); ctx.fillRect(lx - 3, ly - 4, 1, 2); ctx.fillRect(lx + 3, ly - 4, 1, 2); ctx.fillStyle = "#FBCFE8"; ctx.fillRect(lx - 1, ly - 6, 3, 2); ctx.fillStyle = "#FDE047"; ctx.fillRect(lx, ly - 4, 1, 2); } } }
-        else if (cell.res === "food") fill = "#65A30D";
-        if (cell.terrain !== "water" && cell.terrain !== "bridge") drawDiamond(wx, wy, fill, "rgba(20, 35, 10, 0.25)");
-        if (GFX) GFX.terrain.drawTileOverlay(ctx, wx, wy, x, y, state.grid, cell);
-        else if (cell.terrain === "bridge") drawDiamond(wx, wy, "#8B5A2B", "rgba(20, 35, 10, 0.25)");
-        if (cell.res) drawResource(wx, wy, cell.res);
-        if (f === 1) drawDiamond(wx, wy, "rgba(16, 13, 10, 0.48)", null);
+        if (f === 0) addDiamond(fogP0, (x - y) * (TILE_W / 2), (x + y) * (TILE_H / 2), 0.6);
+        else if (f === 1) addDiamond(fogP1, (x - y) * (TILE_W / 2), (x + y) * (TILE_H / 2), 0.5);
       }
     }
+    ctx.fillStyle = "#0B0D0B"; ctx.fill(fogP0);
+    for (let y = 0; y < MAP_N; y++) {
+      for (let x = 0; x < MAP_N; x++) {
+        const f = state.fog[y][x];
+        if (f === 0) continue;
+        const wx = (x - y) * (TILE_W / 2);
+        const wy = (x + y) * (TILE_H / 2);
+        const cell = state.grid[y][x];
+        let fill = (x + y) % 2 === 0 ? "#4D7C0F" : "#45700E";
+        if (cell.terrain === "water") { drawDiamond(wx, wy, "#7C5D3B", null); ctx.fillStyle = "#0D5C5C"; ctx.beginPath(); ctx.moveTo(wx, wy + 2); ctx.lineTo(wx + TILE_W / 2 - 4, wy + TILE_H / 2); ctx.lineTo(wx, wy + TILE_H - 2); ctx.lineTo(wx - TILE_W / 2 + 4, wy + TILE_H / 2); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#148484"; ctx.beginPath(); ctx.moveTo(wx, wy + 5); ctx.lineTo(wx + TILE_W / 2 - 10, wy + TILE_H / 2); ctx.lineTo(wx, wy + TILE_H - 5); ctx.lineTo(wx - TILE_W / 2 + 10, wy + TILE_H / 2); ctx.closePath(); ctx.fill(); const wt = Date.now() * 0.0025 + x * 0.9 + y * 1.3; const rx = Math.sin(wt) * 3; ctx.fillStyle = "rgba(186, 230, 253, 0.45)"; ctx.fillRect(wx - 7 + rx, wy + TILE_H / 2 - 3, 6, 1.5); ctx.fillRect(wx + 2 - rx * 0.7, wy + TILE_H / 2 + 3, 5, 1.5); if ((x * 7 + y * 13) % 3 === 0) { const lx = wx - 5 + ((x % 2) * 6), ly = wy + TILE_H / 2 - 1; ctx.fillStyle = "#1A120E"; ctx.fillRect(lx - 4, ly - 2, 8, 5); ctx.fillStyle = "#22C55E"; ctx.fillRect(lx - 3, ly - 1, 6, 3); ctx.fillStyle = "#148484"; ctx.fillRect(lx + 1, ly, 2, 1); if ((x + y) % 2 === 0) { ctx.fillStyle = "#1A120E"; ctx.fillRect(lx - 3, ly - 6, 7, 5); ctx.fillStyle = "#F472B6"; ctx.fillRect(lx - 2, ly - 5, 5, 3); ctx.fillRect(lx - 3, ly - 4, 1, 2); ctx.fillRect(lx + 3, ly - 4, 1, 2); ctx.fillStyle = "#FBCFE8"; ctx.fillRect(lx - 1, ly - 6, 3, 2); ctx.fillStyle = "#FDE047"; ctx.fillRect(lx, ly - 4, 1, 2); } } }
+        else if (cell.res === "food") fill = "#65A30D";
+        if (!SEAM && cell.terrain !== "water" && cell.terrain !== "bridge") drawDiamond(wx, wy, fill, "rgba(20, 35, 10, 0.25)");
+        if (GFX) GFX.terrain.drawTileOverlay(ctx, wx, wy, x, y, state.grid, cell);
+        else if (cell.terrain === "bridge") drawDiamond(wx, wy, "#8B5A2B", "rgba(20, 35, 10, 0.25)");
+        if (cell.res) drawResource(wx + (SEAM && GFX.villager ? GFX.villager.shakeX(x, y) : 0), wy, cell.res);
+      }
+    }
+    ctx.fillStyle = "rgba(16, 13, 10, 0.48)"; ctx.fill(fogP1);
 
     if (GFX) { GFX.atmosphere.drawFogEdges(ctx, state, MAP_N); GFX.atmosphere.drawGlows(ctx, state, performance.now()); GFX.vfx.drawGround(ctx); }
 
     if (state.buildMode && hoverTile) {
+      if (SEAM) SEAM.drawBuildGrid(ctx, hoverTile, MAP_N);
       const def = BLDG_DEFS[state.buildMode];
       const valid = canPlaceBuilding(hoverTile.tx, hoverTile.ty, def.size);
       for (let dy = 0; dy < def.size; dy++) {
@@ -1335,7 +1358,7 @@
     for (const u of state.units) if (!u.garrisoned) drawables.push({ depth: u.x + u.y, fn: () => drawUnit(u) });
     drawables.sort((a, b) => a.depth - b.depth);
     for (const d of drawables) { try { d.fn(); } catch (err) { console.error(err); } }
-    if (GFX) GFX.vfx.drawAir(ctx);
+    if (GFX) { GFX.vfx.drawAir(ctx); GFX.villager.drawParticles(ctx); }
 
     for (const p of state.projectiles) {
       const curX = p.sx + (p.tx - p.sx) * p.t;
@@ -1621,7 +1644,7 @@
       }
       spend(def.cost);
       const b = spawnBuilding("player", state.buildMode, tx, ty, 0);
-      sfxBuild(); recomputeFog(); if (state.stats) state.stats.buildingsBuilt++;
+      sfxBuild(); recomputeFog(); if (state.stats) state.stats.buildingsBuilt++; if (window.PDGfx) window.PDGfx.villager.registerBuild(b);
       showToast(`Đã xây xong ${def.name}`);
       state.buildMode = null; canvas.classList.remove("build-mode");
       state.selectedBuildingId = b.id; state.selectedIds = [];
@@ -1661,8 +1684,11 @@
         for (const v of selVils) { v.task = "gather"; v.targetTile = { tx, ty }; v.path = findPath(v.x, v.y, tx, ty); }
         sfxClick(); showToast("Nông dân đang đi khai thác...");
       } else if (!isTileBlocked(tx, ty)) {
-        for (const u of state.units.filter(x => state.selectedIds.includes(x.id))) {
-          u.task = "move"; u.targetEntityId = null; u.path = findPath(u.x, u.y, tx, ty);
+        const movers = state.units.filter(x => state.selectedIds.includes(x.id));
+        const slots = window.PDSim ? window.PDSim.formationSlots(movers, tx + 0.5, ty + 0.5, isTileBlocked) : null;
+        for (const u of movers) {
+          const slot = slots && slots.get(u.id);
+          u.task = "move"; u.targetEntityId = null; u.path = slot ? findPath(u.x, u.y, slot.x, slot.y) : findPath(u.x, u.y, tx, ty);
         }
         sfxClick();
       }
@@ -1726,8 +1752,8 @@
     if (boxSelectMode) showToast("Kéo 1 ngón tay vẽ khung để chọn nhiều quân!");
   });
 
-  document.getElementById("btn-zoom-in").addEventListener("click", () => { cam.zoom = Math.min(1.8, cam.zoom + 0.15); });
-  document.getElementById("btn-zoom-out").addEventListener("click", () => { cam.zoom = Math.max(0.6, cam.zoom - 0.15); });
+  document.getElementById("btn-zoom-in").addEventListener("click", () => { cam.zoom = Math.min(2.2, cam.zoom + 0.15); });
+  document.getElementById("btn-zoom-out").addEventListener("click", () => { cam.zoom = Math.max(0.55, cam.zoom - 0.15); });
   document.getElementById("btn-sound").addEventListener("click", e => {
     soundOn = !soundOn; e.target.textContent = soundOn ? "Âm: Bật" : "Âm: Tắt";
   }); document.getElementById("btn-music").addEventListener("click", e => { bgmOn = !bgmOn; e.target.textContent = bgmOn ? "Nhạc: Bật" : "Nhạc: Tắt"; if (bgmOn) { ensureAudio(); startBGM(); } });
@@ -1780,19 +1806,21 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
   function loop(ts) {
     const dt = Math.min(0.05, (ts - lastTime) / 1000 || 0.016);
     lastTime = ts;
-    if (state) { stepSimulation(dt); const GFX = window.PDGfx; if (GFX) { GFX.vfx.update(dt, state, cam); GFX.atmosphere.update(dt, canvas.width, canvas.height); } render(); }
+    if (state) { stepSimulation(dt); const GFX = window.PDGfx; if (GFX) { GFX.vfx.update(dt, state, cam); GFX.villager.update(dt, state); GFX.atmosphere.update(dt, canvas.width, canvas.height); } render(); }
     rafId = requestAnimationFrame(loop);
   }
 
   window.addEventListener("resize", resize); window.addEventListener("orientationchange", () => { resize(); setTimeout(resize, 150); }); window.visualViewport?.addEventListener("resize", resize);
   window.onload = () => {
     resize();
+    if (window.PDInput) window.PDInput.install({ canvas, cam, onPinchStart: () => { isDragging = false; selectionBox = null; canvas.classList.remove("dragging"); } });
+    if (window.PDGfx) window.PDGfx.villager.init({ findPath, clink: () => { playTone(1850, 0.05, "square", 0.03); playTone(2750, 0.04, "triangle", 0.02); }, thock: () => playTone(150, 0.07, "triangle", 0.05) });
     initGame();
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(loop);
   };
 })();
 </script>
-<script type="module" src="/src/graphics/index.ts"></script>
+<script type="module" src="/src/boot.ts"></script>
 </body>
 </html>
