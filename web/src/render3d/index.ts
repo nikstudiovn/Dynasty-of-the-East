@@ -7,7 +7,7 @@ import { Units3D } from "./units3d";
 import { Fog3D } from "./fog3d";
 import { FX3D } from "./fx3d";
 import { World3D } from "./world3d";
-import { Env3D, MAP_N, isoToTile, tileToIso, clamp, standHeight } from "./common";
+import { Env3D, MAP_N, setMapSize, isoToTile, tileToIso, clamp, standHeight } from "./common";
 
 export { MIN_ZOOM, MAX_ZOOM };
 
@@ -45,12 +45,28 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   const s3 = new Scene3D(canvas);
   if (!s3.renderer.capabilities.isWebGL2) throw new Error("WebGL2 unavailable");
   const fx = new FX3D();
-  const terrain = new Terrain3D();
+  let terrain = new Terrain3D();
   const buildings = new Buildings3D(fx);
   const units = new Units3D(fx);
-  const fog = new Fog3D();
-  const world = new World3D();
+  let fog = new Fog3D();
+  let world = new World3D();
   s3.scene.add(world.group, terrain.group, buildings.group, units.group, fx.group, fog.mesh);
+
+  // The size-dependent subsystems (terrain, world ridges, fog DataTexture) are rebuilt whenever the map size,
+  // type or seed changes; the old geometries / textures are disposed first so memory never leaks on iPhone.
+  let mapKey = "";
+  function ensureMap(state: any): void {
+    const n = state.mapSize || 48;
+    const key = n + "|" + (state.mapType || "river_valley") + "|" + (state.mapSeed || 0);
+    if (key === mapKey) return;
+    mapKey = key;
+    terrain.dispose(); world.dispose(); fog.dispose();
+    s3.scene.remove(terrain.group, world.group);
+    setMapSize(n);
+    s3.applyMapSize(n);
+    terrain = new Terrain3D(); world = new World3D(); fog = new Fog3D();
+    s3.scene.add(world.group, terrain.group, fog.mesh);
+  }
 
   const octx = overlayCanvas.getContext("2d") as CanvasRenderingContext2D;
   let dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -119,7 +135,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   }
 
   const api: Renderer3D = {
-    minZoom: MIN_ZOOM,
+    get minZoom() { return MIN_ZOOM; },
     maxZoom: MAX_ZOOM,
     renderer: s3.renderer,
 
@@ -131,6 +147,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         if (lastState) { buildings.clear(); units.clear(); fx.clear(); }
         lastState = state;
       }
+      if (state && state.grid && state.fog) ensureMap(state);
       s3.update(cam, d);
       if (state && state.grid && state.fog) {
         terrain.update(state, E, time);

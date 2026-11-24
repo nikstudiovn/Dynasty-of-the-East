@@ -19,7 +19,7 @@ export function placeWoodenBridges(grid: any[][]): void {
 
 /** Only water blocks movement. Bridges and land are walkable. */
 export function isTerrainBlocked(cell: any): boolean {
-  return !cell || cell.terrain === "water";
+  return !cell || cell.terrain === "water" || cell.terrain === "rock";
 }
 
 // Local tile coordinates (u along +x tile axis, v along +y tile axis) -> screen point.
@@ -131,12 +131,22 @@ function drawShore(ctx: CanvasRenderingContext2D, wx: number, wy: number, x: num
   }
 }
 
+/** Impassable highland ridge tile: a raised grey boulder block with a lit top face. */
+function drawRock(ctx: CanvasRenderingContext2D, wx: number, wy: number, x: number, y: number) {
+  const hgt = 8 + ((x * 7 + y * 13) % 5);
+  ctx.fillStyle = "#3B3835"; quad(ctx, wx, wy, 0, 0, 1, 1, 0); ctx.fill();
+  ctx.fillStyle = "#57534E"; quad(ctx, wx, wy, 0, 0, 1, 1, hgt * 0.5); ctx.fill();
+  ctx.fillStyle = (x + y) % 2 ? "#78716C" : "#6B6661"; quad(ctx, wx, wy, 0.1, 0.1, 0.9, 0.9, hgt); ctx.fill();
+  ctx.fillStyle = "#A8A29E"; quad(ctx, wx, wy, 0.25, 0.2, 0.55, 0.5, hgt + 1); ctx.fill();
+}
+
 /**
  * Per-tile overlay. Returns true when it drew the whole tile (bridge) so the caller can skip grass.
  * Call after the base tile and before resources.
  */
 export function drawTileOverlay(ctx: CanvasRenderingContext2D, wx: number, wy: number, x: number, y: number, grid: any[][], cell: any): boolean {
   if (cell.terrain === "bridge") { drawBridge(ctx, wx, wy, cell.bridge || "h"); return true; }
+  if (cell.terrain === "rock") { drawRock(ctx, wx, wy, x, y); return true; }
   if (cell.terrain !== "water") drawShore(ctx, wx, wy, x, y, grid);
   return false;
 }

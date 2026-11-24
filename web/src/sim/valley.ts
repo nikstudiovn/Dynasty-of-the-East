@@ -1,25 +1,87 @@
-// Valley generator for the 48×48 map: winding river, central lotus lake,
-// 3 arched wooden bridges and resource clusters. Pure data, no rendering.
+// Map generator for 48 / 64 / 96 tile maps and 4 map types. Pure data, no rendering.
+//   river_valley     winding river + central lotus lake crossed by 3 / 4 / 5 arched wooden bridges
+//   open_plains      no river barrier, wide open ground (fast cavalry flanking)
+//   highland_passes  impassable rock ridges dividing the map, 3 narrow mountain passes
+//   random           a deterministic seed picks the biome and varies the layout every match
+// Seed 0 reproduces the original 48x48 lotus valley exactly.
 
-export const MAP_N = 48;
+export type MapSize = 48 | 64 | 96;
+export type Biome = "river_valley" | "open_plains" | "highland_passes";
+export type MapType = Biome | "random";
+
+export const MAP_SIZES: MapSize[] = [48, 64, 96];
+export const MAP_TYPES: MapType[] = ["river_valley", "open_plains", "highland_passes", "random"];
 
 export interface ValleyCell { terrain: string; res: string | null; resAmt: number; bridge?: string }
+export interface BasePos { tx: number; ty: number; idx: number }
 
-/** Player base (town center top-left tile) and the 3 AI corners. */
-export const PLAYER_BASE = { tx: 6, ty: 6 };
-export const AI_CORNERS = [
-  { tx: 40, ty: 40, idx: 0 },
-  { tx: 40, ty: 6, idx: 1 },
-  { tx: 6, ty: 40, idx: 2 },
-];
+export function normalizeMapSize(v: any): MapSize {
+  const n = Number(v);
+  return n === 64 ? 64 : n === 96 ? 96 : 48;
+}
+export function normalizeMapType(v: any): MapType {
+  return MAP_TYPES.includes(v) ? v : "river_valley";
+}
 
-/** Rows crossed by the 3 bridges (north river, lotus lake, south river). */
-export const BRIDGE_ROWS = [9, 24, 39];
-export const LAKE = { x: 24, y: 24, rx: 5.2, ry: 4.2 };
+/** mulberry32 — small deterministic PRNG. */
+export function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-/** Centre line of the river (tile x) at a given row. */
-export function riverX(y: number): number {
-  return MAP_N / 2 + 4.5 * Math.sin(y * 0.16 + 0.6) + 1.6 * Math.sin(y * 0.41 + 2.1);
+/** Seed used for a fresh match: only "random" maps vary; the fixed archetypes keep the classic layout. */
+export function newSeedFor(type: MapType): number {
+  return type === "random" ? (1 + Math.floor(Math.random() * 0x7ffffffe)) : 0;
+}
+
+/** Resolves "random" to a concrete biome, deterministically from the seed. */
+export function resolveBiome(type: MapType, seed: number): Biome {
+  if (type !== "random") return type;
+  const r = rng((seed ^ 0x9E3779B9) >>> 0);
+  r();
+  const v = r();
+  return v < 0.4 ? "river_valley" : v < 0.7 ? "open_plains" : "highland_passes";
+}
+
+/** Corner margin and base positions (town center top-left tile, 2x2). */
+export function cornerMargin(n: number): number { return Math.round(n * 0.12); }
+export function playerBase(n: number): BasePos { const m = cornerMargin(n); return { tx: m, ty: m, idx: -1 }; }
+export function aiCorners(n: number): BasePos[] {
+  const m = cornerMargin(n), far = n - m - 2;
+  return [{ tx: far, ty: far, idx: 0 }, { tx: far, ty: m, idx: 1 }, { tx: m, ty: far, idx: 2 }];
+}
+
+/** Bridges (3 / 4 / 5) / contested clusters (4 / 6 / 10) / resource multiplier per map size. */
+export function bridgeCount(n: number): number { return n >= 96 ? 5 : n >= 64 ? 4 : 3; }
+export function clusterCount(n: number): number { return n >= 96 ? 10 : n >= 64 ? 6 : 4; }
+export function resourceScale(n: number): number { return 1 + (n - 48) / 96; } // 1, 1.17, 1.5
+/** Starting stockpile scaled for the map size. */
+export function startingResources(n: number): { food: number; wood: number; gold: number; stone: number } {
+  const k = resourceScale(n), r5 = (v: number) => Math.round((v * k) / 5) * 5;
+  return { food: r5(200), wood: r5(200), gold: r5(50), stone: r5(100) };
+}
+
+export function bridgeRowsFor(n: number): number[] {
+  const k = bridgeCount(n), a = Math.round(n * 9 / 48), b = Math.round(n * 39 / 48);
+  const rows: number[] = [];
+  for (let i = 0; i < k; i++) rows.push(Math.round(a + ((b - a) * i) / (k - 1)));
+  return rows;
+}
+
+// ---- layout of the most recently generated map ------------------------------
+interface Layout { n: number; bridgeRows: number[]; riverX: (y: number) => number }
+let layout: Layout = { n: 48, bridgeRows: bridgeRowsFor(48), riverX: (y) => 24 + 4.5 * Math.sin(y * 0.16 + 0.6) + 1.6 * Math.sin(y * 0.41 + 2.1) };
+
+function makeRiver(n: number, r: (() => number) | null): (y: number) => number {
+  const s = n / 48;
+  const p1 = r ? (r() - 0.5) * 2.4 : 0, p2 = r ? (r() - 0.5) * 2.4 : 0, amp = r ? 0.8 + r() * 0.4 : 1;
+  return (y) => n / 2 + 4.5 * s * amp * Math.sin((y * 0.16) / s + 0.6 + p1) + 1.6 * s * Math.sin((y * 0.41) / s + 2.1 + p2);
 }
 
 function hash(x: number, y: number): number {
@@ -34,22 +96,18 @@ function vnoise(x: number, y: number): number {
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-function inLake(x: number, y: number): boolean {
-  const dx = (x + 0.5 - LAKE.x) / LAKE.rx, dy = (y + 0.5 - LAKE.y) / LAKE.ry;
-  const a = Math.atan2(dy, dx);
-  const r = 1 + 0.12 * Math.sin(3 * a) + 0.08 * Math.sin(5 * a + 1);
-  return dx * dx + dy * dy < r * r;
-}
+const isWet = (t: string | undefined) => t === "water" || t === "bridge";
 
 /** Marks bridge cells: the contiguous water run through the river centre on each bridge row. */
 export function placeBridges(grid: ValleyCell[][]): void {
   const n = grid.length;
-  for (const y of BRIDGE_ROWS) {
+  const rows = layout.n === n ? layout.bridgeRows : bridgeRowsFor(n);
+  const rx = layout.n === n ? layout.riverX : makeRiver(n, null);
+  for (const y of rows) {
     if (y >= n) continue;
     const row = grid[y];
-    let seed = Math.max(0, Math.min(n - 1, Math.floor(riverX(y))));
+    let seed = Math.max(0, Math.min(n - 1, Math.floor(rx(y))));
     if (row[seed].terrain !== "water" && row[seed].terrain !== "bridge") {
-      // search the nearest water cell
       let found = -1;
       for (let d = 1; d < 8 && found < 0; d++) {
         if (row[seed - d]?.terrain === "water") found = seed - d;
@@ -68,75 +126,154 @@ export function placeBridges(grid: ValleyCell[][]): void {
   }
 }
 
-function nearWater(grid: ValleyCell[][], x: number, y: number, r: number): boolean {
+function nearBarrier(grid: ValleyCell[][], x: number, y: number, r: number): boolean {
   for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
     const t = grid[y + dy]?.[x + dx]?.terrain;
-    if (t === "water" || t === "bridge") return true;
+    if (t === "water" || t === "bridge" || t === "rock") return true;
   }
   return false;
 }
 
-/** Carves water + bridges and distributes resources. Grid must be MAP_N×MAP_N grass. */
-export function generateValley(grid: ValleyCell[][]): void {
-  const n = grid.length;
-  // 1. River (watertight between consecutive rows) + lotus lake.
+// ---- biomes -----------------------------------------------------------------
+function carveRiver(grid: ValleyCell[][], n: number, seed: number): void {
+  const r = seed ? rng(seed) : null;
+  const rx = makeRiver(n, r);
+  const s = n / 48;
+  const lake = r
+    ? { x: n / 2 + (r() - 0.5) * n * 0.06, y: n / 2 + (r() - 0.5) * n * 0.05, rx: 5.2 * s, ry: 4.2 * s }
+    : { x: 24 * s, y: 24 * s, rx: 5.2 * s, ry: 4.2 * s };
+  const inLake = (x: number, y: number) => {
+    const dx = (x + 0.5 - lake.x) / lake.rx, dy = (y + 0.5 - lake.y) / lake.ry;
+    const a = Math.atan2(dy, dx);
+    const rr = 1 + 0.12 * Math.sin(3 * a) + 0.08 * Math.sin(5 * a + 1);
+    return dx * dx + dy * dy < rr * rr;
+  };
   const W = 1.25;
   for (let y = 0; y < n; y++) {
-    const a = riverX(y), b = riverX(Math.max(0, y - 1)), c = riverX(Math.min(n - 1, y + 1));
+    const a = rx(y), b = rx(Math.max(0, y - 1)), c = rx(Math.min(n - 1, y + 1));
     const lo = Math.min(a, (a + b) / 2, (a + c) / 2) - W, hi = Math.max(a, (a + b) / 2, (a + c) / 2) + W;
     for (let x = 0; x < n; x++) {
       const cx = x + 0.5;
       if ((cx > lo && cx < hi) || inLake(x, y)) grid[y][x].terrain = "water";
     }
   }
+  let rows = bridgeRowsFor(n);
+  if (r) rows = rows.map((y, i) => (i === 0 || i === rows.length - 1 ? y : Math.max(2, Math.min(n - 3, y + Math.round((r() - 0.5) * n * 0.04)))));
+  layout = { n, bridgeRows: rows, riverX: rx };
   placeBridges(grid);
+}
 
-  const bases = [PLAYER_BASE, ...AI_CORNERS];
-  const put = (x: number, y: number, type: string, amt: number) => {
+function carveRidges(grid: ValleyCell[][], n: number, seed: number): void {
+  const r = seed ? rng(seed ^ 0x51ED270B) : null;
+  const s = n / 48;
+  const ph = r ? (r() - 0.5) * 2.4 : 0;
+  const rx = (y: number) => n / 2 + 3.4 * s * Math.sin((y * 0.13) / s + 1.1 + ph) + 1.2 * s * Math.sin((y * 0.37) / s + 0.4 + ph);
+  const W = 1.7; // ridge half-width: ~3-4 tiles thick, never leaks diagonally
+  for (let y = 0; y < n; y++) {
+    const a = rx(y), b = rx(Math.max(0, y - 1)), c = rx(Math.min(n - 1, y + 1));
+    const lo = Math.min(a, (a + b) / 2, (a + c) / 2) - W, hi = Math.max(a, (a + b) / 2, (a + c) / 2) + W;
+    for (let x = 0; x < n; x++) if (x + 0.5 > lo && x + 0.5 < hi) grid[y][x].terrain = "rock";
+  }
+  // Spurs: short rock arms that fork off the main ridge between the passes.
+  const spurRows = [0.36, 0.64].map(f => Math.round(n * f + (r ? (r() - 0.5) * n * 0.04 : 0)));
+  spurRows.forEach((y, i) => {
+    const dir = i === 0 ? -1 : 1, len = Math.round(n * 0.14), x0 = Math.round(rx(y));
+    for (let k = 0; k < len; k++) {
+      const x = x0 + dir * k;
+      for (let dy = -1; dy <= 1; dy++) if (grid[y + dy]?.[x]) grid[y + dy][x].terrain = "rock";
+    }
+  });
+  // Exactly 3 narrow passes (3 tiles wide) cut through the main ridge.
+  const passFr = [0.2, 0.5, 0.8];
+  for (const f of passFr) {
+    const py = Math.max(3, Math.min(n - 4, Math.round(n * f + (r ? (r() - 0.5) * n * 0.05 : 0))));
+    for (let dy = -1; dy <= 1; dy++) {
+      const y = py + dy;
+      for (let x = 0; x < n; x++) if (grid[y][x].terrain === "rock" && Math.abs(x - rx(y)) < W + 3) grid[y][x].terrain = "grass";
+    }
+  }
+  layout = { n, bridgeRows: [], riverX: rx };
+}
+
+// ---- resources ----------------------------------------------------------------
+const START: Array<[string, number, Array<[number, number]>]> = [
+  ["wood", 260, [[-5, 1], [-4, 1], [-5, 2], [-4, 2], [-3, 3], [-5, 3], [-4, 4], [1, -5], [1, -4], [2, -5], [2, -4], [3, -3], [3, -5], [4, -4]]],
+  ["food", 280, [[2, 2], [3, 2], [2, 3], [3, 3]]],
+  ["gold", 380, [[6, -1], [6, 0], [7, -1], [7, 0]]],
+  ["stone", 360, [[-1, 6], [0, 6], [-1, 7], [0, 7]]],
+];
+// Normalised (0..1) positions of the contested clusters: the first 4 are the classic hills.
+const CLUSTERS: Array<[number, number, string, number]> = [
+  [17 / 48, 22 / 48, "gold", 650], [31 / 48, 26 / 48, "gold", 650], [30 / 48, 12 / 48, "stone", 560], [18 / 48, 36 / 48, "stone", 560],
+  [0.38, 0.2, "gold", 650], [0.62, 0.8, "gold", 650],
+  [0.2, 0.5, "stone", 560], [0.8, 0.5, "stone", 560], [0.62, 0.2, "stone", 560], [0.38, 0.8, "stone", 560],
+];
+
+/** Carves terrain for the chosen biome and distributes resources. Grid must be n×n grass. */
+export function generateValley(grid: ValleyCell[][], type: MapType = "river_valley", seed = 0): void {
+  const n = grid.length;
+  const biome = resolveBiome(normalizeMapType(type), seed);
+  if (biome === "river_valley") carveRiver(grid, n, seed);
+  else if (biome === "highland_passes") carveRidges(grid, n, seed);
+  else layout = { n, bridgeRows: [], riverX: makeRiver(n, null) };
+
+  const r = rng((seed ^ 0xA5A5F00D) >>> 0);
+  const off = seed ? { x: r() * 200, y: r() * 200 } : { x: 0, y: 0 };
+  const scale = resourceScale(n);
+  const bases: BasePos[] = [playerBase(n), ...aiCorners(n)];
+  const put = (x: number, y: number, rt: string, amt: number) => {
     const c = grid[y]?.[x];
     if (!c || c.terrain !== "grass" || c.res) return;
-    c.res = type; c.resAmt = amt;
+    c.res = rt; c.resAmt = Math.round(amt);
   };
 
-  // 2. Starting resources mirrored around every base (oriented toward the valley centre).
-  const START: Array<[string, number, Array<[number, number]>]> = [
-    ["wood", 260, [[-5, 1], [-4, 1], [-5, 2], [-4, 2], [-3, 3], [-5, 3], [-4, 4], [1, -5], [1, -4], [2, -5], [2, -4], [3, -3], [3, -5], [4, -4]]],
-    ["food", 280, [[2, 2], [3, 2], [2, 3], [3, 3]]],
-    ["gold", 380, [[6, -1], [6, 0], [7, -1], [7, 0]]],
-    ["stone", 360, [[-1, 6], [0, 6], [-1, 7], [0, 7]]],
-  ];
+  // Starting resources mirrored around every base (oriented toward the map centre).
   for (const base of bases) {
     const sx = base.tx < n / 2 ? 1 : -1, sy = base.ty < n / 2 ? 1 : -1;
     const cx = base.tx + 1, cy = base.ty + 1;
     const tile = (c: number, d: number, s: number) => (s > 0 ? c + d : c - 1 - d);
-    for (const [type, amt, offs] of START) {
-      for (const [dx, dy] of offs) put(tile(cx, dx, sx), tile(cy, dy, sy), type, amt);
+    for (const [rt, amt, offs] of START) {
+      for (const [dx, dy] of offs) put(tile(cx, dx, sx), tile(cy, dy, sy), rt, amt * scale);
     }
   }
 
-  // 3. Four contested high-value hills near the lake and bridges.
-  const HILLS: Array<[number, number, string, number]> = [
-    [17, 22, "gold", 650], [31, 26, "gold", 650], [30, 12, "stone", 560], [18, 36, "stone", 560],
-  ];
-  const hillCenters: Array<[number, number]> = [];
-  for (const [hx, hy, type, amt] of HILLS) {
-    const dir = hx < n / 2 ? -1 : 1;
-    let px = hx;
-    for (let k = 0; k < 7 && nearWater(grid, px, hy, 1); k++) px += dir;
-    hillCenters.push([px, hy]);
-    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1]]) put(px + dx, hy + dy, type, amt);
+  // Contested gold / stone clusters (4 on 48, 6 on 64, 10 on 96).
+  const centers: Array<[number, number]> = [];
+  const count = clusterCount(n);
+  for (let i = 0; i < count; i++) {
+    const [fx, fy, rt, amt] = CLUSTERS[i];
+    let hx = Math.round(fx * n), hy = Math.round(fy * n);
+    if (seed && i >= 4) { hx += Math.round((r() - 0.5) * n * 0.08); hy += Math.round((r() - 0.5) * n * 0.08); }
+    else if (seed) { hx += Math.round((r() - 0.5) * n * 0.05); hy += Math.round((r() - 0.5) * n * 0.05); }
+    // nearest grass tile with clearance from water/rock
+    let best: [number, number] | null = null;
+    for (let d = 0; d <= 8 && !best; d++) {
+      for (let dy = -d; dy <= d && !best; dy++) for (let dx = -d; dx <= d && !best; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== d) continue;
+        const x = hx + dx, y = hy + dy;
+        if (x < 2 || y < 2 || x > n - 3 || y > n - 3) continue;
+        if (grid[y][x].terrain !== "grass" || grid[y][x].res) continue;
+        if (nearBarrier(grid, x, y, 1)) continue;
+        if (bases.some(b => Math.hypot(b.tx + 1 - x, b.ty + 1 - y) < 10)) continue;
+        best = [x, y];
+      }
+    }
+    if (!best) continue;
+    centers.push(best);
+    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1]]) put(best[0] + dx, best[1] + dy, rt, amt);
   }
 
-  // 4. Scattered bamboo groves and wild rice meadows across the valley.
+  // Scattered bamboo groves and wild rice meadows (open plains are greener).
+  const woodT = biome === "open_plains" ? 0.62 : 0.66, foodT = biome === "open_plains" ? 0.84 : 0.86;
   for (let y = 1; y < n - 1; y++) {
     for (let x = 1; x < n - 1; x++) {
       if (grid[y][x].terrain !== "grass" || grid[y][x].res) continue;
       if (bases.some(b => Math.hypot(b.tx + 1 - x, b.ty + 1 - y) < 9)) continue;
-      if (hillCenters.some(([hx, hy]) => Math.hypot(hx - x, hy - y) < 3)) continue;
-      if (nearWater(grid, x, y, 1)) continue;
-      const f = vnoise(x * 0.21, y * 0.21) * 0.7 + vnoise(x * 0.55 + 9, y * 0.55 + 3) * 0.3;
-      if (f > 0.66) put(x, y, "wood", 240);
-      else if (vnoise(x * 0.3 + 40, y * 0.3 + 17) > 0.86) put(x, y, "food", 240);
+      if (centers.some(([hx, hy]) => Math.hypot(hx - x, hy - y) < 3)) continue;
+      if (nearBarrier(grid, x, y, 1)) continue;
+      const f = vnoise(x * 0.21 + off.x, y * 0.21 + off.y) * 0.7 + vnoise(x * 0.55 + 9 + off.x, y * 0.55 + 3 + off.y) * 0.3;
+      if (f > woodT) put(x, y, "wood", 240);
+      else if (vnoise(x * 0.3 + 40 + off.x, y * 0.3 + 17 + off.y) > foodT) put(x, y, "food", 240);
     }
   }
 }

@@ -30,7 +30,8 @@ function makeSky(): THREE.Mesh {
 
 export interface Cam { x: number; y: number; zoom: number; shake?: number; }
 
-export const MIN_ZOOM = 0.35;
+/** Live binding: 0.25 on 96×96 maps (see setMapSize), 0.35 otherwise. */
+export let MIN_ZOOM = 0.35;
 export const MAX_ZOOM = 2.6;
 const PITCH = THREE.MathUtils.degToRad(45);
 const DEFAULT_YAW = Math.PI / 4; // matches the classic isometric orientation (screen-right = +x / -z)
@@ -45,7 +46,7 @@ export class Scene3D {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly sun: THREE.DirectionalLight;
-  readonly hemi: THREE.HemisphereLihgt;
+  readonly hemi: THREE.HemisphereLight;
   readonly weather = new Weather3D();
   private lastWeatherTime = performance.now();
   readonly sky: THREE.Mesh;
@@ -104,7 +105,18 @@ export class Scene3D {
     const rim = new THREE.DirectionalLight(0x9fb8ff, 0.35);
     rim.position.set(MAP_N / 2 + 26, 14, MAP_N / 2 + 22);
     rim.target.position.set(MAP_N / 2, 0, MAP_N / 2);
+    this.rim = rim;
     this.scene.add(rim, rim.target);
+  }
+
+  private rim!: THREE.DirectionalLight;
+
+  /** Called after common.setMapSize(): zoom-out limit and rim light follow the map size. */
+  applyMapSize(n: number): void {
+    MIN_ZOOM = n >= 96 ? 0.25 : 0.35;
+    this.rim.position.set(n / 2 + 26, 14, n / 2 + 22);
+    this.rim.target.position.set(n / 2, 0, n / 2);
+    this.rim.target.updateMatrixWorld();
   }
 
   resize(w: number, h: number): void {

@@ -5,10 +5,11 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { shakeX } from "../graphics/villagerActions";
 import {
-  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, setWaterGrid, archLift, mat, Env3D
+  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, rockiness, setWaterGrid, archLift, mat, Env3D
 } from "./common";
 
-const SEG = MAP_N * 3;
+/** Terrain quad density: 3 per tile, 2 per tile on 96×96 to keep vertex count mobile-friendly. */
+const segFor = () => (MAP_N >= 96 ? MAP_N * 2 : MAP_N * 3);
 const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,12 @@ class InstLayer {
     me.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.group.add(me);
     return me;
+  }
+  dispose(freeMaterial = true): void {
+    this.group.remove(this.mesh);
+    this.mesh.dispose();
+    this.geometry.dispose();
+    if (freeMaterial) this.material.dispose();
   }
   set(items: Item[], colors?: THREE.Color[]): void {
     this.items = items;
@@ -197,6 +204,7 @@ export class Terrain3D {
   private pads: InstLayer | null = null;
   private blooms: InstLayer | null = null;
   private koi: Koi[] = [];
+  private koiGeos: THREE.BufferGeometry[] = [];
   private bridges = new THREE.Group();
   private gridRef: any = null;
   private resSig = -1;
@@ -247,7 +255,7 @@ export class Terrain3D {
     const grid = state.grid;
     setWaterGrid(grid);
     for (let z = 0; z <= MAP_N; z++) for (let x = 0; x <= MAP_N; x++) this.heightCache[z * (MAP_N + 1) + x] = terrainHeight(x, z);
-    if (this.terrain) { this.group.remove(this.terrain); this.terrain.geometry.dispose(); }
+    if (this.terrain) { this.group.remove(this.terrain); this.terrain.geometry.dispose(); (this.terrain.material as THREE.Material).dispose(); }
     this.terrain = this.buildTerrain(state);
     this.group.add(this.terrain);
     this.buildLake(grid);
@@ -281,6 +289,7 @@ export class Terrain3D {
 
   private buildTerrain(state: any): THREE.Mesh {
     const grid = state.grid;
+    const SEG = segFor();
     const g = new THREE.PlaneGeometry(MAP_N + 6, MAP_N + 6, SEG + 18, SEG + 18);
     g.rotateX(-Math.PI / 2);
     g.translate(MAP_N / 2, 0, MAP_N / 2);
@@ -290,6 +299,7 @@ export class Terrain3D {
     const cMeadow = new THREE.Color("#6f9a34"), cMoss = new THREE.Color("#3f6b25"), cSun = new THREE.Color("#9cb84a");
     const cSand = new THREE.Color("#cdb27a"), cBed = new THREE.Color("#2c4a3c"), cDirt = new THREE.Color("#8a6a45"), cCobble = new THREE.Color("#a5927a");
     const cForest = new THREE.Color("#2f5420"), cGravel = new THREE.Color("#7a7468"), cMud = new THREE.Color("#6b5a34");
+    const cRock = new THREE.Color("#6d6a66"), cRockDark = new THREE.Color("#4a4743"), cSnow = new THREE.Color("#e7ecee");
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
@@ -311,6 +321,12 @@ export class Terrain3D {
       }
       const path = 1 - smoothstep(0.06, 0.16, d);
       if (path > 0) c.lerp(hash2(Math.floor(x * 6), Math.floor(z * 6)) > 0.55 ? cCobble : cDirt, path * 0.85);
+      const rk = rockiness(x, z);
+      if (rk > 0) {
+        c.lerp(cGravel, Math.min(1, rk * 1.4) * 0.6);
+        c.lerp(fbm(x * 0.9, z * 0.9) > 0.5 ? cRock : cRockDark, rk * 0.9);
+        if (h > 1.35) c.lerp(cSnow, smoothstep(1.35, 1.8, h) * 0.8);
+      }
       const w = wetness(x, z);
       if (w > 0) c.lerp(cSand, smoothstep(0, 0.35, w) * 0.9).lerp(cBed, smoothstep(0.45, 0.9, w));
       const out = Math.max(0, -x, -z, x - MAP_N, z - MAP_N);
@@ -376,7 +392,11 @@ export class Terrain3D {
   private buildLake(grid: any[][]): void {
     this.group.remove(this.lake);
     this.lake.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && !(m as any).isInstancedMesh && m.geometry && m !== (this.water as any)) { /* shared geos */ } });
-    if (this.water) this.water.geometry.dispose();
+    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; }
+    if (this.pads) { this.pads.dispose(); this.pads = null; }
+    if (this.blooms) { this.blooms.dispose(); this.blooms = null; }
+    for (const g of this.koiGeos) g.dispose();
+    this.koiGeos = [];
     this.lake = new THREE.Group();
     this.koi = [];
     this.group.add(this.lake);
@@ -413,7 +433,7 @@ export class Terrain3D {
       this.pads = new InstLayer(this.lake, padG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, side: THREE.DoubleSide }), 200, false);
       this.blooms = new InstLayer(this.lake, lotusBloomGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, emissive: 0x3a0f1c, emissiveIntensity: 0.35 }), 120);
     } else {
-      this.lake.add(this.pads.mesh); this.lake.add(this.blooms!.mesh);
+      this.lake.add((this.pads as InstLayer).mesh); this.lake.add(this.blooms!.mesh);
     }
     this.pads.set(padItems);
     this.blooms!.set(bloomItems);
@@ -426,6 +446,7 @@ export class Terrain3D {
       const tailG = new THREE.BufferGeometry();
       tailG.setAttribute("position", new THREE.BufferAttribute(new Float32Array([0, 0, 0, -0.045, 0, -0.08, 0.045, 0, -0.08]), 3));
       tailG.computeVertexNormals();
+      this.koiGeos.push(bodyG, patchG, tailG);
       for (let i = 0; i < 6; i++) {
         const g = new THREE.Group();
         g.add(new THREE.Mesh(bodyG, i % 3 === 2 ? white : orange));
@@ -528,6 +549,7 @@ export class Terrain3D {
     const rm = rails.build(mat("#b91c1c", { rough: 0.45 }));
     const gm = gold.build(mat("#e8b53a", { metal: 0.75, rough: 0.3 }), false);
     for (const m of [pm, tm, rm, gm]) if (m) this.bridges.add(m);
+    slat.dispose(); post.dispose(); knob.dispose();
   }
 
   // -------------------------------------------------------------------------
@@ -615,6 +637,23 @@ export class Terrain3D {
       s = (s * 31 + r * 13 + vis * 7 + lvl + y * 3 + x) | 0;
     }
     return s;
+  }
+
+  /** Frees every GPU resource this terrain owns (called when the map size / type changes). */
+  dispose(): void {
+    if (this.terrain) { this.group.remove(this.terrain); this.terrain.geometry.dispose(); (this.terrain.material as THREE.Material).dispose(); this.terrain = null; }
+    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; }
+    this.pads?.dispose(); this.blooms?.dispose(); this.pads = null; this.blooms = null;
+    for (const g of this.koiGeos) g.dispose();
+    this.koiGeos = []; this.koi = [];
+    this.bridges.traverse(o => { if ((o as THREE.Mesh).geometry && o !== this.bridges) (o as THREE.Mesh).geometry.dispose(); });
+    for (const l of [this.stalks, this.leaves, this.rice, this.rocks, this.crystals]) l.dispose(true);
+    for (const l of [this.bunds, this.paddy, this.moss]) l.dispose(false); // cached materials
+    this.crystalMat.dispose();
+    this.footprint.geometry.dispose(); (this.footprint.material as THREE.Material).dispose();
+    this.footEdges.geometry.dispose(); (this.footEdges.material as THREE.Material).dispose();
+    this.group.clear();
+    this.gridRef = null;
   }
 
   // -------------------------------------------------------------------------

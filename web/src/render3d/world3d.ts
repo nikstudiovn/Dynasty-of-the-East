@@ -1,8 +1,8 @@
 // Pixel Dynasty 3D — the living world around the valley: misty low-poly mountain ridges on every side of the
-// 48×48 island, drifting mist bands, a flock of 5 white cranes gliding high above, and golden pollen /
+// map island, drifting mist bands, a flock of 5 white cranes gliding high above, and golden pollen /
 // bamboo-leaf motes floating across the view. All cheap: 1 ridge mesh, 2 mist strips, 1 Points cloud.
 import * as THREE from "three";
-import { MAP_N, fbm, hash2, smoothstep, terrainHeight, mat } from "./common";
+import { MAP_N, fbm, hash2, smoothstep, terrainHeight, mat, disposeTree } from "./common";
 
 const TAU = Math.PI * 2;
 
@@ -138,6 +138,9 @@ export class World3D {
     this.pollen.frustumCulled = false;
     this.group.add(this.pollen);
   }
+
+  /** Frees ridges, mist, cranes and pollen (called when the map size / type changes). */
+  dispose(): void { disposeTree(this.group); }
 
   update(t: number, dt: number, target: THREE.Vector3): void {
     // cranes circle the valley in a slow, wide loop with glide/flap phases

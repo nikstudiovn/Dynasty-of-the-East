@@ -2,7 +2,9 @@
 // World space: 1 tile = 1 unit. Tile (tx, ty) covers x in [tx, tx+1], z in [ty, ty+1]. y is up.
 import * as THREE from "three";
 
-export const MAP_N = 48;
+/** Live map size (ES live binding): importers always see the current value after setMapSize(). */
+export let MAP_N = 48;
+export function setMapSize(n: number): void { MAP_N = n; }
 export const TILE_W = 52;
 export const TILE_H = 26;
 export const WATER_LEVEL = -0.1;
@@ -48,6 +50,7 @@ export function fbm(x: number, y: number): number {
 
 // ---- Height field -----------------------------------------------------------
 let waterMask: Float32Array = new Float32Array(MAP_N * MAP_N);
+let rockMask: Float32Array = new Float32Array(MAP_N * MAP_N);
 
 /** Rebuild the blurred water mask from the grid (called when a new map is loaded). */
 export function setWaterGrid(grid: any[][]): void {
@@ -57,6 +60,9 @@ export function setWaterGrid(grid: any[][]): void {
     raw[y * MAP_N + x] = t === "water" || t === "bridge" ? 1 : 0;
   }
   waterMask = raw;
+  const rock = new Float32Array(MAP_N * MAP_N);
+  for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) rock[y * MAP_N + x] = grid[y]?.[x]?.terrain === "rock" ? 1 : 0;
+  rockMask = rock;
   // bridge runs (for the arched deck height): contiguous bridge cells along a row (h) or column (v)
   bridgeRun = new Int16Array(MAP_N * MAP_N * 3).fill(-1);
   for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
@@ -86,16 +92,18 @@ export function bridgeDeckAt(x: number, z: number): number {
   if (bridgeRun[k] < 0) return BRIDGE_DECK;
   return BRIDGE_DECK + archLift(bridgeRun[k + 2] ? z : x, bridgeRun[k], bridgeRun[k + 1]);
 }
-function waterAt(x: number, z: number): number {
+function maskAt(mask: Float32Array, x: number, z: number): number {
   // bilinear sample of the per-tile mask at tile centres
   const fx = x - 0.5, fz = z - 0.5;
   const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
-  const g = (ix: number, iz: number) => (ix < 0 || iz < 0 || ix >= MAP_N || iz >= MAP_N ? 0 : waterMask[iz * MAP_N + ix]);
+  const g = (ix: number, iz: number) => (ix < 0 || iz < 0 || ix >= MAP_N || iz >= MAP_N ? 0 : mask[iz * MAP_N + ix]);
   const a = g(x0, z0), b = g(x0 + 1, z0), c = g(x0, z0 + 1), d = g(x0 + 1, z0 + 1);
   return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
 }
 /** 0 on dry land, 1 deep inside the lake. */
-export function wetness(x: number, z: number): number { return smoothstep(0.18, 0.75, waterAt(x, z)); }
+export function wetness(x: number, z: number): number { return smoothstep(0.18, 0.75, maskAt(waterMask, x, z)); }
+/** 0 off the ridges, 1 on solid rock (highland_passes). */
+export function rockiness(x: number, z: number): number { return smoothstep(0.2, 0.85, maskAt(rockMask, x, z)); }
 
 /** Gentle rolling hills (kept low so the y=0 ground-plane raycast stays tile-accurate). */
 export function terrainHeight(x: number, z: number): number {
@@ -103,7 +111,9 @@ export function terrainHeight(x: number, z: number): number {
   const edge = Math.min(x, z, MAP_N - x, MAP_N - z);
   const rim = smoothstep(2.5, 0, edge) * 0.25; // valley rim rises a little at the map edge
   const w = wetness(x, z);
-  return Math.max(-0.05, hills) * (1 - w) + rim - w * 0.48;
+  const rk = rockiness(x, z);
+  const peak = rk > 0 ? rk * (0.9 + fbm(x * 0.55 + 3, z * 0.55 + 7) * 0.9) : 0; // mountain ridges (kept < ~1.8)
+  return Math.max(-0.05, hills) * (1 - w) + rim - w * 0.48 + peak;
 }
 
 /** Height a unit stands on (bridges are arched decks above the water). */
@@ -153,4 +163,20 @@ export function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z
   me.position.set(x, y, z);
   me.castShadow = shadows; me.receiveShadow = shadows;
   return me;
+}
+
+// ---- Disposal -----------------------------------------------------------------
+/** Disposes every geometry, material and texture under `root` and detaches it (three.js re-uploads on reuse, so shared caches stay safe). */
+export function disposeTree(root: THREE.Object3D): void {
+  root.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (m.geometry) m.geometry.dispose();
+    const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+    for (const mt of mats) {
+      for (const v of Object.values(mt as any)) if (v && (v as THREE.Texture).isTexture) (v as THREE.Texture).dispose();
+      mt.dispose();
+    }
+    if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
+  });
+  root.parent?.remove(root);
 }

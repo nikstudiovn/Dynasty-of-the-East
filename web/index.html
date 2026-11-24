@@ -435,6 +435,25 @@
             <button class="opt-btn" data-val="hard">Áp đảo<small>Đẩy quân liên tục</small></button>
           </div>
         </div>
+
+        <div class="setup-group">
+          <span class="setup-label">4. Kích thước bản đồ</span>
+          <div class="opt-row" id="opt-map-size">
+            <button class="opt-btn active" data-val="48">Vừa<small>48×48 · nhanh gọn</small></button>
+            <button class="opt-btn" data-val="64">Rộng<small>64×64 · nhiều mỏ</small></button>
+            <button class="opt-btn" data-val="96">Đại Chiến<small>96×96 · quy mô lớn</small></button>
+          </div>
+        </div>
+
+        <div class="setup-group">
+          <span class="setup-label">5. Địa hình</span>
+          <div class="opt-row" id="opt-map-type">
+            <button class="opt-btn active" data-val="river_valley">Thung Lũng Sông Sen<small>Sông uốn, cầu gỗ</small></button>
+            <button class="opt-btn" data-val="open_plains">Đồng Bằng Mở<small>Không sông · kỵ binh bọc sườn</small></button>
+            <button class="opt-btn" data-val="highland_passes">Núi Cao &amp; Eo Hẹp<small>Dãy đá, 3 eo núi</small></button>
+            <button class="opt-btn" data-val="random">Ngẫu Nhiên<small>Mỗi ván một thế trận</small></button>
+          </div>
+        </div>
       </div>
 
       <div class="modal-tips" id="modal-tips">
@@ -450,7 +469,6 @@
   // =========================================================================
   // 1. CONSTANTS, FACTIONS & COMPLETE EAST ASIAN ROSTER (v0.3)
   // =========================================================================
-  const MAP_N = 48;
   const TILE_W = 52;
   const TILE_H = 26;
 
@@ -528,7 +546,7 @@
     imperial_citadel: { name: "Hoàng Thành", size: 2, hp: 3200, vision: 11, atk: 16, range: 8.5, burst: 3, cost: { food: 0, wood: 0, gold: 0, stone: 450 }, pop: 10, age: 4 }
   };
 
-  const setup = { faction: "dai_viet", aiCount: 1, difficulty: "normal" };
+  const setup = { faction: "dai_viet", aiCount: 1, difficulty: "normal", mapSize: 48, mapType: "river_valley" };
 
   // =========================================================================
   // 2. SYNTHESIZED AUDIO
@@ -648,9 +666,9 @@
     nextId = 1;
     const grid = [];
     const fog = [];
-    for (let y = 0; y < MAP_N; y++) {
+    for (let y = 0; y < setup.mapSize; y++) {
       const row = [], frow = [];
-      for (let x = 0; x < MAP_N; x++) {
+      for (let x = 0; x < setup.mapSize; x++) {
         row.push({ terrain: "grass", res: null, resAmt: 0 });
         frow.push(0);
       }
@@ -659,8 +677,9 @@
     }
 
     // 48×48 valley: winding river + central lotus lake, 3 arched wooden bridges, corner + contested resources
+    const mapSeed = window.PDValley ? window.PDValley.newSeedFor(setup.mapType) : 0;
     if (window.PDValley) {
-      window.PDValley.generateValley(grid);
+      window.PDValley.generateValley(grid, setup.mapType, mapSeed);
     } else {
       for (let y = 21; y <= 27; y++) for (let x = 20; x <= 28; x++) grid[y][x].terrain = "water";
       for (let x = 20; x <= 28; x++) { grid[24][x].terrain = "bridge"; grid[24][x].bridge = "h"; }
@@ -673,9 +692,10 @@
       factionId: setup.faction,
       aiCount: setup.aiCount,
       difficulty: setup.difficulty,
+      mapSize: setup.mapSize, mapType: setup.mapType, mapSeed,
       grid,
       fog,
-      resources: { food: 200, wood: 200, gold: 50, stone: 100 },
+      resources: window.PDValley ? window.PDValley.startingResources(setup.mapSize) : { food: 200, wood: 200, gold: 50, stone: 100 },
       age: 1, stats: { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 },
       upgrades: { attack: 0, armor: 0 }, // Blacksmith upgrades 0..3
       buildings: [],
@@ -689,12 +709,13 @@
       aiWave: 0
     };
 
-    const ptc = spawnBuilding("player", "town_center", 6, 6, 0);
+    const pb = window.PDValley ? window.PDValley.playerBase(setup.mapSize) : { tx: 6, ty: 6 };
+    const ptc = spawnBuilding("player", "town_center", pb.tx, pb.ty, 0);
     for (let i = 0; i < 5; i++) {
-      spawnUnit("player", "villager", 5.6 + (i % 3) * 0.75, 8.6 + Math.floor(i / 3) * 0.7, 0);
+      spawnUnit("player", "villager", pb.tx - 0.4 + (i % 3) * 0.75, pb.ty + 2.6 + Math.floor(i / 3) * 0.7, 0);
     }
 
-    const aiCorners = [
+    const aiCorners = window.PDValley ? window.PDValley.aiCorners(setup.mapSize) : [
       { tx: 40, ty: 40, idx: 0 },
       { tx: 40, ty: 6, idx: 1 },
       { tx: 6, ty: 40, idx: 2 }
@@ -703,15 +724,16 @@
     for (let i = 0; i < setup.aiCount; i++) {
       const c = aiCorners[i];
       spawnBuilding("enemy", "town_center", c.tx, c.ty, c.idx);
-      const gx = c.tx < MAP_N / 2 ? c.tx + 2.5 : c.tx - 0.8;
-      const gy = c.ty < MAP_N / 2 ? c.ty + 2.5 : c.ty - 0.8;
+      const gx = c.tx < state.mapSize / 2 ? c.tx + 2.5 : c.tx - 0.8;
+      const gy = c.ty < state.mapSize / 2 ? c.ty + 2.5 : c.ty - 0.8;
       spawnUnit("enemy", "swordsman", gx, gy, c.idx);
       spawnUnit("enemy", "archer", gx + 0.6, gy - 0.4, c.idx);
     }
 
     state.selectedBuildingId = ptc.id;
-    cam.x = (8.5 - 8.5) * (TILE_W / 2);
-    cam.y = (8.5 + 8.5) * (TILE_H / 2);
+    cam.x = 0;
+    cam.y = (pb.tx + pb.ty + 5) * (TILE_H / 2);
+    if (R3D) cam.zoom = Math.max(cam.zoom, R3D.minZoom);
     setBoxSelectMode(false);
     prepareGfx();
 
@@ -760,17 +782,18 @@
   }
 
   function recomputeFog() {
-    for (let y = 0; y < MAP_N; y++) {
-      for (let x = 0; x < MAP_N; x++) {
+    miniDirty = true;
+    for (let y = 0; y < state.mapSize; y++) {
+      for (let x = 0; x < state.mapSize; x++) {
         if (state.fog[y][x] === 2) state.fog[y][x] = 1;
       }
     }
     const reveal = (cx, cy, r) => {
       const r2 = r * r;
       const minY = Math.max(0, Math.floor(cy - r));
-      const maxY = Math.min(MAP_N - 1, Math.ceil(cy + r));
+      const maxY = Math.min(state.mapSize - 1, Math.ceil(cy + r));
       const minX = Math.max(0, Math.floor(cx - r));
-      const maxX = Math.min(MAP_N - 1, Math.ceil(cx + r));
+      const maxX = Math.min(state.mapSize - 1, Math.ceil(cx + r));
       for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
           if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2) state.fog[y][x] = 2;
@@ -827,9 +850,11 @@
   // =========================================================================
   // 4. A* PATHFINDING
   // =========================================================================
-  function isTileBlocked(tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= MAP_N || ty >= MAP_N) return true;
-    if (state.grid[ty][tx].terrain === "water") return true; // only water blocks; "bridge" and land are walkable
+  // `team` is optional: reserved for team-specific gates (Batch 3/3); currently terrain + buildings block everyone.
+  function isTileBlocked(tx, ty, team) {
+    if (tx < 0 || ty < 0 || tx >= state.mapSize || ty >= state.mapSize) return true;
+    const t = state.grid[ty][tx].terrain;
+    if (t === "water" || t === "rock") return true; // water + impassable ridges block; "bridge" and land are walkable
     for (const b of state.buildings) {
       if (b.type === "farm") continue;
       if (tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size) return true;
@@ -837,67 +862,10 @@
     return false;
   }
 
-  function findPath(sx, sy, gx, gy) {
-    const raw = findPathRaw(sx, sy, gx, gy);
-    return window.PDSim ? window.PDSim.smoothPath(sx, sy, raw, isTileBlocked) : raw;
-  }
-
-  function findPathRaw(sx, sy, gx, gy) {
-    const startX = Math.max(0, Math.min(MAP_N - 1, Math.floor(sx)));
-    const startY = Math.max(0, Math.min(MAP_N - 1, Math.floor(sy)));
-    let goalX = Math.max(0, Math.min(MAP_N - 1, Math.floor(gx)));
-    let goalY = Math.max(0, Math.min(MAP_N - 1, Math.floor(gy)));
-
-    if (isTileBlocked(goalX, goalY)) {
-      let best = null, bestD = 999;
-      for (let dy = -2; dy <= 2; dy++) {
-        for (let dx = -2; dx <= 2; dx++) {
-          const nx = goalX + dx, ny = goalY + dy;
-          if (!isTileBlocked(nx, ny)) {
-            const d = Math.hypot(nx - startX, ny - startY);
-            if (d < bestD) { bestD = d; best = { x: nx, y: ny }; }
-          }
-        }
-      }
-      if (!best) return [];
-      goalX = best.x; goalY = best.y;
-    }
-
-    const key = (x, y) => `${x},${y}`;
-    const open = [{ x: startX, y: startY, g: 0, f: Math.hypot(goalX - startX, goalY - startY) }];
-    const cameFrom = new Map();
-    const gScore = new Map([[key(startX, startY), 0]]);
-    const closed = new Set();
-    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-
-    let iter = 0;
-    while (open.length > 0 && iter++ < 1400) {
-      open.sort((a, b) => a.f - b.f);
-      const cur = open.shift();
-      const ck = key(cur.x, cur.y);
-      if (cur.x === goalX && cur.y === goalY) {
-        const path = [];
-        let k = ck;
-        while (cameFrom.has(k)) {
-          const [px, py] = k.split(",").map(Number);
-          path.unshift({ x: px + 0.5, y: py + 0.5 });
-          k = cameFrom.get(k);
-        }
-        return path;
-      }
-      closed.add(ck);
-      for (const [dx, dy] of dirs) {
-        const nx = cur.x + dx, ny = cur.y + dy, nk = key(nx, ny);
-        if (closed.has(nk) || isTileBlocked(nx, ny)) continue;
-        const tentG = cur.g + (dx !== 0 && dy !== 0 ? 1.414 : 1);
-        if (tentG < (gScore.get(nk) ?? 1e9)) {
-          cameFrom.set(nk, ck);
-          gScore.set(nk, tentG);
-          open.push({ x: nx, y: ny, g: tentG, f: tentG + Math.hypot(goalX - nx, goalY - ny) });
-        }
-      }
-    }
-    return [{ x: goalX + 0.5, y: goalY + 0.5 }];
+  function findPath(sx, sy, gx, gy, team) {
+    const blocked = (x, y) => isTileBlocked(x, y, team);
+    const raw = window.PDPath.findPathRaw(state.mapSize, sx, sy, gx, gy, isTileBlocked, team);
+    return window.PDSim ? window.PDSim.smoothPath(sx, sy, raw, blocked) : raw;
   }
 
   // =========================================================================
@@ -916,8 +884,8 @@
 
   function findNearestResource(type, x, y) {
     let best = null, bestD = 999;
-    for (let ty = 0; ty < MAP_N; ty++) {
-      for (let tx = 0; tx < MAP_N; tx++) {
+    for (let ty = 0; ty < state.mapSize; ty++) {
+      for (let tx = 0; tx < state.mapSize; tx++) {
         if (state.grid[ty][tx].res === type && state.grid[ty][tx].resAmt > 0) {
           const d = Math.hypot(tx - x, ty - y);
           if (d < bestD) { bestD = d; best = { tx, ty }; }
@@ -1177,8 +1145,8 @@
         for (let k = 0; k < perBase; k++) {
           const pool = state.aiWave >= 4 ? ["swordsman", "archer", "cavalry", "catapult"] : state.aiWave >= 2 ? ["swordsman", "spearman", "archer"] : ["swordsman", "archer"];
           const pick = pool[(state.aiWave + k + etc.aiIndex) % pool.length];
-          const sx = etc.tx < MAP_N / 2 ? etc.tx + 2.4 : etc.tx - 0.6;
-          const sy = etc.ty < MAP_N / 2 ? etc.ty + 2.4 : etc.ty - 0.6;
+          const sx = etc.tx < state.mapSize / 2 ? etc.tx + 2.4 : etc.tx - 0.6;
+          const sy = etc.ty < state.mapSize / 2 ? etc.ty + 2.4 : etc.ty - 0.6;
           const u = spawnUnit("enemy", pick, sx + k * 0.4, sy, etc.aiIndex);
           if (playerTc) {
             u.task = "attack";
@@ -1190,7 +1158,7 @@
       showToast(`Cảnh báo: ${enemyTcs.length} phe AI xuất kích đợt ${state.aiWave}!`);
     } // AI Base Building & Age Up
     const aiEcoInterval = state.difficulty === "easy" ? 38 : state.difficulty === "hard" ? 20 : 28; const aiBuildPlan = [{ type: "barracks" }, { type: "watch_tower" }, { type: "archery_range" }, { type: "stable" }, { type: "siege_workshop" }, { type: "imperial_citadel" }];
-    for (const ais of state.aiStates) { const tc = enemyTcs.find(b => b.aiIndex === ais.idx - 1) || enemyTcs[ais.idx - 1]; if (!tc) continue; ais.economyTimer += dt; if (ais.economyTimer < aiEcoInterval) continue; ais.economyTimer = 0; if (ais.age < 4) { ais.age += 1; showToast(`Phe AI ${ais.idx} đã tiến lên Đời ${ais.age}!`); } if (ais.buildStep < aiBuildPlan.length) { const plan = aiBuildPlan[ais.buildStep]; const sz = (BLDG_DEFS[plan.type] && BLDG_DEFS[plan.type].size) || 2; let built = false; for (let r = 2; r <= 6 && !built; r++) { for (let dy = -r; dy <= r && !built; dy++) { for (let dx = -r; dx <= r && !built; dx++) { const bx = tc.tx + dx, by = tc.ty + dy; if (bx < 1 || by < 1 || bx + sz >= MAP_N - 1 || by + sz >= MAP_N - 1) continue; let ok = true; for (let iy = 0; iy < sz && ok; iy++) for (let ix = 0; ix < sz && ok; ix++) if (isTileBlocked(bx + ix, by + iy)) ok = false; if (ok) { spawnBuilding("enemy", plan.type, bx, by, ais.idx); ais.buildStep += 1; built = true; } } } } } }
+    for (const ais of state.aiStates) { const tc = enemyTcs.find(b => b.aiIndex === ais.idx - 1) || enemyTcs[ais.idx - 1]; if (!tc) continue; ais.economyTimer += dt; if (ais.economyTimer < aiEcoInterval) continue; ais.economyTimer = 0; if (ais.age < 4) { ais.age += 1; showToast(`Phe AI ${ais.idx} đã tiến lên Đời ${ais.age}!`); } if (ais.buildStep < aiBuildPlan.length) { const plan = aiBuildPlan[ais.buildStep]; const sz = (BLDG_DEFS[plan.type] && BLDG_DEFS[plan.type].size) || 2; let built = false; for (let r = 2; r <= 6 && !built; r++) { for (let dy = -r; dy <= r && !built; dy++) { for (let dx = -r; dx <= r && !built; dx++) { const bx = tc.tx + dx, by = tc.ty + dy; if (bx < 1 || by < 1 || bx + sz >= state.mapSize - 1 || by + sz >= state.mapSize - 1) continue; let ok = true; for (let iy = 0; iy < sz && ok; iy++) for (let ix = 0; ix < sz && ok; ix++) if (isTileBlocked(bx + ix, by + iy)) ok = false; if (ok) { spawnBuilding("enemy", plan.type, bx, by, ais.idx); ais.buildStep += 1; built = true; } } } } } }
   }
 
   function endGame(victory) {
@@ -1229,7 +1197,7 @@
   function drawUnit(u) {
     const G = window.PDGfx;
     if (!G || !G.atlas.ready) return drawUnitLegacy(u);
-    const fState = state.fog[Math.max(0, Math.min(MAP_N - 1, Math.round(u.y)))]?.[Math.max(0, Math.min(MAP_N - 1, Math.round(u.x)))] ?? 0;
+    const fState = state.fog[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.y)))]?.[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.x)))] ?? 0;
     if (fState !== 2 && u.team !== "player") return;
     const spr = G.atlas.getSprite(u.type, teamColor(u), 1, G.atlas.unitFrame(u, performance.now()));
     if (!spr) return drawUnitLegacy(u);
@@ -1253,7 +1221,7 @@
   function drawBuilding(b) {
     const G = window.PDGfx;
     if (!G || !G.atlas.ready) return drawBuildingLegacy(b);
-    const fState = state.fog[Math.min(MAP_N - 1, b.ty)]?.[Math.min(MAP_N - 1, b.tx)] ?? 0;
+    const fState = state.fog[Math.min(state.mapSize - 1, b.ty)]?.[Math.min(state.mapSize - 1, b.tx)] ?? 0;
     if (fState === 0) return;
     const isP = b.team === "player";
     if (b.type === "farm" && G.villager) { G.villager.drawFarm(ctx, b, state.selectedBuildingId === b.id, isP); return; }
@@ -1296,7 +1264,7 @@
   }
 
   
-  function drawBuildingLegacy(b) { const fState = state.fog[Math.min(MAP_N - 1, b.ty)]?.[Math.min(MAP_N - 1, b.tx)] ?? 0; if (fState === 0) return; const { x, y } = gridToIso(b.tx + ((b.size || 1) - 1) / 2, b.ty + ((b.size || 1) - 1) / 2); const cx = x, cy = y + TILE_H / 2, t = performance.now() * 0.004; ctx.save(); if (b.progress !== undefined && b.progress < 1) ctx.globalAlpha = 0.65; const isP = b.team === "player"; const rDark = isP ? "#7F1D1D" : "#1E3A8A", rMid = isP ? "#B91C1C" : "#1D4ED8", rLight = isP ? "#EF4444" : "#60A5FA"; const w = b.size === 2 ? 44 : b.type === "imperial_citadel" ? 64 : 30; const h = b.type === "imperial_citadel" ? 42 : b.size === 2 ? 32 : 24; drawShadow(cx + 3, cy + 4, w * 0.58, 12); const drawRoof = (rx, ry, rw, rh, gTrim) => { ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 8, ry + rh); ctx.lineTo(rx, ry - 4); ctx.lineTo(rx + rw / 2 + 8, ry + rh); ctx.closePath(); ctx.fill(); ctx.fillStyle = rDark; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 6, ry + rh - 1); ctx.lineTo(rx, ry - 2); ctx.lineTo(rx + rw / 2 + 6, ry + rh - 1); ctx.closePath(); ctx.fill(); ctx.fillStyle = rMid; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 3, ry + rh - 2); ctx.lineTo(rx, ry); ctx.lineTo(rx + rw / 4, ry + rh - 2); ctx.closePath(); ctx.fill(); ctx.fillStyle = rLight; ctx.fillRect(rx - 4, ry + 1, 6, 4); ctx.fillStyle = "#1A120E"; for (let tx = -rw / 2 - 4; tx <= rw / 2 + 2; tx += 4) ctx.fillRect(rx + tx, ry + rh - 1, 2, 3); ctx.fillStyle = gTrim; ctx.fillRect(rx - rw / 2 - 9, ry + rh - 4, 5, 3); ctx.fillRect(rx - rw / 2 - 10, ry + rh - 6, 3, 2); ctx.fillRect(rx + rw / 2 + 4, ry + rh - 4, 5, 3); ctx.fillRect(rx + rw / 2 + 7, ry + rh - 6, 3, 2); ctx.fillRect(rx - 6, ry - 5, 12, 3); ctx.fillStyle = "#FEF08A"; ctx.fillRect(rx - 3, ry - 6, 6, 2); }; if (b.type === "farm") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 18, cy - 8, 36, 18); ctx.fillStyle = "#78350F"; ctx.fillRect(cx - 17, cy - 7, 34, 16); ctx.fillStyle = "#CA8A04"; for (let fx = -14; fx <= 10; fx += 6) { ctx.fillRect(cx + fx, cy - 5, 4, 12); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx + fx, cy - 5, 2, 10); ctx.fillStyle = "#CA8A04"; } } else if (b.type === "imperial_citadel") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 34, cy - 26, 68, 34); ctx.fillStyle = "#475569"; ctx.fillRect(cx - 33, cy - 25, 66, 32); ctx.fillStyle = "#64748B"; ctx.fillRect(cx - 31, cy - 23, 62, 18); ctx.fillStyle = "#1A120E"; for (let mx = -32; mx < 32; mx += 8) ctx.fillRect(cx + mx, cy - 28, 5, 3); ctx.fillStyle = "#94A3B8"; for (let mx = -31; mx < 31; mx += 8) ctx.fillRect(cx + mx, cy - 27, 4, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy - 12, 20, 18); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 9, cy - 11, 18, 17); ctx.fillStyle = "#FACC15"; for (let dy = -9; dy <= 2; dy += 4) { ctx.fillRect(cx - 6, cy + dy, 2, 2); ctx.fillRect(cx + 4, cy + dy, 2, 2); } drawRoof(cx, cy - 40, 48, 15, "#FACC15"); drawRoof(cx, cy - 53, 34, 13, "#FEF08A"); const fl = Math.sin(t) * 2; ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 22, cy - 52, 2, 24); ctx.fillRect(cx + 20, cy - 52, 2, 24); ctx.fillStyle = rMid; ctx.fillRect(cx - 20, cy - 51, 9, 6 + fl * 0.4); ctx.fillRect(cx + 22, cy - 51, 9, 6 - fl * 0.4); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx - 18, cy - 49, 4, 2); ctx.fillRect(cx + 24, cy - 49, 4, 2); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2 - 1, cy - h + 6, w + 2, h); ctx.fillStyle = "#475569"; ctx.fillRect(cx - w / 2, cy - 2, w, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2, cy + 2, w, 1); ctx.fillStyle = "#D6D3D1"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, w - 4, h - 10); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, 4, h - 10); ctx.fillRect(cx + w / 2 - 6, cy - h + 8, 4, h - 10); ctx.fillStyle = "#EF4444"; ctx.fillRect(cx - w / 2 + 3, cy - h + 8, 1, h - 10); ctx.fillRect(cx + w / 2 - 5, cy - h + 8, 1, h - 10); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 6, cy - 11, 12, 13); ctx.fillStyle = "#F59E0B"; ctx.fillRect(cx - 5, cy - 10, 10, 12); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 3, cy - 8, 6, 8); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 5, cy - 5, 10, 1); ctx.fillRect(cx, cy - 10, 1, 12); if (b.type === "town_center") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy + 4, 20, 5); ctx.fillStyle = "#94A3B8"; ctx.fillRect(cx - 9, cy + 5, 18, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx - 7, cy + 7, 14, 2); ctx.fillStyle = "rgba(251, 191, 36, 0.35)"; ctx.beginPath(); ctx.arc(cx - 13, cy - 8, 6, 0, Math.PI * 2); ctx.arc(cx + 13, cy - 8, 6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 15, cy - 11, 5, 6); ctx.fillRect(cx + 10, cy - 11, 5, 6); ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 14, cy - 10, 3, 4); ctx.fillRect(cx + 11, cy - 10, 3, 4); } if (b.type === "blacksmith") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 11, cy - 10, 14, 12); ctx.fillStyle = "#57534E"; ctx.fillRect(cx - 10, cy - 9, 12, 11); const fl = Math.sin(t * 2) > 0 ? 1 : 0; ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 8, cy - 6, 8, 7); ctx.fillStyle = "#F97316"; ctx.fillRect(cx - 7, cy - 5 - fl, 6, 5 + fl); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 6, cy - 3, 4, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx + 6, cy - 2, 8, 5); ctx.fillStyle = "#64748B"; ctx.fillRect(cx + 7, cy - 1, 6, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx + 7, cy - 1, 4, 1); } drawRoof(cx, cy - h - 4, w, 14, "#FACC15"); const isAge2 = isP ? state.age >= 2 : (state.aiAge || 1) >= 2; if (b.type === "town_center" && isAge2) drawRoof(cx, cy - h - 16, w * 0.72, 11, "#FEF08A"); } if (state.selectedBuildingId === b.id) { const pad = b.type === "imperial_citadel" ? 36 : b.size === 2 ? 28 : 18; ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.strokeRect(cx - pad, cy - 54, pad * 2, 66); } if (b.hp < b.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(cx - 18, cy - 58, 36, 4); ctx.fillStyle = isP ? "#22C55E" : "#EF4444"; ctx.fillRect(cx - 18, cy - 58, 36 * Math.max(0, b.hp / b.maxHp), 4); } ctx.restore(); } function drawUnitLegacy(u) { const fState = state.fog[Math.max(0, Math.min(MAP_N - 1, Math.round(u.y)))]?.[Math.max(0, Math.min(MAP_N - 1, Math.round(u.x)))] ?? 0; if (fState !== 2 && u.team !== "player") return; const { x, y } = gridToIso(u.x, u.y); const wx = x, wy = y + TILE_H / 2; const isP = u.team === "player", tDark = isP ? "#7F1D1D" : "#1E3A8A", tMid = isP ? "#DC2626" : "#2563EB", tLight = isP ? "#FCA5A5" : "#93C5FD"; drawShadow(wx + 1, wy + 2, u.type === "war_elephant" ? 16 : u.type === "catapult" ? 13 : 8, 4); if (state.selectedIds.includes(u.id)) { ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(wx, wy + 1, u.type === "war_elephant" ? 18 : 11, 6, 0, 0, Math.PI * 2); ctx.stroke(); } if (u.type === "war_elephant") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 15, wy - 19, 28, 17); ctx.fillRect(wx + 11, wy - 14, 7, 10); ctx.fillStyle = "#475569"; ctx.fillRect(wx - 14, wy - 18, 26, 15); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 12, wy - 18, 20, 10); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 10, wy - 18, 12, 5); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 16, 6, 9); ctx.fillStyle = "#475569"; ctx.fillRect(wx + 6, wy - 15, 4, 7); ctx.fillStyle = "#64748B"; ctx.fillRect(wx + 12, wy - 13, 5, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 12, wy - 7, 8, 3); ctx.fillStyle = "#FEF3C7"; ctx.fillRect(wx + 13, wy - 6, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 24, 14, 8); ctx.fillStyle = "#991B1B"; ctx.fillRect(wx - 7, wy - 23, 12, 6); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 19, 12, 2); ctx.fillRect(wx - 4, wy - 25, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 2, wy - 24, 6, 8); ctx.fillStyle = tMid; ctx.fillRect(wx + 3, wy - 23, 4, 6); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx + 3, wy - 23, 4, 3); } else if (u.type === "catapult") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 13, wy - 13, 26, 13); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 12, wy - 12, 24, 11); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 10, wy - 11, 20, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 11, wy - 5, 7, 7); ctx.fillRect(wx + 4, wy - 5, 7, 7); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 10, wy - 4, 5, 5); ctx.fillRect(wx + 5, wy - 4, 5, 5); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 8, wy - 2, 1, 1); ctx.fillRect(wx + 7, wy - 2, 1, 1); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 2, wy - 22, 4, 14); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 1, wy - 21, 2, 12); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 7, wy - 24, 7, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 6, wy - 23, 5, 4); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx - 5, wy - 23, 2, 2); } else if (u.type === "cavalry" || u.type === "horse_archer") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 10, wy - 10, 20, 10); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 9, wy - 9, 18, 8); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 8, wy - 9, 14, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 19, 10, 11); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 18, 8, 9); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 22, 6, 4); } else if (u.type === "villager") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 12, 10, 12); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 11, 8, 10); ctx.fillStyle = tLight; ctx.fillRect(wx - 3, wy - 11, 3, 6); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 5, 8, 1); ctx.fillRect(wx - 4, wy - 16, 8, 5); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 15, 6, 4); ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(wx - 9, wy - 13); ctx.lineTo(wx, wy - 21); ctx.lineTo(wx + 9, wy - 13); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#B45309"; ctx.beginPath(); ctx.moveTo(wx - 7, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 7, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#FACC15"; ctx.beginPath(); ctx.moveTo(wx - 5, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 2, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 12, 3, 9); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx + 5, wy - 12, 3, 3); } else if (u.type === "archer" || u.type === "chuko_nu") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 18, 10, 6); ctx.fillStyle = u.type === "chuko_nu" ? "#FACC15" : "#475569"; ctx.fillRect(wx - 4, wy - 17, 8, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 14, 5, 9); ctx.fillStyle = "#B45309"; ctx.fillRect(wx + 5, wy - 13, 3, 7); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tDark; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 3, wy - 11, 6, 7); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx - 3, wy - 11, 3, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 18, 8, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 3, wy - 17, 6, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx - 1, wy - 21, 2, 3); if (u.type === "spearman") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 24, 3, 24); ctx.fillStyle = "#92400E"; ctx.fillRect(wx + 6, wy - 22, 1, 21); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 6, wy - 26, 2, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx + 4, wy - 21, 3, 3); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 15, 3, 11); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 5, wy - 14, 1, 9); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 11, 5, 8); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 10, 3, 6); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(wx - 6, wy - 9, 1, 4); } } if (u.hp < u.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(wx - 9, wy - 27, 18, 3); ctx.fillStyle = isP ? "#22C55E" : "#EF4444"; ctx.fillRect(wx - 9, wy - 27, 18 * Math.max(0, u.hp / u.maxHp), 3); } } function render() {
+  function drawBuildingLegacy(b) { const fState = state.fog[Math.min(state.mapSize - 1, b.ty)]?.[Math.min(state.mapSize - 1, b.tx)] ?? 0; if (fState === 0) return; const { x, y } = gridToIso(b.tx + ((b.size || 1) - 1) / 2, b.ty + ((b.size || 1) - 1) / 2); const cx = x, cy = y + TILE_H / 2, t = performance.now() * 0.004; ctx.save(); if (b.progress !== undefined && b.progress < 1) ctx.globalAlpha = 0.65; const isP = b.team === "player"; const rDark = isP ? "#7F1D1D" : "#1E3A8A", rMid = isP ? "#B91C1C" : "#1D4ED8", rLight = isP ? "#EF4444" : "#60A5FA"; const w = b.size === 2 ? 44 : b.type === "imperial_citadel" ? 64 : 30; const h = b.type === "imperial_citadel" ? 42 : b.size === 2 ? 32 : 24; drawShadow(cx + 3, cy + 4, w * 0.58, 12); const drawRoof = (rx, ry, rw, rh, gTrim) => { ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 8, ry + rh); ctx.lineTo(rx, ry - 4); ctx.lineTo(rx + rw / 2 + 8, ry + rh); ctx.closePath(); ctx.fill(); ctx.fillStyle = rDark; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 6, ry + rh - 1); ctx.lineTo(rx, ry - 2); ctx.lineTo(rx + rw / 2 + 6, ry + rh - 1); ctx.closePath(); ctx.fill(); ctx.fillStyle = rMid; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 3, ry + rh - 2); ctx.lineTo(rx, ry); ctx.lineTo(rx + rw / 4, ry + rh - 2); ctx.closePath(); ctx.fill(); ctx.fillStyle = rLight; ctx.fillRect(rx - 4, ry + 1, 6, 4); ctx.fillStyle = "#1A120E"; for (let tx = -rw / 2 - 4; tx <= rw / 2 + 2; tx += 4) ctx.fillRect(rx + tx, ry + rh - 1, 2, 3); ctx.fillStyle = gTrim; ctx.fillRect(rx - rw / 2 - 9, ry + rh - 4, 5, 3); ctx.fillRect(rx - rw / 2 - 10, ry + rh - 6, 3, 2); ctx.fillRect(rx + rw / 2 + 4, ry + rh - 4, 5, 3); ctx.fillRect(rx + rw / 2 + 7, ry + rh - 6, 3, 2); ctx.fillRect(rx - 6, ry - 5, 12, 3); ctx.fillStyle = "#FEF08A"; ctx.fillRect(rx - 3, ry - 6, 6, 2); }; if (b.type === "farm") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 18, cy - 8, 36, 18); ctx.fillStyle = "#78350F"; ctx.fillRect(cx - 17, cy - 7, 34, 16); ctx.fillStyle = "#CA8A04"; for (let fx = -14; fx <= 10; fx += 6) { ctx.fillRect(cx + fx, cy - 5, 4, 12); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx + fx, cy - 5, 2, 10); ctx.fillStyle = "#CA8A04"; } } else if (b.type === "imperial_citadel") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 34, cy - 26, 68, 34); ctx.fillStyle = "#475569"; ctx.fillRect(cx - 33, cy - 25, 66, 32); ctx.fillStyle = "#64748B"; ctx.fillRect(cx - 31, cy - 23, 62, 18); ctx.fillStyle = "#1A120E"; for (let mx = -32; mx < 32; mx += 8) ctx.fillRect(cx + mx, cy - 28, 5, 3); ctx.fillStyle = "#94A3B8"; for (let mx = -31; mx < 31; mx += 8) ctx.fillRect(cx + mx, cy - 27, 4, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy - 12, 20, 18); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 9, cy - 11, 18, 17); ctx.fillStyle = "#FACC15"; for (let dy = -9; dy <= 2; dy += 4) { ctx.fillRect(cx - 6, cy + dy, 2, 2); ctx.fillRect(cx + 4, cy + dy, 2, 2); } drawRoof(cx, cy - 40, 48, 15, "#FACC15"); drawRoof(cx, cy - 53, 34, 13, "#FEF08A"); const fl = Math.sin(t) * 2; ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 22, cy - 52, 2, 24); ctx.fillRect(cx + 20, cy - 52, 2, 24); ctx.fillStyle = rMid; ctx.fillRect(cx - 20, cy - 51, 9, 6 + fl * 0.4); ctx.fillRect(cx + 22, cy - 51, 9, 6 - fl * 0.4); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx - 18, cy - 49, 4, 2); ctx.fillRect(cx + 24, cy - 49, 4, 2); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2 - 1, cy - h + 6, w + 2, h); ctx.fillStyle = "#475569"; ctx.fillRect(cx - w / 2, cy - 2, w, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2, cy + 2, w, 1); ctx.fillStyle = "#D6D3D1"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, w - 4, h - 10); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, 4, h - 10); ctx.fillRect(cx + w / 2 - 6, cy - h + 8, 4, h - 10); ctx.fillStyle = "#EF4444"; ctx.fillRect(cx - w / 2 + 3, cy - h + 8, 1, h - 10); ctx.fillRect(cx + w / 2 - 5, cy - h + 8, 1, h - 10); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 6, cy - 11, 12, 13); ctx.fillStyle = "#F59E0B"; ctx.fillRect(cx - 5, cy - 10, 10, 12); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 3, cy - 8, 6, 8); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 5, cy - 5, 10, 1); ctx.fillRect(cx, cy - 10, 1, 12); if (b.type === "town_center") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy + 4, 20, 5); ctx.fillStyle = "#94A3B8"; ctx.fillRect(cx - 9, cy + 5, 18, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx - 7, cy + 7, 14, 2); ctx.fillStyle = "rgba(251, 191, 36, 0.35)"; ctx.beginPath(); ctx.arc(cx - 13, cy - 8, 6, 0, Math.PI * 2); ctx.arc(cx + 13, cy - 8, 6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 15, cy - 11, 5, 6); ctx.fillRect(cx + 10, cy - 11, 5, 6); ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 14, cy - 10, 3, 4); ctx.fillRect(cx + 11, cy - 10, 3, 4); } if (b.type === "blacksmith") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 11, cy - 10, 14, 12); ctx.fillStyle = "#57534E"; ctx.fillRect(cx - 10, cy - 9, 12, 11); const fl = Math.sin(t * 2) > 0 ? 1 : 0; ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 8, cy - 6, 8, 7); ctx.fillStyle = "#F97316"; ctx.fillRect(cx - 7, cy - 5 - fl, 6, 5 + fl); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 6, cy - 3, 4, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx + 6, cy - 2, 8, 5); ctx.fillStyle = "#64748B"; ctx.fillRect(cx + 7, cy - 1, 6, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx + 7, cy - 1, 4, 1); } drawRoof(cx, cy - h - 4, w, 14, "#FACC15"); const isAge2 = isP ? state.age >= 2 : (state.aiAge || 1) >= 2; if (b.type === "town_center" && isAge2) drawRoof(cx, cy - h - 16, w * 0.72, 11, "#FEF08A"); } if (state.selectedBuildingId === b.id) { const pad = b.type === "imperial_citadel" ? 36 : b.size === 2 ? 28 : 18; ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.strokeRect(cx - pad, cy - 54, pad * 2, 66); } if (b.hp < b.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(cx - 18, cy - 58, 36, 4); ctx.fillStyle = isP ? "#22C55E" : "#EF4444"; ctx.fillRect(cx - 18, cy - 58, 36 * Math.max(0, b.hp / b.maxHp), 4); } ctx.restore(); } function drawUnitLegacy(u) { const fState = state.fog[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.y)))]?.[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.x)))] ?? 0; if (fState !== 2 && u.team !== "player") return; const { x, y } = gridToIso(u.x, u.y); const wx = x, wy = y + TILE_H / 2; const isP = u.team === "player", tDark = isP ? "#7F1D1D" : "#1E3A8A", tMid = isP ? "#DC2626" : "#2563EB", tLight = isP ? "#FCA5A5" : "#93C5FD"; drawShadow(wx + 1, wy + 2, u.type === "war_elephant" ? 16 : u.type === "catapult" ? 13 : 8, 4); if (state.selectedIds.includes(u.id)) { ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(wx, wy + 1, u.type === "war_elephant" ? 18 : 11, 6, 0, 0, Math.PI * 2); ctx.stroke(); } if (u.type === "war_elephant") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 15, wy - 19, 28, 17); ctx.fillRect(wx + 11, wy - 14, 7, 10); ctx.fillStyle = "#475569"; ctx.fillRect(wx - 14, wy - 18, 26, 15); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 12, wy - 18, 20, 10); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 10, wy - 18, 12, 5); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 16, 6, 9); ctx.fillStyle = "#475569"; ctx.fillRect(wx + 6, wy - 15, 4, 7); ctx.fillStyle = "#64748B"; ctx.fillRect(wx + 12, wy - 13, 5, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 12, wy - 7, 8, 3); ctx.fillStyle = "#FEF3C7"; ctx.fillRect(wx + 13, wy - 6, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 24, 14, 8); ctx.fillStyle = "#991B1B"; ctx.fillRect(wx - 7, wy - 23, 12, 6); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 19, 12, 2); ctx.fillRect(wx - 4, wy - 25, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 2, wy - 24, 6, 8); ctx.fillStyle = tMid; ctx.fillRect(wx + 3, wy - 23, 4, 6); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx + 3, wy - 23, 4, 3); } else if (u.type === "catapult") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 13, wy - 13, 26, 13); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 12, wy - 12, 24, 11); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 10, wy - 11, 20, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 11, wy - 5, 7, 7); ctx.fillRect(wx + 4, wy - 5, 7, 7); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 10, wy - 4, 5, 5); ctx.fillRect(wx + 5, wy - 4, 5, 5); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 8, wy - 2, 1, 1); ctx.fillRect(wx + 7, wy - 2, 1, 1); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 2, wy - 22, 4, 14); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 1, wy - 21, 2, 12); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 7, wy - 24, 7, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 6, wy - 23, 5, 4); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx - 5, wy - 23, 2, 2); } else if (u.type === "cavalry" || u.type === "horse_archer") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 10, wy - 10, 20, 10); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 9, wy - 9, 18, 8); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 8, wy - 9, 14, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 19, 10, 11); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 18, 8, 9); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 22, 6, 4); } else if (u.type === "villager") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 12, 10, 12); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 11, 8, 10); ctx.fillStyle = tLight; ctx.fillRect(wx - 3, wy - 11, 3, 6); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 5, 8, 1); ctx.fillRect(wx - 4, wy - 16, 8, 5); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 15, 6, 4); ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(wx - 9, wy - 13); ctx.lineTo(wx, wy - 21); ctx.lineTo(wx + 9, wy - 13); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#B45309"; ctx.beginPath(); ctx.moveTo(wx - 7, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 7, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#FACC15"; ctx.beginPath(); ctx.moveTo(wx - 5, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 2, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 12, 3, 9); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx + 5, wy - 12, 3, 3); } else if (u.type === "archer" || u.type === "chuko_nu") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 18, 10, 6); ctx.fillStyle = u.type === "chuko_nu" ? "#FACC15" : "#475569"; ctx.fillRect(wx - 4, wy - 17, 8, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 14, 5, 9); ctx.fillStyle = "#B45309"; ctx.fillRect(wx + 5, wy - 13, 3, 7); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tDark; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 3, wy - 11, 6, 7); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx - 3, wy - 11, 3, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 18, 8, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 3, wy - 17, 6, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx - 1, wy - 21, 2, 3); if (u.type === "spearman") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 24, 3, 24); ctx.fillStyle = "#92400E"; ctx.fillRect(wx + 6, wy - 22, 1, 21); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 6, wy - 26, 2, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx + 4, wy - 21, 3, 3); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 15, 3, 11); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 5, wy - 14, 1, 9); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 11, 5, 8); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 10, 3, 6); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(wx - 6, wy - 9, 1, 4); } } if (u.hp < u.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(wx - 9, wy - 27, 18, 3); ctx.fillStyle = isP ? "#22C55E" : "#EF4444"; ctx.fillRect(wx - 9, wy - 27, 18 * Math.max(0, u.hp / u.maxHp), 3); } } function render() {
     if (R3D) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       R3D.syncAndRender(state, cam, frameDt);
@@ -1315,17 +1283,17 @@
 
     const SEAM = GFX && GFX.seamless;
     const fogP0 = new Path2D(), fogP1 = new Path2D();
-    if (SEAM) { SEAM.ensure(state, MAP_N); SEAM.drawBase(ctx); }
-    for (let y = 0; y < MAP_N; y++) {
-      for (let x = 0; x < MAP_N; x++) {
+    if (SEAM) { SEAM.ensure(state, state.mapSize); SEAM.drawBase(ctx); }
+    for (let y = 0; y < state.mapSize; y++) {
+      for (let x = 0; x < state.mapSize; x++) {
         const f = state.fog[y][x];
         if (f === 0) addDiamond(fogP0, (x - y) * (TILE_W / 2), (x + y) * (TILE_H / 2), 0.6);
         else if (f === 1) addDiamond(fogP1, (x - y) * (TILE_W / 2), (x + y) * (TILE_H / 2), 0.5);
       }
     }
     ctx.fillStyle = "#0B0D0B"; ctx.fill(fogP0);
-    for (let y = 0; y < MAP_N; y++) {
-      for (let x = 0; x < MAP_N; x++) {
+    for (let y = 0; y < state.mapSize; y++) {
+      for (let x = 0; x < state.mapSize; x++) {
         const f = state.fog[y][x];
         if (f === 0) continue;
         const wx = (x - y) * (TILE_W / 2);
@@ -1342,10 +1310,10 @@
     }
     ctx.fillStyle = "rgba(16, 13, 10, 0.48)"; ctx.fill(fogP1);
 
-    if (GFX) { GFX.atmosphere.drawFogEdges(ctx, state, MAP_N); GFX.atmosphere.drawGlows(ctx, state, performance.now()); GFX.vfx.drawGround(ctx); }
+    if (GFX) { GFX.atmosphere.drawFogEdges(ctx, state, state.mapSize); GFX.atmosphere.drawGlows(ctx, state, performance.now()); GFX.vfx.drawGround(ctx); }
 
     if (state.buildMode && hoverTile) {
-      if (SEAM) SEAM.drawBuildGrid(ctx, hoverTile, MAP_N);
+      if (SEAM) SEAM.drawBuildGrid(ctx, hoverTile, state.mapSize);
       const def = BLDG_DEFS[state.buildMode];
       const valid = canPlaceBuilding(hoverTile.tx, hoverTile.ty, def.size);
       for (let dy = 0; dy < def.size; dy++) {
@@ -1404,29 +1372,40 @@
     renderMinimap();
   }
 
-  function renderMinimap() {
+  // Terrain + fog layer is cached off-screen and only repainted when the fog ticks (keeps 96×96 cheap on iPhone).
+  let miniBase = null, miniDirty = true, miniBaseKey = "";
+  function paintMiniBase(sx, sy) {
+    if (!miniBase) miniBase = document.createElement("canvas");
+    miniBase.width = miniCanvas.width; miniBase.height = miniCanvas.height;
+    const mctx = miniBase.getContext("2d");
     mctx.fillStyle = "#0B0D0B";
     mctx.fillRect(0, 0, miniCanvas.width, miniCanvas.height);
-    const sx = miniCanvas.width / MAP_N;
-    const sy = miniCanvas.height / MAP_N;
-    for (let y = 0; y < MAP_N; y++) {
-      for (let x = 0; x < MAP_N; x++) {
+    for (let y = 0; y < state.mapSize; y++) {
+      for (let x = 0; x < state.mapSize; x++) {
         const f = state.fog[y][x];
         if (f === 0) continue;
         const c = state.grid[y][x];
-        mctx.fillStyle = c.terrain === "water" ? "#0F766E" : c.terrain === "bridge" ? "#B91C1C" : c.res === "wood" ? "#166534" : c.res === "gold" ? "#F59E0B" : c.res === "stone" ? "#94A3B8" : c.res === "food" ? "#A3B33A" : "#2D4715";
+        mctx.fillStyle = c.terrain === "water" ? "#0F766E" : c.terrain === "rock" ? "#57534E" : c.terrain === "bridge" ? "#B91C1C" : c.res === "wood" ? "#166534" : c.res === "gold" ? "#F59E0B" : c.res === "stone" ? "#94A3B8" : c.res === "food" ? "#A3B33A" : "#2D4715";
         mctx.fillRect(x * sx, y * sy, sx + 0.5, sy + 0.5);
         if (f === 1) { mctx.fillStyle = "rgba(0,0,0,0.45)"; mctx.fillRect(x * sx, y * sy, sx + 0.5, sy + 0.5); }
       }
     }
+  }
+
+  function renderMinimap() {
+    const sx = miniCanvas.width / state.mapSize;
+    const sy = miniCanvas.height / state.mapSize;
+    const key = state.mapSize + "|" + state.mapSeed + "|" + miniCanvas.width;
+    if (miniDirty || key !== miniBaseKey) { paintMiniBase(sx, sy); miniDirty = false; miniBaseKey = key; }
+    mctx.drawImage(miniBase, 0, 0);
     for (const b of state.buildings) {
       if (b.team === "enemy" && state.fog[b.ty]?.[b.tx] === 0) continue;
       mctx.fillStyle = b.team === "player" ? "#EF4444" : AI_COLORS[b.aiIndex % AI_COLORS.length];
       mctx.fillRect(b.tx * sx, b.ty * sy, b.size * sx + 1, b.size * sy + 1);
     }
     for (const u of state.units) {
-      const ux = Math.max(0, Math.min(MAP_N - 1, Math.floor(u.x)));
-      const uy = Math.max(0, Math.min(MAP_N - 1, Math.floor(u.y)));
+      const ux = Math.max(0, Math.min(state.mapSize - 1, Math.floor(u.x)));
+      const uy = Math.max(0, Math.min(state.mapSize - 1, Math.floor(u.y)));
       if (u.team === "enemy" && state.fog[uy][ux] < 2) continue;
       mctx.fillStyle = u.team === "player" ? "#FACC15" : "#93C5FD";
       mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2.5, 2.5);
@@ -1614,6 +1593,8 @@
   bindOptionRow("opt-faction", v => { setup.faction = v; });
   bindOptionRow("opt-mode", v => { setup.aiCount = Number(v); });
   bindOptionRow("opt-diff", v => { setup.difficulty = v; });
+  bindOptionRow("opt-map-size", v => { setup.mapSize = Number(v); });
+  bindOptionRow("opt-map-type", v => { setup.mapType = v; });
 
   function finishBoxSelect(box) {
     const minX = Math.min(box.x1, box.x2), maxX = Math.max(box.x1, box.x2);
@@ -1685,7 +1666,7 @@
       sfxClick(); renderCommandDock(); return;
     }
 
-    if (state.selectedIds.length > 0 && tx >= 0 && ty >= 0 && tx < MAP_N && ty < MAP_N) {
+    if (state.selectedIds.length > 0 && tx >= 0 && ty >= 0 && tx < state.mapSize && ty < state.mapSize) {
       const cell = state.grid[ty][tx];
       const isFarm = tappedOwnBldg && tappedOwnBldg.type === "farm";
       if ((cell.res || isFarm) && selVils.length > 0) {
@@ -1749,8 +1730,8 @@
 
   miniCanvas.addEventListener("pointerdown", e => {
     const r = miniCanvas.getBoundingClientRect();
-    const tx = Math.max(0, Math.min(MAP_N, ((e.clientX - r.left) / r.width) * MAP_N));
-    const ty = Math.max(0, Math.min(MAP_N, ((e.clientY - r.top) / r.height) * MAP_N));
+    const tx = Math.max(0, Math.min(state.mapSize, ((e.clientX - r.left) / r.width) * state.mapSize));
+    const ty = Math.max(0, Math.min(state.mapSize, ((e.clientY - r.top) / r.height) * state.mapSize));
     cam.x = (tx - ty) * (TILE_W / 2); cam.y = (tx + ty) * (TILE_H / 2);
   });
 
@@ -1762,7 +1743,7 @@
   });
 
   document.getElementById("btn-zoom-in").addEventListener("click", () => { cam.zoom = Math.min(zoomMax, cam.zoom + 0.15); });
-  document.getElementById("btn-zoom-out").addEventListener("click", () => { cam.zoom = Math.max(zoomMin, cam.zoom - 0.15); });
+  document.getElementById("btn-zoom-out").addEventListener("click", () => { cam.zoom = Math.max(R3D ? R3D.minZoom : zoomMin, cam.zoom - 0.15); });
   document.getElementById("btn-rot-left").addEventListener("click", () => { if (R3D) R3D.rotate(-1); });
   document.getElementById("btn-rot-right").addEventListener("click", () => { if (R3D) R3D.rotate(1); });
   window.addEventListener("keydown", e => {
@@ -1782,7 +1763,7 @@
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
-function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && d.grid.length === 48) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, aiStates: state.aiStates, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("pixel_dynasty_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; if (!Array.isArray(d.grid) || d.grid.length !== MAP_N) { showToast("Bản lưu từ bản đồ cũ 26×26 không dùng được trên thung lũng 48×48!"); return; } ensureAudio(); state = { running: true, gameOver: false, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, aiStates: d.aiStates || [], garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiTimer: 0, aiWave: 0 }; nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, aiStates: state.aiStates, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("pixel_dynasty_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { const raw = localStorage.getItem("pixel_dynasty_save_v1"); if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, aiStates: d.aiStates || [], garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiTimer: 0, aiWave: 0 }; nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
     if (state && state.gameOver && document.getElementById("setup-panel").style.display === "none") {

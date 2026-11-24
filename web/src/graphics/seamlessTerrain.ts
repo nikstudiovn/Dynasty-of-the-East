@@ -6,10 +6,11 @@
 
 const TILE_W = 52;
 const TILE_H = 26;
-const OX = 700;
-const OY = 16;
-const CW = 1400;
-const CH = 704;
+// Canvas extents follow the map size (set by bake()): the iso diamond spans n*TILE_W wide and n*TILE_H tall.
+let OX = 700;
+let OY = 16;
+let CW = 1400;
+let CH = 704;
 const PATH_RES = 16; // path mask cells per tile
 
 let layer: HTMLCanvasElement | null = null;
@@ -144,7 +145,12 @@ function buildPaths(state: any, n: number): PathFields {
 
 function bake(state: any, n: number) {
   bakeCount++;
-  if (!layer) { layer = document.createElement("canvas"); layer.width = CW; layer.height = CH; }
+  const ncw = Math.ceil((n * TILE_W) / 2) * 2 + 32, nch = n * TILE_H + 48;
+  if (!layer || ncw !== CW || nch !== CH) {
+    OX = ncw / 2; OY = 16; CW = ncw; CH = nch;
+    if (!layer) layer = document.createElement("canvas");
+    layer.width = CW; layer.height = CH; // resizing also frees the old backing store
+  }
   const g = layer.getContext("2d") as CanvasRenderingContext2D;
   g.clearRect(0, 0, CW, CH);
   const grid = state.grid;

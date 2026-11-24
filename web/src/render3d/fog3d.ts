@@ -1,10 +1,11 @@
-// Pixel Dynasty 3D — smooth 3-state fog of war: a terrain-hugging veil driven by a MAP_N×MAP_N (48×48) DataTexture
+// Pixel Dynasty 3D — smooth 3-state fog of war: a terrain-hugging veil driven by a mapSize×mapSize (48/64/96) DataTexture
 // sampled with LinearFilter for soft edges.
 import * as THREE from "three";
 import { MAP_N, terrainHeight, bridgeDeckAt } from "./common";
 
 const ALPHA = [0.92, 0.48, 0]; // unexplored / explored / visible
-const SEG = MAP_N * 2; // 96×96 quads keeps the veil smooth and cheap on mobile GPUs
+/** Veil quads per side: 2 per tile (1.5 on 96×96) keeps the veil smooth and cheap on mobile GPUs. */
+const segFor = () => (MAP_N >= 96 ? Math.round(MAP_N * 1.5) : MAP_N * 2);
 
 export class Fog3D {
   readonly mesh: THREE.Mesh;
@@ -16,6 +17,7 @@ export class Fog3D {
   private first = true;
 
   constructor() {
+    const SEG = segFor();
     this.tex = new THREE.DataTexture(this.data, MAP_N, MAP_N, THREE.RGBAFormat);
     this.tex.magFilter = THREE.LinearFilter;
     this.tex.minFilter = THREE.LinearFilter;
@@ -64,6 +66,14 @@ export class Fog3D {
     this.mesh = new THREE.Mesh(g, this.mat);
     this.mesh.renderOrder = 8;
     this.mesh.frustumCulled = false;
+  }
+
+  /** Frees the veil geometry, material and DataTexture (called when the map size / type changes). */
+  dispose(): void {
+    this.mesh.parent?.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    this.mat.dispose();
+    this.tex.dispose();
   }
 
   /** Lift the veil so it hugs the sculpted hills (re-run when a new map is loaded). */

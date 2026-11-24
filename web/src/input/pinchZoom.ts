@@ -27,7 +27,7 @@ export function install(o: PinchOptions): void {
   if (installed) return;
   installed = true;
   const { canvas, cam } = o;
-  const minZ = o.minZoom ?? MIN_ZOOM, maxZ = o.maxZoom ?? MAX_ZOOM;
+  const minZf = () => ((o.view as any)?.minZoom ?? o.minZoom ?? MIN_ZOOM), maxZ = o.maxZoom ?? MAX_ZOOM;
   const activePointers = new Map<number, { x: number; y: number }>();
   let pinchActive = false;
   let startDist = 1, startZoom = 1, anchorX = 0, anchorY = 0;
@@ -38,7 +38,7 @@ export function install(o: PinchOptions): void {
     return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
   };
 
-  const clamp = (z: number) => Math.max(minZ, Math.min(maxZ, z));
+  const clamp = (z: number) => Math.max(minZf(), Math.min(maxZ, z));
   const local = (cx: number, cy: number) => {
     const r = canvas.getBoundingClientRect();
     const k = r.width > 0 ? canvas.width / r.width : 1;
