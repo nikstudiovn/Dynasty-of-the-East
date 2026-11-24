@@ -375,7 +375,7 @@
       <button class="icon-btn" id="btn-zoom-in" title="Phóng to">+</button>
       <button class="icon-btn rot-btn" id="btn-rot-left" title="Xoay camera (Q)">↺</button>
       <button class="icon-btn rot-btn" id="btn-rot-right" title="Xoay camera (E)">↻</button>
-      <button class="icon-btn" id="btn-atmosphere" title="Chuyển chu kỳ Ngày-Đêm & Thời tiết">Trời: Tự động</button>
+      <button class="icon-btn" id="btn-atmosphere" title="Chuyển chu kỳ Ngày-Đêm & Thời tiết">Trời: Tự động</button <button class="icon-btn" id="btn-quality" title="Chuyển mức chất lượng đồ họa 3D">Đồ họa: Tự động</button>>
       <button class="icon-btn" id="btn-music" title="Bật/Tắt nhạc nền Á Đông">Nhạc: Bật</button> <button class="icon-btn" id="btn-sound" title="Bật/Tắt âm thanh">Âm: Bật</button>
      <button class="icon-btn" id="btn-save" title="Lưu ván đấu vào bộ nhớ máy">Lưu</button>  <button class="icon-btn" id="btn-restart" title="Cài đặt & Chơi lại">Chơi lại</button>
     </div>
@@ -1879,7 +1879,7 @@ const updateBattleHud = initBattleHud();
   });
  const btnAtmos = document.getElementById("btn-atmosphere");
  const atmosLabels = { auto: "Trời: Tự động", golden: "Trời: Hoàng hôn", night: "Trời: Đêm đèn lồng" };
- btnAtmos?.addEventListener("click", () => { const m = R3D?.cycleAtmosphere?.(); if (m && atmosLabels[m]) btnAtmos.textContent = atmosLabels[m]; });
+ btnAtmos?.addEventListener("click", () => { const m = R3D?.cycleAtmosphere?.(); if (m && atmosLabels[m]) btnAtmos.textContent = atmosLabels[m]; }); const QUALITY_KEY = "pixel_dynasty_quality", qualityPresets = ["auto", "high", "medium", "low"], qualityLabels = { auto: "Đồ họa: Tự động", high: "Đồ họa: Cao", medium: "Đồ họa: Trung bình", low: "Đồ họa: Thấp" }; let savedQuality = "auto"; try { const q = localStorage.getItem(QUALITY_KEY); if (q && qualityPresets.includes(q)) savedQuality = q; } catch {} const btnQuality = document.getElementById("btn-quality"); if (btnQuality) btnQuality.textContent = qualityLabels[savedQuality] || qualityLabels.auto; btnQuality?.addEventListener("click", () => { savedQuality = qualityPresets[(qualityPresets.indexOf(savedQuality) + 1) % qualityPresets.length]; try { localStorage.setItem(QUALITY_KEY, savedQuality); } catch {} btnQuality.textContent = qualityLabels[savedQuality] || qualityLabels.auto; R3D?.setQuality?.(savedQuality); });
   document.getElementById("btn-sound").addEventListener("click", e => {
     soundOn = !soundOn; e.target.textContent = soundOn ? "Âm: Bật" : "Âm: Tắt";
   }); document.getElementById("btn-music").addEventListener("click", e => { bgmOn = !bgmOn; e.target.textContent = bgmOn ? "Nhạc: Bật" : "Nhạc: Tắt"; if (bgmOn) { ensureAudio(); startBGM(); } });
@@ -1966,7 +1966,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
         getHover: () => hoverTile,
         getSelectionBox: () => selectionBox
       });
-      zoomMin = R3D.minZoom; zoomMax = R3D.maxZoom;
+      zoomMin = R3D.minZoom; zoomMax = R3D.maxZoom; R3D.setQuality?.(savedQuality);
       document.body.classList.add("r3d");
     } catch (err) {
       console.warn("[Pixel Dynasty] WebGL2 3D renderer unavailable, using classic 2D canvas:", err);
