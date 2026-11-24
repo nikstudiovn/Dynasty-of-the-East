@@ -14,6 +14,8 @@ export interface PinchOptions {
 }
 
 export interface PinchView {
+  readonly minZoom?: number;
+  readonly maxZoom?: number;
   anchorAt(clientX: number, clientY: number): { x: number; z: number };
   placeAnchor(cam: Cam, anchor: { x: number; z: number }, clientX: number, clientY: number, zoom: number): void;
 }
@@ -27,18 +29,19 @@ export function install(o: PinchOptions): void {
   if (installed) return;
   installed = true;
   const { canvas, cam } = o;
-  const minZf = () => ((o.view as any)?.minZoom ?? o.minZoom ?? MIN_ZOOM), maxZ = o.maxZoom ?? MAX_ZOOM;
+  const view = o.view;
   const activePointers = new Map<number, { x: number; y: number }>();
   let pinchActive = false;
+  let pinchPair: [number, number] | null = null;
+  let pendingFrame = 0;
   let startDist = 1, startZoom = 1, anchorX = 0, anchorY = 0;
-  const view = o.view;
+  let center = { x: 0, y: 0 };
   let anchor3 = { x: 0, z: 0 };
-  const clientMid = () => {
-    const pts = Array.from(activePointers.values());
-    return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-  };
 
-  const clamp = (z: number) => Math.max(minZf(), Math.min(maxZ, z));
+  const clamp = (z: number) => Math.max(
+    view?.minZoom ?? o.minZoom ?? MIN_ZOOM,
+    Math.min(view?.maxZoom ?? o.maxZoom ?? MAX_ZOOM, z)
+  );
   const local = (cx: number, cy: number) => {
     const r = canvas.getBoundingClientRect();
     const k = r.width > 0 ? canvas.width / r.width : 1;
@@ -48,31 +51,41 @@ export function install(o: PinchOptions): void {
     x: (sx - canvas.width / 2) / zoom + cam.x,
     y: (sy - canvas.height / 2) / zoom + cam.y
   });
-  const geometry = () => {
-    const pts = Array.from(activePointers.values());
-    const a = pts[0], b = pts[1];
-    const mid = local((a.x + b.x) / 2, (a.y + b.y) / 2);
-    return { dist: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), mx: mid.x, my: mid.y };
-  };
+  const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.max(10, Math.hypot(a.x - b.x, a.y - b.y));
 
   function beginPinch() {
     pinchActive = true;
-    const g = geometry();
-    startDist = g.dist; startZoom = cam.zoom;
-    if (view) { const c = clientMid(); anchor3 = view.anchorAt(c.x, c.y); }
-    const w = worldAt(g.mx, g.my, cam.zoom);
-    anchorX = w.x; anchorY = w.y;
-    if (o.onPinchStart) o.onPinchStart();
+    const [[idA, a], [idB, b]] = activePointers;
+    pinchPair = [idA, idB];
+    startDist = distance(a, b);
+    startZoom = cam.zoom;
+    center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (view) anchor3 = view.anchorAt(center.x, center.y);
+    else {
+      const p = local(center.x, center.y);
+      const w = worldAt(p.x, p.y, startZoom);
+      anchorX = w.x;
+      anchorY = w.y;
+    }
+    o.onPinchStart?.();
   }
 
   function applyPinch() {
-    const g = geometry();
-    const z = clamp(startZoom * (g.dist / startDist));
-    if (view) { const c = clientMid(); view.placeAnchor(cam, anchor3, c.x, c.y, z); cam.zoom = z; return; }
+    pendingFrame = 0;
+    if (!pinchPair) return;
+    const a = activePointers.get(pinchPair[0]), b = activePointers.get(pinchPair[1]);
+    if (!a || !b) return;
+    const z = clamp(startZoom * distance(a, b) / startDist);
+    if (Math.abs(z - cam.zoom) < 0.001) return;
+    // The initial midpoint stays fixed: translating both fingers is not a pan.
+    if (view) view.placeAnchor(cam, anchor3, center.x, center.y, z);
+    else {
+      const p = local(center.x, center.y);
+      cam.x = anchorX - (p.x - canvas.width / 2) / z;
+      cam.y = anchorY - (p.y - canvas.height / 2) / z;
+    }
     cam.zoom = z;
-    // the world point under the (moving) midpoint stays under it => zoom + two-finger pan
-    cam.x = anchorX - (g.mx - canvas.width / 2) / z;
-    cam.y = anchorY - (g.my - canvas.height / 2) / z;
   }
 
   function zoomAt(sx: number, sy: number, z: number) {
@@ -84,10 +97,10 @@ export function install(o: PinchOptions): void {
   }
 
   window.addEventListener("pointerdown", e => {
-    if (e.target !== canvas || e.pointerType === "mouse") return;
+    if (e.target !== canvas || e.pointerType !== "touch") return;
     activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (activePointers.size === 2) { beginPinch(); e.stopImmediatePropagation(); e.preventDefault(); }
-    else if (activePointers.size > 2 || pinchActive) e.stopImmediatePropagation();
+    if (!pinchActive && activePointers.size === 2) beginPinch();
+    if (pinchActive) { e.stopImmediatePropagation(); e.preventDefault(); }
   }, { capture: true });
 
   window.addEventListener("pointermove", e => {
@@ -96,22 +109,36 @@ export function install(o: PinchOptions): void {
     p.x = e.clientX; p.y = e.clientY;
     if (pinchActive) {
       e.stopImmediatePropagation();
-      if (activePointers.size === 2) applyPinch();
+      // One physical touch move can deliver a separate pointermove for each finger.
+      if (!pendingFrame && pinchPair?.includes(e.pointerId)) pendingFrame = requestAnimationFrame(applyPinch);
     }
   }, { capture: true });
 
   const end = (e: PointerEvent) => {
     if (!activePointers.has(e.pointerId)) return;
-    activePointers.delete(e.pointerId);
     if (pinchActive) {
       e.stopImmediatePropagation(); // swallow the lift so it is never treated as a tap
-      if (activePointers.size === 0) pinchActive = false;
-      else if (activePointers.size === 1) { /* remaining finger stays inert until it lifts */ }
+      if (pinchPair?.includes(e.pointerId)) {
+        if (pendingFrame) {
+          cancelAnimationFrame(pendingFrame);
+          if (e.type === "pointerup") applyPinch();
+          pendingFrame = 0;
+        }
+        pinchPair = null;
+      }
     }
+    activePointers.delete(e.pointerId);
+    if (activePointers.size === 0) pinchActive = false;
   };
   window.addEventListener("pointerup", end, { capture: true });
   window.addEventListener("pointercancel", end, { capture: true });
-  const reset = () => { activePointers.clear(); pinchActive = false; };
+  const reset = () => {
+    if (pendingFrame) cancelAnimationFrame(pendingFrame);
+    pendingFrame = 0;
+    activePointers.clear();
+    pinchPair = null;
+    pinchActive = false;
+  };
   window.addEventListener("blur", reset);
   document.addEventListener("visibilitychange", () => { if (document.hidden) reset(); });
 
