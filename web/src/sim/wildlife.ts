@@ -2,7 +2,7 @@
 // Animals live in `state.animals` (never in `state.units`, so soldiers never auto-target them).
 import { rng } from "./valley";
 
-export type AnimalType = "deer" | "boar | "goat" | "cattle" | "lion" | "wild_elephant";
+export type AnimalType = "deer" | "boar" | "goat" | "cattle" | "lion" | "wild_elephant";
 
 export interface Animal {
   id: number; type: AnimalType; x: number; y: number; hp: number; maxHp: number;
