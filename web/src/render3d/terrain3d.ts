@@ -752,12 +752,12 @@ export class Terrain3D {
 
     // --- mines: bevelled dark rock studded with low-roughness gold crystals, or layered slate outcrops
     const mine = (cx: number, cz: number, x: number, y: number, gold: boolean, big: boolean, amt: number) => {
-      const n = big ? 7 : 3, spread = big ? 0.6 : 0.2;
+      const n = big ? 8 : 3, spread = big ? 0.6 : 0.2;
       const rot = hash2(x + seed % 57, y) * TAU;
       for (let i = 0; i < n; i++) {
         const a = rot + i * 2.399, r = i === 0 ? 0 : spread * (0.55 + hash2(x + i, y) * 0.45);
         const px = cx + Math.cos(a) * r, pz = cz + Math.sin(a) * r;
-        const s = (big ? (i === 0 ? 1.05 : 0.6) : (i === 0 ? 0.56 : 0.34)) * (0.85 + hash2(x * 3 + i, y) * 0.3) * amt;
+        const s = (big ? (i === 0 ? 0.34 : 0.24) : (i === 0 ? 0.30 : 0.21)) * (0.85 + hash2(x * 3 + i, y) * 0.3) * amt;
         const base = h(px, pz) - 0.03 * s;
         if (gold) {
           boulders.push(item(px, base, pz, x, y, a, s, s * 1.1, s * 0.9));
@@ -799,7 +799,7 @@ export class Terrain3D {
         bunds.push(item(x + i + 0.5, h(x + i + 0.5, y + mid) - 0.015, y + mid, x, y, 0, 0.98, 0.8, 0.8));
         if (n === 2) bunds.push(item(x + 1, h(x + 1, y + i + 0.5) - 0.015, y + i + 0.5, x, y, Math.PI / 2, 0.98, 0.8, 0.8));
       }
-      const H = [0.13, 0.25, 0.38][stage];
+      const H = [0.10, 0.18, 0.26][stage];
       for (let cy = 0; cy < n; cy++) for (let cx = 0; cx < n; cx++) {
         const ox = x + cx, oy = y + cy;
         for (let row = 0; row < 4; row++) for (let k = 0; k < 4; k++) {
