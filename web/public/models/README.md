@@ -1,4 +1,4 @@
-# Pixel Dynasty model catalog
+# Dynasty of the East model catalog
 
 All files are optional. Add the models under these paths so Vite copies them to the game bundle:
 

@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — the living world around the valley: misty low-poly mountain ridges on every side of the
+// Dynasty of the East 3D — the living world around the valley: misty low-poly mountain ridges on every side of the
 // map island, drifting mist bands, a flock of 5 white cranes gliding high above, and golden pollen /
 // bamboo-leaf motes floating across the view. All cheap: 1 ridge mesh, 2 mist strips, 1 Points cloud.
 import * as THREE from "three";

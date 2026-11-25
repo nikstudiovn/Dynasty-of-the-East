@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — shared "Điện ảnh Trầm" (muted cinematic) PBR material library.
+// Dynasty of the East 3D — shared "Điện ảnh Trầm" (muted cinematic) PBR material library.
 // Every texture (map + normalMap + roughnessMap) is generated procedurally on the client from the same
 // seamless noise used by the Chặng 1 terrain, so the game stays 100% offline. The named materials below
 // are the contract for Chặng 2B: `.glb` meshes can be re-skinned by material name (`mat_wood`, ...).

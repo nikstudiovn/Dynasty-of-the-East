@@ -1,4 +1,4 @@
-// Pixel Dynasty — wildlife: deer herds (flee when startled), wild boar (charge back at attackers) and villager hunting.
+// Dynasty of the East — wildlife: deer herds (flee when startled), wild boar (charge back at attackers) and villager hunting.
 // Animals live in `state.animals` (never in `state.units`, so soldiers never auto-target them).
 import { rng } from "./valley";
 

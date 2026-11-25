@@ -1,4 +1,4 @@
-// Pixel Dynasty — seamless organic terrain.
+// Dynasty of the East — seamless organic terrain.
 // The static ground is painted ONCE per match into an offscreen canvas (pixel-level 2D value noise,
 // Bayer-dithered between 4 meadow shades, winding footpaths, flowers, pebbles, mossy banks) and then
 // blitted every frame with a single drawImage. It is re-baked only when the terrain signature

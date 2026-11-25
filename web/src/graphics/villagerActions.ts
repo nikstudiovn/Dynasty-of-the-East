@@ -1,4 +1,4 @@
-// Pixel Dynasty — villager work animations & tool VFX.
+// Dynasty of the East — villager work animations & tool VFX.
 // Every villager carries `workStyle` ("chop" | "mine" | "harvest" | "build" | "carry" | "idle")
 // and `workPhase` (radians). A strike fires each time the phase wraps past 2π.
 // Particles live in a fixed typed-array pool (no per-frame allocation).

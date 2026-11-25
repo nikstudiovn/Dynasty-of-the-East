@@ -1,4 +1,4 @@
-// Pixel Dynasty – Touch & Mouse Double-Tap / Box-Select Controller
+// Dynasty of the East – Touch & Mouse Double-Tap / Box-Select Controller
 
 export const DOUBLE_TAP_RADIUS = 6;
 

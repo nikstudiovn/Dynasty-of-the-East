@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — sculpted seamless terrain, winding river + living lotus lake (shader shimmer, lily pads,
+// Dynasty of the East 3D — sculpted seamless terrain, winding river + living lotus lake (shader shimmer, lily pads,
 // lotus blossoms, koi), arched vermilion wooden bridges and instanced resources (bamboo groves, terraced rice,
 // gold crystal outcrops, mossy stone). Repeated vegetation and resources share instanced draw calls.
 import * as THREE from "three";

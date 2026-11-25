@@ -9,7 +9,7 @@ declare global {
   interface Window {
     webkit?: {
       messageHandlers?: {
-        pixelDynasty?: {
+        dote?: {
           postMessage: (payload: NativePayload) => void;
         };
       };
@@ -20,12 +20,12 @@ declare global {
 
 export const nativeBridge = {
   isIOSApp(): boolean {
-    return Boolean(window.webkit?.messageHandlers?.pixelDynasty);
+    return Boolean(window.webkit?.messageHandlers?.dote);
   },
 
   triggerHaptic(style: HapticStyle): void {
     if (this.isIOSApp()) {
-      window.webkit?.messageHandlers?.pixelDynasty?.postMessage({
+      window.webkit?.messageHandlers?.dote?.postMessage({
         type: "haptic",
         data: { style }
       });
@@ -33,20 +33,20 @@ export const nativeBridge = {
   },
 
   hostLanRoom(roomName: string): void {
-    window.webkit?.messageHandlers?.pixelDynasty?.postMessage({
+    window.webkit?.messageHandlers?.dote?.postMessage({
       type: "lan_host",
       data: { roomName }
     });
   },
 
   browseLanRooms(): void {
-    window.webkit?.messageHandlers?.pixelDynasty?.postMessage({
+    window.webkit?.messageHandlers?.dote?.postMessage({
       type: "lan_browse"
     });
   },
 
   sendLanCommand(command: unknown): void {
-    window.webkit?.messageHandlers?.pixelDynasty?.postMessage({
+    window.webkit?.messageHandlers?.dote?.postMessage({
       type: "lan_send",
       data: { command }
     });

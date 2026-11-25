@@ -1,4 +1,4 @@
-// Pixel Dynasty — two-finger pinch-to-zoom (anchored at the pinch midpoint) + wheel zoom.
+// Dynasty of the East — two-finger pinch-to-zoom (anchored at the pinch midpoint) + wheel zoom.
 // Listens in the window capture phase so the classic game handlers never see events of a pinch.
 
 export interface Cam { x: number; y: number; zoom: number; }

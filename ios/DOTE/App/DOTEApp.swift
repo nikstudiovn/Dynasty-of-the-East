@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PixelDynastyApp: App {
+struct DOTEApp: App {
     var body: some Scene {
         WindowGroup {
             GameWebView()

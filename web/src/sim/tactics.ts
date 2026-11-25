@@ -1,4 +1,4 @@
-// Pixel Dynasty — tactical RTS controls: rally points, attack-move, unit stances, market trades, stuck-unit wall breaking.
+// Dynasty of the East — tactical RTS controls: rally points, attack-move, unit stances, market trades, stuck-unit wall breaking.
 
 export type Stance = "aggressive" | "stand_ground";
 export type RallyKind = "move" | "gather" | "hunt";

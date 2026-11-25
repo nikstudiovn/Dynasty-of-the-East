@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — procedural stylized East Asian architecture for all 11 building types (4-age evolution).
+// Dynasty of the East 3D — procedural stylized East Asian architecture for all 11 building types (4-age evolution).
 import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";

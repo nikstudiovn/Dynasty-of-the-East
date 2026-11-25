@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — shared constants, coordinate helpers, height field and material cache.
+// Dynasty of the East 3D — shared constants, coordinate helpers, height field and material cache.
 // World space: 1 tile = 1 unit. Tile (tx, ty) covers x in [tx, tx+1], z in [ty, ty+1]. y is up.
 import * as THREE from "three";
 import { disposeSurfaceMaps, softMask, bindSurface, type Surface } from "./surfaces";

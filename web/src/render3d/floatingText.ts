@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — floating combat / resource numbers drawn with Canvas 2D on #overlayCanvas.
+// Dynasty of the East 3D — floating combat / resource numbers drawn with Canvas 2D on #overlayCanvas.
 // A fixed pool of 40 labels is reused (one label per gameplay event); world positions are projected every
 // frame. The on/off preference lives here so the HUD, pause menu and lobby buttons share one source of truth.
 

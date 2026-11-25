@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — WebGL2 renderer, cinematic lighting and the 45° perspective RTS camera.
+// Dynasty of the East 3D — WebGL2 renderer, cinematic lighting and the 45° perspective RTS camera.
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";

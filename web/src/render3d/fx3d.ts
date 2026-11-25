@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — pooled instanced particles, shockwave rings and scorch decals (zero per-frame allocation),
+// Dynasty of the East 3D — pooled instanced particles, shockwave rings and scorch decals (zero per-frame allocation),
 // plus the Chặng 3 combat layer: per-target hit flash, command ripples, impact dust rings, batched torch
 // sprites and a camera-kick request. Every new effect is quality-gated (low keeps only the cheap ones).
 import * as THREE from "three";

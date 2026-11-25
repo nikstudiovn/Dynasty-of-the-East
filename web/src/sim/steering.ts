@@ -1,4 +1,4 @@
-// Pixel Dynasty — path smoothing, local steering and formation slots.
+// Dynasty of the East — path smoothing, local steering and formation slots.
 // Pure functions: the game passes in its own `isTileBlocked` and unit list.
 
 export type Blocked = (tx: number, ty: number) => boolean;

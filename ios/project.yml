@@ -1,4 +1,4 @@
-name: PixelDynasty
+name: DOTE
 options:
   bundleIdPrefix: com.nikstudio
   deploymentTarget:
@@ -14,22 +14,22 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
 
 targets:
-  PixelDynasty:
+  DOTE:
     type: application
     platform: iOS
     sources:
-      - path: PixelDynasty
+      - path: DOTE
         excludes:
           - WebBundle
-      - path: PixelDynasty/WebBundle
+      - path: DOTE/WebBundle
         type: folder
     info:
-      path: PixelDynasty/Resources/Info.plist
+      path: DOTE/Resources/Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nikstudio.pixeldynasty
         PRODUCT_NAME: Dynasty of the East
-        INFOPLIST_FILE: PixelDynasty/Resources/Info.plist
+        INFOPLIST_FILE: DOTE/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_BITCODE: NO
     frameworks:
@@ -39,10 +39,10 @@ targets:
       - sdk: CoreHaptics.framework
 
 schemes:
-  PixelDynasty:
+  DOTE:
     build:
       targets:
-        PixelDynasty: all
+        DOTE: all
     run:
       config: Debug
     archive:

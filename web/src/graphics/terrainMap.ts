@@ -1,4 +1,4 @@
-// Pixel Dynasty — terrain: wooden bridges, sandy shorelines, golden-hour shadows.
+// Dynasty of the East — terrain: wooden bridges, sandy shorelines, golden-hour shadows.
 
 import { placeBridges } from "../sim/valley";
 

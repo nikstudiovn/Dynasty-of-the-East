@@ -1,4 +1,4 @@
-// Pixel Dynasty — baked 16-bit sprite atlas.
+// Dynasty of the East — baked 16-bit sprite atlas.
 // Every unit/building sprite is drawn ONCE (procedurally, 3-tone shading + 1px #1A120E outline) into
 // a single offscreen sheet. The render loop only calls ctx.drawImage on sheet rectangles, so there
 // are no canvas allocations while the game runs. Cache key: type + colour + age + frame.
