@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import WebKit
 
@@ -31,8 +32,14 @@ struct GameWebView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKScriptMessageHandler, AVAudioPlayerDelegate {
         weak var webView: WKWebView?
+        private var endedMusicDecks: Set<Int> = []
+        private var musicPlayers: [Int: AVAudioPlayer] = [:]
+        private let musicTracks: Set<String> = [
+            "menu", "peace_day_1", "peace_day_2", "night_lantern", "battle_skirmish",
+            "battle_siege", "victory", "defeat"
+        ]
         private let lanManager = LanSessionManager()
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -44,6 +51,8 @@ struct GameWebView: UIViewRepresentable {
             case "haptic":
                 let style = data?["style"] as? String ?? "light"
                 HapticsManager.shared.trigger(style: style)
+            case "music_deck":
+                if let data { handleMusicDeck(data) }
             case "lan_host":
                 let roomName = data?["roomName"] as? String ?? "DOTE"
                 lanManager.startHosting(roomName: roomName)
@@ -55,6 +64,43 @@ struct GameWebView: UIViewRepresentable {
                         self?.webView?.evaluateJavaScript("window.onNativeEvent?.('lan_peers', \(str));")
                     }
                 }
+            default:
+                break
+            }
+        }
+        func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+            if let deck = musicPlayers.first(where: { $0.value === player })?.key {
+                endedMusicDecks.insert(deck)
+            }
+        }
+
+        private func handleMusicDeck(_ data: [String: Any]) {
+            guard let deck = data["deck"] as? Int, (0...1).contains(deck),
+                  let action = data["action"] as? String else { return }
+
+            switch action {
+            case "load":
+                endedMusicDecks.remove(deck)
+                musicPlayers.removeValue(forKey: deck)?.stop()
+                guard let track = data["track"] as? String, musicTracks.contains(track),
+                      let root = Bundle.main.url(forResource: "WebBundle", withExtension: nil),
+                      let player = try? AVAudioPlayer(contentsOf: root.appendingPathComponent("audio/bgm_\(track).m4a"))
+                else { return }
+                player.delegate = self
+                player.volume = 0
+                player.numberOfLoops = data["loop"] as? Bool == true ? -1 : 0
+                player.prepareToPlay()
+                musicPlayers[deck] = player
+            case "volume":
+                if let volume = data["volume"] as? Double, volume.isFinite {
+                    musicPlayers[deck]?.volume = Float(min(1, max(0, volume)))
+                }
+            case "pause":
+                musicPlayers[deck]?.pause()
+            case "resume":
+                if !endedMusicDecks.contains(deck) { musicPlayers[deck]?.play() }
+            case "clear":
+                musicPlayers.removeValue(forKey: deck)?.stop()
             default:
                 break
             }
