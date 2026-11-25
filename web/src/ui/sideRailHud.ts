@@ -185,7 +185,7 @@ export function initSideRailHud(): void {
   const drawerClose = document.createElement("button");
   drawerClose.type = "button";
   drawerClose.className = "dote-drawer-close";
-  drawerClose.textContent = "×";
+  drawerClose.innerHTML = getIconSvg("close", 16);
   drawerClose.setAttribute("aria-label", "Đóng ngăn kéo");
   drawerHeader.append(drawerTitle, drawerClose);
 
@@ -206,15 +206,19 @@ export function initSideRailHud(): void {
   const setDrawerOpen = (open: boolean): void => {
     drawerOpen = open;
     drawer.classList.toggle("dote-drawer-open", open);
+    drawer.inert = !open;
+    drawerBtn.setAttribute("aria-expanded", String(open));
     drawerBtn.classList.toggle("dote-active", open);
   };
 
+  drawer.inert = true;
   drawerClose.addEventListener("click", () => setDrawerOpen(false));
 
   const drawerBtn = document.createElement("button");
   drawerBtn.type = "button";
   drawerBtn.className = "dote-rail-btn";
-  drawerBtn.setAttribute("aria-label", "Mở bảng lệnh chi tiết");    
+  drawerBtn.setAttribute("aria-label", "Mở bảng lệnh chi tiết");
+  drawerBtn.setAttribute("aria-expanded", "false");
   drawerBtn.innerHTML = `${getIconSvg("tab_eco", 24)}<span class="dote-btn-lbl">Lệnh</span>`;
   drawerBtn.addEventListener("click", () => setDrawerOpen(!drawerOpen));
   attachLongPress(drawerBtn, () => "Mở/Đóng bảng lệnh chi tiết");
@@ -259,12 +263,34 @@ export function initSideRailHud(): void {
   if (selPortrait) selPill.appendChild(selPortrait);
   if (selTitle) selPill.appendChild(selTitle);
 
+  const commandTimers = document.getElementById("dote-command-timers");
+  if (commandTimers) drawerBody.appendChild(commandTimers);
   const cmdButtons = document.getElementById("cmd-buttons");
   if (cmdButtons) {
     drawerBody.appendChild(cmdButtons);
   }
 
   gameWrap.append(leftRail, rightRail, drawer, selPill, edgeHandle);
+
+  const scrollRegions = [leftScroll, rightScroll, drawerBody];
+  const refreshScrollHints = (): void => {
+    for (const region of scrollRegions) {
+      region.toggleAttribute("data-dote-more", region.scrollHeight - region.scrollTop > region.clientHeight + 2);
+    }
+  };
+  const scrollResize = new ResizeObserver(refreshScrollHints);
+  if (cmdButtons) scrollResize.observe(cmdButtons);
+  if (commandTimers) scrollResize.observe(commandTimers);
+  for (const region of scrollRegions) {
+    scrollResize.observe(region);
+    region.addEventListener("scroll", () => { hideTooltip(); refreshScrollHints(); }, { passive: true });
+  }
+  for (const panel of [leftRail, rightRail, drawer]) {
+    for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel",
+      "touchstart", "touchmove", "touchend", "touchcancel", "wheel"]) {
+      panel.addEventListener(type, event => event.stopPropagation(), { passive: true });
+    }
+  }
 
   let isMutatingCmd = false;
   const applyTabFilter = (): void => {
@@ -307,6 +333,8 @@ export function initSideRailHud(): void {
     tb.addEventListener("click", () => {
       activeTab = t.id;
       applyTabFilter();
+      drawerBody.scrollTop = 0;
+      refreshScrollHints();
     });
     tabButtons[t.id] = tb;
     drawerTabs.appendChild(tb);

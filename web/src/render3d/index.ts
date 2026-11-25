@@ -1,3 +1,4 @@
+import { healthColor } from "../ui/battleStatus";
 // Dynasty of the East 3D — facade used by the classic game script, plus the crisp 2D Retina overlay bridge.
 import { ModelRegistry } from "./modelRegistry";
 import * as THREE from "three";
@@ -129,10 +130,10 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
 
   const local = (cx: number, cy: number) => { const r = canvas.getBoundingClientRect(); return { x: cx - r.left, y: cy - r.top }; };
 
-  function drawBar(x: number, y: number, w: number, k: number, own: boolean): void {
+  function drawBar(x: number, y: number, w: number, k: number, color: string): void {
     octx.fillStyle = "rgba(10, 8, 6, 0.85)";
     octx.fillRect(x - w / 2 - 1, y - 1, w + 2, 5);
-    octx.fillStyle = own ? (k > 0.5 ? "#22c55e" : k > 0.25 ? "#facc15" : "#ef4444") : "#ef4444";
+    octx.fillStyle = color;
     octx.fillRect(x - w / 2, y, w * clamp(k, 0, 1), 3);
   }
 
@@ -190,19 +191,19 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         if (!e.group.visible || !(b.hp < b.maxHp)) continue;
         const p = s3.project(e.group.position.x, e.group.position.y + e.parts.top * e.group.scale.y + 0.15, e.group.position.z);
         if (!p.visible || p.x < -40 || p.y < -40 || p.x > W + 40 || p.y > H + 40) continue;
-        drawBar(p.x, p.y, Math.max(b.w ?? b.size ?? 1, b.h ?? b.size ?? 1) * 22, b.hp / b.maxHp, b.team === "player");
+        drawBar(p.x, p.y, Math.max(b.w ?? b.size ?? 1, b.h ?? b.size ?? 1) * 22, b.hp / b.maxHp, healthColor(b));
       }
-      // Town Center progress: age research always, villager training only while selected.
+      // Age research stays visible. Unit training is shown above the selected building.
       try {
         const research = state.ageResearch;
         const small = H < 520 || W < 520;
         for (const e of buildings.entries()) {
           const b = e.b;
-          if (!e.group.visible || b.team !== "player" || b.type !== "town_center" || (b.progress ?? 1) < 1) continue;
+          if (!e.group.visible || b.team !== "player" || (b.progress ?? 1) < 1) continue;
           const bars: { k: number; label: string; color: string }[] = [];
           if (research && research.buildingId === b.id) bars.push({ k: 1 - research.remaining / research.total, label: `Lên Đời ${research.target} · ${clock(research.remaining)}`, color: "#c9902f" });
           const head = b.trainQueue?.[0];
-          if (head && state.selectedBuildingId === b.id) bars.push({ k: 1 - head.remaining / head.total, label: `Dân làng · ${clock(head.remaining)}`, color: "#4fae8c" });
+          if (head && state.selectedBuildingId === b.id) bars.push({ k: 1 - head.remaining / head.total, label: `Huấn luyện · ${clock(head.remaining)}`, color: "#4fae8c" });
           if (!bars.length) continue;
           const p = s3.project(e.group.position.x, e.group.position.y + e.parts.top * e.group.scale.y + 0.15, e.group.position.z);
           if (!p.visible || p.x < -60 || p.y < -60 || p.x > W + 60 || p.y > H + 60) continue;
@@ -216,7 +217,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         if (!u || !r.root.visible || !(u.hp < u.maxHp)) continue;
         const p = s3.project(r.root.position.x, r.root.position.y + r.height + 0.08, r.root.position.z);
         if (!p.visible) continue;
-        drawBar(p.x, p.y, r.type === "war_elephant" ? 30 : 20, u.hp / u.maxHp, u.team === "player");
+        drawBar(p.x, p.y, r.type === "war_elephant" ? 30 : 20, u.hp / u.maxHp, healthColor(u));
       }
       // floating -24 / +10 Vàng labels (one per gameplay event, pooled)
       fxGuard("floating-text", () => floating.draw(octx, (x, y, z) => s3.project(x, y, z),

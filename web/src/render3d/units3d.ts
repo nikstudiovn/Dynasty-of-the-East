@@ -1,3 +1,4 @@
+import { healthColor } from "../ui/battleStatus";
 // Dynasty of the East 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
 import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import { NAVAL_TYPES } from "../sim/naval";
@@ -997,7 +998,7 @@ export class Units3D {
         r.health.position.y += 0.10;
         r.healthFill.scale.x = hp;
         r.healthFill.position.x = (hp - 1) * 0.24;
-        r.healthFill.material.color.set(hp > 0.55 ? "#b9f568" : hp > 0.27 ? "#ffe17b" : "#ff7458");
+        r.healthFill.material.color.set(healthColor(u));
       }
 
       const dist = camera.position.distanceToSquared(r.root.position);

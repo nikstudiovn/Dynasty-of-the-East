@@ -6,14 +6,14 @@
 <title>Dynasty of the East — Triều Đại Phương Đông</title>
 <style>
   :root {
-    --bg: #120E0C;
-    --panel: rgba(24, 19, 16, 0.94);
-    --panel-border: #5C4738;
-    --gold: #F5B841;
-    --crimson: #C82828;
-    --jade: #1F9D7A;
-    --ink: #FAF5EC;
-    --mute: #BFB2A2;
+    --bg: #0f0f0f;
+    --panel: rgba(20, 20, 20, 0.94);
+    --panel-border: #4a4a4a;
+    --gold: #bcbcbc;
+    --crimson: #4a4a4a;
+    --jade: #808080;
+    --ink: #f5f5f5;
+    --mute: #b4b4b4;
   }
 
   * {
@@ -32,7 +32,6 @@
     background: var(--bg);
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    touch-action: none;
   }
 
   #game-wrap {
@@ -48,6 +47,7 @@
     height: 100%;
     image-rendering: pixelated;
     cursor: grab;
+    touch-action: none;
   }
 
   #gameCanvas.dragging { cursor: grabbing; }
@@ -80,12 +80,12 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    background: linear-gradient(180deg, rgba(46, 26, 17, 0.94) 0%, rgba(24, 14, 10, 0.96) 100%);
-    border: 2px solid #B8863B; outline: 1px solid #1A120E;
+    background: linear-gradient(180deg, rgba(30, 30, 30, 0.94) 0%, rgba(16, 16, 16, 0.96) 100%);
+    border: 2px solid #8b8b8b; outline: 1px solid #131313;
     border-radius: 10px;
     padding: 6px 12px;
     backdrop-filter: blur(6px);
-    box-shadow: inset 0 1px 0 rgba(250, 204, 21, 0.22), inset 0 0 0 1px rgba(217, 170, 99, 0.14), 0 4px 16px rgba(0, 0, 0, 0.55);
+    box-shadow: inset 0 1px 0 rgba(201, 201, 201, 0.22), inset 0 0 0 1px rgba(175, 175, 175, 0.14), 0 4px 16px rgba(0, 0, 0, 0.55);
     font-size: 13px;
     font-weight: 600;
   }
@@ -98,18 +98,18 @@
   }
 
   .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-  .dot-food { background: #EAB308; }
-  .dot-wood { background: #22C55E; }
-  .dot-gold { background: #F59E0B; }
-  .dot-stone { background: #94A3B8; }
-  .dot-pop { background: #EF4444; }
+  .dot-food { background: #b2b2b2; }
+  .dot-wood { background: #9b9b9b; }
+  .dot-gold { background: #a6a6a6; }
+  .dot-stone { background: #a1a1a1; }
+  .dot-pop { background: #686868; }
 
   .age-badge { color: var(--gold); font-weight: 700; white-space: nowrap; }
-  .faction-pill { color: #FCA5A5; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .faction-pill { color: #b7b7b7; font-size: 12px; font-weight: 700; white-space: nowrap; }
 
   .icon-btn {
     pointer-events: auto;
-    background: linear-gradient(180deg, rgba(46, 26, 17, 0.94) 0%, rgba(24, 14, 10, 0.96) 100%);
+    background: linear-gradient(180deg, rgba(30, 30, 30, 0.94) 0%, rgba(16, 16, 16, 0.96) 100%);
     color: var(--ink);
     border: 1.5px solid var(--panel-border);
     border-radius: 8px;
@@ -119,8 +119,8 @@
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
   }
-  .icon-btn:hover { background: #2C221D; border-color: var(--gold); }
-  .icon-btn.active { background: var(--crimson); border-color: var(--gold); color: #FFF; }
+  .icon-btn:hover { background: #242424; border-color: var(--gold); }
+  .icon-btn.active { background: var(--crimson); border-color: var(--gold); color: #ffffff; }
 
   .top-right { display: flex; flex-wrap: wrap; max-width: 100%; gap: 6px; align-items: center; }
 
@@ -129,7 +129,7 @@
     top: calc(var(--top-hud-bottom, 50px) + 6px);
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(24, 19, 16, 0.95);
+    background: rgba(20, 20, 20, 0.95);
     border: 1.5px solid var(--gold);
     color: var(--gold);
     padding: 7px 16px;
@@ -161,11 +161,11 @@
 
   .minimap-box {
     pointer-events: auto;
-    background: linear-gradient(180deg, rgba(46, 26, 17, 0.94) 0%, rgba(24, 14, 10, 0.96) 100%);
-    border: 2px solid #B8863B; outline: 1px solid #1A120E;
+    background: linear-gradient(180deg, rgba(30, 30, 30, 0.94) 0%, rgba(16, 16, 16, 0.96) 100%);
+    border: 2px solid #8b8b8b; outline: 1px solid #131313;
     border-radius: 10px;
     padding: 6px;
-    box-shadow: inset 0 1px 0 rgba(250, 204, 21, 0.22), inset 0 0 0 1px rgba(217, 170, 99, 0.14), 0 6px 18px rgba(0, 0, 0, 0.55);
+    box-shadow: inset 0 1px 0 rgba(201, 201, 201, 0.22), inset 0 0 0 1px rgba(175, 175, 175, 0.14), 0 6px 18px rgba(0, 0, 0, 0.55);
     flex-shrink: 0;
   }
 
@@ -174,7 +174,7 @@
     width: 132px;
     height: 88px;
     border-radius: 6px;
-    background: #0D110C;
+    background: #101010;
     cursor: pointer;
   }
 
@@ -182,17 +182,17 @@
     pointer-events: auto;
     flex: 1;
     max-width: 820px;
-    background: linear-gradient(180deg, rgba(46, 26, 17, 0.94) 0%, rgba(24, 14, 10, 0.96) 100%);
-    border: 2px solid #B8863B; outline: 1px solid #1A120E;
+    background: linear-gradient(180deg, rgba(30, 30, 30, 0.94) 0%, rgba(16, 16, 16, 0.96) 100%);
+    border: 2px solid #8b8b8b; outline: 1px solid #131313;
     border-radius: 12px;
     padding: 8px 10px;
-    box-shadow: inset 0 1px 0 rgba(250, 204, 21, 0.22), inset 0 0 0 1px rgba(217, 170, 99, 0.14), 0 6px 18px rgba(0, 0, 0, 0.55);
+    box-shadow: inset 0 1px 0 rgba(201, 201, 201, 0.22), inset 0 0 0 1px rgba(175, 175, 175, 0.14), 0 6px 18px rgba(0, 0, 0, 0.55);
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
 
-  .res-icon { width: 18px; height: 18px; display: inline-block; vertical-align: middle; flex-shrink: 0; image-rendering: pixelated; } #sel-portrait { width: 48px; height: 48px; border-radius: 8px; border: 2px solid #D4A146; outline: 1px solid #1A120E; background: radial-gradient(circle at 50% 40%, #3D2418, #140B08); box-shadow: inset 0 0 10px rgba(0,0,0,0.85), 0 0 8px rgba(246,196,83,0.22); flex-shrink: 0; image-rendering: pixelated; } .cmd-header {
+  .res-icon { width: 18px; height: 18px; display: inline-block; vertical-align: middle; flex-shrink: 0; image-rendering: pixelated; } #sel-portrait { width: 48px; height: 48px; border-radius: 8px; border: 2px solid #a5a5a5; outline: 1px solid #131313; background: radial-gradient(circle at 50% 40%, #282828, #0d0d0d); box-shadow: inset 0 0 10px rgba(0, 0, 0,0.85), 0 0 8px rgba(198, 198, 198,0.22); flex-shrink: 0; image-rendering: pixelated; } .cmd-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -215,9 +215,9 @@
 
   .act-btn {
     flex-shrink: 0;
-    background: #271F1B;
+    background: #202020;
     color: var(--ink);
-    border: 1.5px solid #B8863B; outline: 1px solid #1A120E; box-shadow: inset 0 1px 0 rgba(250, 204, 21, 0.18), inset 0 -2px 0 rgba(0, 0, 0, 0.45), 0 3px 8px rgba(0, 0, 0, 0.5);
+    border: 1.5px solid #8b8b8b; outline: 1px solid #131313; box-shadow: inset 0 1px 0 rgba(201, 201, 201, 0.18), inset 0 -2px 0 rgba(0, 0, 0, 0.45), 0 3px 8px rgba(0, 0, 0, 0.5);
     border-radius: 8px;
     padding: 6px 10px;
     font-size: 12px;
@@ -229,16 +229,16 @@
     gap: 2px;
     min-width: 96px;
   }
-  .act-btn:hover:not(:disabled) { border-color: #FACC15; background: linear-gradient(180deg, #42281D 0%, #2A160F 100%); box-shadow: inset 0 0 8px rgba(250, 204, 21, 0.28), 0 0 10px rgba(246, 196, 83, 0.35); }
-  .act-btn.selected { border-color: #FACC15; background: linear-gradient(180deg, #7C1D1D 0%, #4A1111 100%); box-shadow: inset 0 0 10px rgba(250, 204, 21, 0.35), 0 0 12px rgba(246, 196, 83, 0.45); }
+  .act-btn:hover:not(:disabled) { border-color: #c9c9c9; background: linear-gradient(180deg, #2d2d2d 0%, #1a1a1a 100%); box-shadow: inset 0 0 8px rgba(201, 201, 201, 0.28), 0 0 10px rgba(198, 198, 198, 0.35); }
+  .act-btn.selected { border-color: #c9c9c9; background: linear-gradient(180deg, #313131 0%, #1d1d1d 100%); box-shadow: inset 0 0 10px rgba(201, 201, 201, 0.35), 0 0 12px rgba(198, 198, 198, 0.45); }
   .act-btn:disabled { opacity: 0.42; cursor: not-allowed; }
   .act-cost { font-size: 10.5px; font-weight: 500; color: var(--gold); }
 
   .quick-bar { display: flex; gap: 6px; flex-wrap: wrap; }
   .mini-btn {
-    background: #2A221E;
+    background: #232323;
     color: var(--ink);
-    border: 1px solid #594639;
+    border: 1px solid #494949;
     border-radius: 6px;
     padding: 3px 8px;
     font-size: 11.5px;
@@ -246,13 +246,13 @@
     cursor: pointer;
   }
   .mini-btn:hover { border-color: var(--gold); }
-  .mini-btn.active { background: var(--crimson); border-color: var(--gold); color: #FFF; }
+  .mini-btn.active { background: var(--crimson); border-color: var(--gold); color: #ffffff; }
 
   /* Setup / Victory Modal */
   #modal {
     position: absolute;
     inset: 0;
-    background: rgba(12, 9, 8, 0.84);
+    background: rgba(10, 10, 10, 0.84);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -261,9 +261,9 @@
     overflow-y: auto;
   }
   #modal.hidden { display: none; }
-#pause-modal { position: absolute; inset: 0; background: rgba(12, 9, 8, 0.84); display: flex; align-items: center; justify-content: center; z-index: 35; padding: 14px; overflow-y: auto; } .dote-pause-card { background: #1D1714; border: 2px solid var(--gold); border-radius: 14px; padding: 20px 22px; max-width: 420px; width: 100%; box-shadow: 0 18px 46px rgba(0, 0, 0, 0.75); text-align: center; } .dote-pause-card h2 { font-size: 22px; color: var(--gold); margin: 0 0 14px; letter-spacing: 0.03em; } .dote-pause-actions { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; } .dote-pause-quick-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#pause-modal { position: absolute; inset: 0; background: rgba(10, 10, 10, 0.84); display: flex; align-items: center; justify-content: center; z-index: 35; padding: 14px; overflow-y: auto; } .dote-pause-card { background: #181818; border: 2px solid var(--gold); border-radius: 14px; padding: 20px 22px; max-width: 420px; width: 100%; box-shadow: 0 18px 46px rgba(0, 0, 0, 0.75); text-align: center; } .dote-pause-card h2 { font-size: 22px; color: var(--gold); margin: 0 0 14px; letter-spacing: 0.03em; } .dote-pause-actions { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; } .dote-pause-quick-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .modal-card {
-    background: #1D1714;
+    background: #181818;
     border: 2px solid var(--gold);
     border-radius: 14px;
     padding: 20px 22px;
@@ -302,9 +302,9 @@
   }
 
   .opt-btn {
-    background: #14100E;
+    background: #111111;
     color: var(--ink);
-    border: 1.5px solid #44362D;
+    border: 1.5px solid #383838;
     border-radius: 8px;
     padding: 8px 6px;
     font-size: 12px;
@@ -320,22 +320,22 @@
     margin-top: 3px;
     line-height: 1.3;
   }
-  .opt-btn.active { border-color: var(--gold); background: #3A1C19; }
+  .opt-btn.active { border-color: var(--gold); background: #222222; }
 
   .modal-tips {
-    background: #14100E;
-    border: 1px solid #3D3028;
+    background: #111111;
+    border: 1px solid #323232;
     border-radius: 8px;
     padding: 10px 12px;
     font-size: 12px;
-    color: #E2D8CC;
+    color: #d9d9d9;
     line-height: 1.55;
     margin-bottom: 14px;
   }
 
   .primary-btn {
     background: var(--crimson);
-    color: #FFF;
+    color: #ffffff;
     border: 1.5px solid var(--gold);
     border-radius: 10px;
     padding: 11px 24px;
@@ -344,7 +344,7 @@
     cursor: pointer;
     width: 100%;
   }
-  .primary-btn:hover { background: #DF3030; }
+  .primary-btn:hover { background: #555555; }
 
   @media (max-width: 680px) {
     .minimap-box { display: none; }
@@ -352,8 +352,6 @@
     .opt-row { grid-template-columns: 1fr; }
   }
 .hud-pill::-webkit-scrollbar, .quick-bar::-webkit-scrollbar { display: none; } @media (max-width: 430px) { .hud-pill { gap: 5px; font-size: 11.5px; padding: 4px 8px; } .hud-pill > * { white-space: nowrap; flex-shrink: 0; } .faction-pill, .age-badge { padding: 2px 5px; letter-spacing: 0; margin: 0; } .res-item { gap: 2px; } .res-icon { width: 15px; height: 15px; } #res-pop { white-space: nowrap; } } @media (max-height: 520px) { .top-hud { flex-wrap: nowrap; gap: 4px; top: 4px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; } .hud-pill { padding: 3px 7px; font-size: 11px; gap: 5px; } .icon-btn { padding: 3px 6px; font-size: 11px; white-space: nowrap; } .bottom-hud { bottom: 4px; gap: 6px; } .cmd-dock { padding: 4px 6px; gap: 3px; } .quick-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; } #sel-portrait { width: 28px; height: 28px; } .mini-btn { padding: 2px 5px; font-size: 10.5px; } .act-btn { padding: 3px 6px; min-width: 76px; font-size: 11px; } #minimapCanvas { width: 84px; height: 56px; } }
-  #btn-settings { display: none; }
-  #hud-settings { display: contents; }
   #btn-quality:disabled { opacity: 0.5; }
 
   @media (orientation: landscape) and (max-height: 520px) {
@@ -382,24 +380,6 @@
       text-overflow: ellipsis;
     }
     #game-wrap .quick-bar { grid-column: 1 / -1; }
-    #btn-settings { display: inline-block; }
-    #hud-settings {
-      display: none;
-      position: absolute;
-      top: calc(100% + 5px);
-      right: 0;
-      z-index: 1;
-      max-width: 100%;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 4px;
-      padding: 5px;
-      background: #28150e;
-      border: 1px solid #b6894e;
-      border-radius: 6px;
-      pointer-events: auto;
-    }
-    #btn-settings[aria-expanded="true"] + #hud-settings { display: grid; }
-    #hud-settings .icon-btn { white-space: normal; }
   }
   #rotate-hint {
     position: fixed;
@@ -408,9 +388,9 @@
     right: calc(8px + env(safe-area-inset-right));
     bottom: calc(8px + env(safe-area-inset-bottom));
     padding: 7px 9px;
-    background: #28150e;
-    color: #fff0cd;
-    border: 1px solid #b6894e;
+    background: #191919;
+    color: #f1f1f1;
+    border: 1px solid #8e8e8e;
     border-radius: 6px;
     font-size: 13px;
   }
@@ -428,21 +408,22 @@
     <div class="hud-pill">
       <span class="faction-pill" id="hud-faction">Đại Việt</span>
       <span class="age-badge" id="hud-age">Đời 1 · Khai Hoang</span>
-      <span class="res-item" title="Thực (Lúa)"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="7" y="1" width="4" height="2" fill="#1A120E"/><rect x="4" y="3" width="10" height="8" fill="#1A120E"/><rect x="6" y="11" width="6" height="6" fill="#1A120E"/><rect x="8" y="2" width="2" height="3" fill="#FEF08A"/><rect x="5" y="4" width="2" height="3" fill="#FEF08A"/><rect x="11" y="4" width="2" height="3" fill="#FACC15"/><rect x="8" y="5" width="2" height="6" fill="#FACC15"/><rect x="6" y="7" width="2" height="3" fill="#CA8A04"/><rect x="10" y="7" width="2" height="3" fill="#CA8A04"/><rect x="6" y="10" width="6" height="2" fill="#B91C1C"/><rect x="7" y="12" width="1" height="4" fill="#CA8A04"/><rect x="9" y="12" width="2" height="4" fill="#FACC15"/></svg><span id="res-food">200</span></span>
-      <span class="res-item" title="Gỗ (Tre)"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="6" y="1" width="6" height="16" fill="#1A120E"/><rect x="12" y="2" width="4" height="4" fill="#1A120E"/><rect x="2" y="7" width="4" height="4" fill="#1A120E"/><rect x="7" y="2" width="4" height="14" fill="#15803D"/><rect x="8" y="2" width="2" height="14" fill="#22C55E"/><rect x="7" y="5" width="4" height="1" fill="#1A120E"/><rect x="7" y="10" width="4" height="1" fill="#1A120E"/><rect x="8" y="2" width="1" height="14" fill="#86EFAC"/><rect x="12" y="3" width="3" height="2" fill="#4ADE80"/><rect x="3" y="8" width="3" height="2" fill="#4ADE80"/></svg><span id="res-wood">200</span></span>
-      <span class="res-item" title="Vàng"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="2" y="6" width="14" height="5" fill="#1A120E"/><rect x="5" y="4" width="8" height="2" fill="#1A120E"/><rect x="4" y="11" width="10" height="4" fill="#1A120E"/><rect x="3" y="7" width="12" height="3" fill="#F59E0B"/><rect x="6" y="5" width="6" height="2" fill="#FEF08A"/><rect x="5" y="10" width="8" height="4" fill="#B45309"/><rect x="6" y="9" width="6" height="3" fill="#F59E0B"/><rect x="7" y="6" width="4" height="2" fill="#FEF08A"/><rect x="13" y="2" width="1" height="3" fill="#FEF08A"/><rect x="12" y="3" width="3" height="1" fill="#FEF08A"/></svg><span id="res-gold">50</span></span>
-      <span class="res-item" title="Đá"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="5" y="3" width="8" height="2" fill="#1A120E"/><rect x="2" y="5" width="14" height="7" fill="#1A120E"/><rect x="3" y="12" width="12" height="3" fill="#1A120E"/><rect x="6" y="4" width="6" height="2" fill="#CBD5E1"/><rect x="3" y="6" width="12" height="6" fill="#94A3B8"/><rect x="4" y="12" width="10" height="2" fill="#475569"/><rect x="5" y="6" width="4" height="3" fill="#E2E8F0"/><rect x="10" y="9" width="4" height="3" fill="#475569"/><rect x="3" y="6" width="3" height="2" fill="#15803D"/><rect x="4" y="5" width="2" height="2" fill="#4ADE80"/><rect x="11" y="11" width="3" height="2" fill="#15803D"/></svg><span id="res-stone">50</span></span>
-      <span class="res-item" title="Dân số"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="7" y="1" width="4" height="4" fill="#1A120E"/><rect x="4" y="5" width="10" height="4" fill="#1A120E"/><rect x="2" y="9" width="14" height="3" fill="#1A120E"/><rect x="4" y="12" width="10" height="5" fill="#1A120E"/><rect x="8" y="2" width="2" height="3" fill="#DC2626"/><rect x="9" y="2" width="1" height="2" fill="#F87171"/><rect x="5" y="6" width="8" height="3" fill="#78716C"/><rect x="6" y="6" width="4" height="2" fill="#D6D3D1"/><rect x="3" y="10" width="12" height="2" fill="#FACC15"/><rect x="5" y="12" width="8" height="4" fill="#FDE68A"/><rect x="6" y="13" width="2" height="1" fill="#1A120E"/><rect x="10" y="13" width="2" height="1" fill="#1A120E"/></svg><span id="res-pop">5/10</span></span>
+      <span class="res-item" title="Thực (Lúa)"><span data-battle-icon="res_food" aria-hidden="true"></span><span id="res-food">200</span></span>
+      <span class="res-item" title="Gỗ (Tre)"><span data-battle-icon="res_wood" aria-hidden="true"></span><span id="res-wood">200</span></span>
+      <span class="res-item" title="Vàng"><span data-battle-icon="res_gold" aria-hidden="true"></span><span id="res-gold">50</span></span>
+      <span class="res-item" title="Đá"><span data-battle-icon="res_stone" aria-hidden="true"></span><span id="res-stone">50</span></span>
+      <span class="res-item" title="Dân số"><span data-battle-icon="res_pop" aria-hidden="true"></span><span id="res-pop">5/10</span></span>
+      <span id="relic-countdown" hidden></span>
+      <span id="dote-herbal-badge" title="Thảo Dược" hidden><span data-battle-icon="healer" aria-hidden="true"></span>Thảo Dược</span>
     </div>
     <div class="top-right">
-      <button class="icon-btn" id="btn-box-select" title="Kéo khung chọn nhiều quân (hoặc giữ Shift + kéo)">Kéo chọn: Tắt</button>
-      <button class="icon-btn" id="btn-zoom-out" title="Thu nhỏ">−</button>
-      <button class="icon-btn" id="btn-zoom-in" title="Phóng to">+</button>
-      <button class="icon-btn rot-btn" id="btn-rot-left" title="Xoay camera (Q)">↺</button>
-      <button class="icon-btn rot-btn" id="btn-rot-right" title="Xoay camera (E)">↻</button>
-      <button class="icon-btn" id="btn-pause" title="Tạm dừng">⏸</button>
-      <button type="button" class="icon-btn" id="btn-settings" aria-label="Cài đặt trận đấu" aria-expanded="false" aria-controls="hud-settings">⚙️</button>
-      <div id="hud-settings" role="group" aria-label="Cài đặt trận đấu">
+      <button class="icon-btn" id="btn-box-select" aria-pressed="false" title="Kéo khung chọn nhiều quân (hoặc giữ Shift + kéo)" aria-label="Kéo chọn"><span data-battle-icon="box_select" aria-hidden="true"></span></button>
+      <button class="icon-btn" id="btn-zoom-out" title="Thu nhỏ" aria-label="Thu nhỏ"><span data-battle-icon="zoom_out" aria-hidden="true"></span></button>
+      <button class="icon-btn" id="btn-zoom-in" title="Phóng to" aria-label="Phóng to"><span data-battle-icon="zoom_in" aria-hidden="true"></span></button>
+      <button class="icon-btn rot-btn" id="btn-rot-left" title="Xoay camera (Q)" aria-label="Xoay trái"><span data-battle-icon="rotate_left" aria-hidden="true"></span></button>
+      <button class="icon-btn rot-btn" id="btn-rot-right" title="Xoay camera (E)" aria-label="Xoay phải"><span data-battle-icon="rotate_right" aria-hidden="true"></span></button>
+      <button class="icon-btn" id="btn-pause" title="Tạm dừng" aria-label="Tạm dừng"><span data-battle-icon="pause" aria-hidden="true"></span></button>
+      <div id="hud-settings" hidden>
         <button class="icon-btn" id="btn-atmosphere" title="Chuyển chu kỳ Ngày-Đêm &amp; Thời tiết">Trời: Tự động</button>
         <button class="icon-btn" id="btn-quality" title="Chuyển mức chất lượng đồ họa 3D">Đồ họa: Tự động</button>
         <button class="icon-btn" id="btn-music" title="Bật/Tắt nhạc nền Á Đông">Nhạc: Bật</button>
@@ -463,12 +444,12 @@
   <!-- BOTTOM HUD -->
   <div class="bottom-hud">
     <div class="minimap-box">
-      <span id="relic-countdown" hidden style="position:absolute;z-index:1;color:#ffe19a;background:#211610;padding:3px;white-space:nowrap"></span><canvas id="minimapCanvas" width="132" height="88"></canvas>
+      <canvas id="minimapCanvas" width="132" height="88"></canvas>
     </div>
 
     <div class="cmd-dock">
       <div class="cmd-header">
-        <canvas id="sel-portrait" width="48" height="48"></canvas><span class="cmd-title" id="sel-title">Đình Làng · Đại Việt</span>
+        <span id="sel-portrait" aria-hidden="true"></span><span class="cmd-title" id="sel-title">Đình Làng · Đại Việt</span>
         <div class="quick-bar">
           <button class="mini-btn" id="btn-grp-1">Đạo 1</button> <button class="mini-btn" id="btn-grp-2">Đạo 2</button> <button class="mini-btn" id="btn-grp-3">Đạo 3</button> <button class="mini-btn" id="btn-grp-assign">Gán đạo</button> <button class="mini-btn" id="btn-town-bell">Chuông Báo</button> <button class="mini-btn" id="btn-idle-vil">Dân rảnh</button>
           <button class="mini-btn" id="btn-all-army">Toàn quân</button>
@@ -477,12 +458,19 @@
           <button class="mini-btn" id="btn-stance" title="Đổi thế trận: Chủ động (đuổi địch) / Giữ vị trí (chỉ bắn địch trong tầm)">Chủ động</button>
         </div>
       </div>
+      <div id="dote-command-timers" hidden>
+        <div data-timer="build" hidden><span></span><progress max="1"></progress></div>
+        <div data-timer="train" hidden><span></span><progress max="1"></progress></div>
+        <div data-timer="age" hidden><span></span><progress max="1"></progress></div>
+        <div data-timer="ability" hidden><span></span><progress max="1"></progress></div>
+        <div data-timer="effect" hidden><span></span><progress max="1"></progress></div>
+      </div>
       <div class="cmd-buttons" id="cmd-buttons"></div>
     </div>
   </div>
 
   <!-- SETUP / RESULT MODAL -->
-  <button type="button" id="btn-dote-cancel" class="dote-cancel-btn" aria-label="Hủy" hidden>✕ Hủy</button>
+  <button type="button" id="btn-dote-cancel" class="dote-cancel-btn" aria-label="Hủy" hidden><span data-battle-icon="close" aria-hidden="true"></span>Hủy</button>
   <div id="modal">
     <div class="modal-card">
       <h1 id="modal-title">DYNASTY OF THE EAST</h1>
@@ -540,19 +528,22 @@
       <div class="modal-tips" id="modal-tips">
         <strong>Mới ở Sprint 3:</strong> Bấm <strong>Kéo chọn</strong> (hoặc giữ <code>Shift</code> + kéo) để quét khung chọn nhanh cụm quân. Xây <strong>Vọng Lâu</strong> (Đời 2) bắn tên tự động, <strong>Lò Rèn Cổ</strong> nâng cấp Công/Giáp tới cấp 3 và <strong>Hoàng Thành</strong> (Đời 4) bắn loạt 3 tên!
       </div>
-      <button class="primary-btn" id="btn-start">Xuất Quân Ngay</button> <button class="primary-btn" id="btn-load-save" style="display:none;margin-top:8px;background:#0F766E;">Tiếp tục ván đã lưu</button>
+      <button class="primary-btn" id="btn-start">Xuất Quân Ngay</button> <button class="primary-btn" id="btn-load-save" style="display:none;margin-top:8px;background:#606060;">Tiếp tục ván đã lưu</button>
     </div>
     <div class="dote-menu-battlefield" aria-hidden="true">
       <div class="dote-menu-battlefield__view"></div>
     </div>
   </div>
 </div>
-  <div id="pause-modal" style="display:none"><div class="dote-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="dote-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="dote-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số nổi: Bật</button></div></div></div>
+  <div id="pause-modal" style="display:none"><div class="dote-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="dote-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Menu chính</button><button type="button" class="icon-btn" id="btn-settings" aria-expanded="false" aria-controls="dote-pause-settings">Cài đặt</button></div><div class="dote-pause-quick-settings" id="dote-pause-settings" hidden><button type="button" class="icon-btn" id="btn-pause-music" hidden>Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound" hidden>Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số nổi: Bật</button></div></div></div>
   
 <script type="module">
-import { bindAudioButtons } from "./src/audio/settings";
+import { audioSettingsControls, bindAudioButtons } from "./src/audio/settings";
 import { battleAudio, cue, endAudioMatch, resetAudioMatch, setAudioAtmosphere, unlockAudio, updateGameAudio } from "./src/audio/gameAudio";
 import "./src/ui/hudTheme.css";
+import "./src/ui/battleLacquer.css";
+import { healthColor, updateCommandTimer } from "./src/ui/battleStatus";
+import { getIconSvg, portraitIcon } from "./src/ui/sideRailIcons";
 import { issueRetreatFromHud } from "./src/ui/retreatCommand";
 import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
 import { NAVAL_TYPES, isWaterway, coastalWater, findWaterPath } from "./src/sim/naval";
@@ -639,7 +630,6 @@ const updateBattleHud = initBattleHud();
 
   let dockClockAcc = 0;
   const AGE_RESEARCH_SEC = { 2: 45, 3: 60, 4: 75 };
-  const fmtClock = (s) => { const t = Math.max(0, Math.ceil(s)); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
   const TRAIN_TIMES = { fishing_boat: 8, galley: 11, fire_ship: 12, healer: 9, villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
 
   const BLDG_DEFS = {
@@ -731,7 +721,7 @@ const updateBattleHud = initBattleHud();
   function setBoxSelectMode(enabled) {
     boxSelectMode = enabled;
     const btn = document.getElementById("btn-box-select");
-    btn.textContent = enabled ? "Kéo chọn: Bật" : "Kéo chọn: Tắt";
+    btn.setAttribute("aria-pressed", String(enabled));
     btn.classList.toggle("active", enabled);
     canvas.classList.toggle("select-mode", enabled);
   }
@@ -1706,7 +1696,7 @@ const updateBattleHud = initBattleHud();
     if (u.hp < u.maxHp) {
       const top = wy + 1 - spr.ay, bw = big ? 24 : 18;
       ctx.fillStyle = "#111"; ctx.fillRect(wx - bw / 2, top - 4, bw, 3);
-      ctx.fillStyle = u.team === "player" ? "#22C55E" : "#EF4444"; ctx.fillRect(wx - bw / 2, top - 4, bw * Math.max(0, u.hp / u.maxHp), 3);
+      ctx.fillStyle = healthColor(u); ctx.fillRect(wx - bw / 2, top - 4, bw * Math.max(0, u.hp / u.maxHp), 3);
     }
   }
 
@@ -1751,12 +1741,12 @@ const updateBattleHud = initBattleHud();
     }
     if (b.hp < b.maxHp) {
       ctx.fillStyle = "#111"; ctx.fillRect(cx - 18, hpY, 36, 4);
-      ctx.fillStyle = isP ? "#22C55E" : "#EF4444"; ctx.fillRect(cx - 18, hpY, 36 * Math.max(0, b.hp / b.maxHp), 4);
+      ctx.fillStyle = healthColor(b); ctx.fillRect(cx - 18, hpY, 36 * Math.max(0, b.hp / b.maxHp), 4);
     }
   }
 
   
-  function drawBuildingLegacy(b) { const fState = state.fog[Math.min(state.mapSize - 1, b.ty)]?.[Math.min(state.mapSize - 1, b.tx)] ?? 0; if (fState === 0) return; const { x, y } = gridToIso(b.tx + ((b.size || 1) - 1) / 2, b.ty + ((b.size || 1) - 1) / 2); const cx = x, cy = y + TILE_H / 2, t = performance.now() * 0.004; ctx.save(); if (b.progress !== undefined && b.progress < 1) ctx.globalAlpha = 0.65; const isP = b.team === "player"; const rDark = isP ? "#7F1D1D" : "#1E3A8A", rMid = isP ? "#B91C1C" : "#1D4ED8", rLight = isP ? "#EF4444" : "#60A5FA"; const w = b.size === 2 ? 44 : b.type === "imperial_citadel" ? 64 : 30; const h = b.type === "imperial_citadel" ? 42 : b.size === 2 ? 32 : 24; drawShadow(cx + 3, cy + 4, w * 0.58, 12); const drawRoof = (rx, ry, rw, rh, gTrim) => { ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 8, ry + rh); ctx.lineTo(rx, ry - 4); ctx.lineTo(rx + rw / 2 + 8, ry + rh); ctx.closePath(); ctx.fill(); ctx.fillStyle = rDark; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 6, ry + rh - 1); ctx.lineTo(rx, ry - 2); ctx.lineTo(rx + rw / 2 + 6, ry + rh - 1); ctx.closePath(); ctx.fill(); ctx.fillStyle = rMid; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 3, ry + rh - 2); ctx.lineTo(rx, ry); ctx.lineTo(rx + rw / 4, ry + rh - 2); ctx.closePath(); ctx.fill(); ctx.fillStyle = rLight; ctx.fillRect(rx - 4, ry + 1, 6, 4); ctx.fillStyle = "#1A120E"; for (let tx = -rw / 2 - 4; tx <= rw / 2 + 2; tx += 4) ctx.fillRect(rx + tx, ry + rh - 1, 2, 3); ctx.fillStyle = gTrim; ctx.fillRect(rx - rw / 2 - 9, ry + rh - 4, 5, 3); ctx.fillRect(rx - rw / 2 - 10, ry + rh - 6, 3, 2); ctx.fillRect(rx + rw / 2 + 4, ry + rh - 4, 5, 3); ctx.fillRect(rx + rw / 2 + 7, ry + rh - 6, 3, 2); ctx.fillRect(rx - 6, ry - 5, 12, 3); ctx.fillStyle = "#FEF08A"; ctx.fillRect(rx - 3, ry - 6, 6, 2); }; if (b.type === "farm") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 18, cy - 8, 36, 18); ctx.fillStyle = "#78350F"; ctx.fillRect(cx - 17, cy - 7, 34, 16); ctx.fillStyle = "#CA8A04"; for (let fx = -14; fx <= 10; fx += 6) { ctx.fillRect(cx + fx, cy - 5, 4, 12); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx + fx, cy - 5, 2, 10); ctx.fillStyle = "#CA8A04"; } } else if (b.type === "imperial_citadel") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 34, cy - 26, 68, 34); ctx.fillStyle = "#475569"; ctx.fillRect(cx - 33, cy - 25, 66, 32); ctx.fillStyle = "#64748B"; ctx.fillRect(cx - 31, cy - 23, 62, 18); ctx.fillStyle = "#1A120E"; for (let mx = -32; mx < 32; mx += 8) ctx.fillRect(cx + mx, cy - 28, 5, 3); ctx.fillStyle = "#94A3B8"; for (let mx = -31; mx < 31; mx += 8) ctx.fillRect(cx + mx, cy - 27, 4, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy - 12, 20, 18); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 9, cy - 11, 18, 17); ctx.fillStyle = "#FACC15"; for (let dy = -9; dy <= 2; dy += 4) { ctx.fillRect(cx - 6, cy + dy, 2, 2); ctx.fillRect(cx + 4, cy + dy, 2, 2); } drawRoof(cx, cy - 40, 48, 15, "#FACC15"); drawRoof(cx, cy - 53, 34, 13, "#FEF08A"); const fl = Math.sin(t) * 2; ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 22, cy - 52, 2, 24); ctx.fillRect(cx + 20, cy - 52, 2, 24); ctx.fillStyle = rMid; ctx.fillRect(cx - 20, cy - 51, 9, 6 + fl * 0.4); ctx.fillRect(cx + 22, cy - 51, 9, 6 - fl * 0.4); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx - 18, cy - 49, 4, 2); ctx.fillRect(cx + 24, cy - 49, 4, 2); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2 - 1, cy - h + 6, w + 2, h); ctx.fillStyle = "#475569"; ctx.fillRect(cx - w / 2, cy - 2, w, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2, cy + 2, w, 1); ctx.fillStyle = "#D6D3D1"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, w - 4, h - 10); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, 4, h - 10); ctx.fillRect(cx + w / 2 - 6, cy - h + 8, 4, h - 10); ctx.fillStyle = "#EF4444"; ctx.fillRect(cx - w / 2 + 3, cy - h + 8, 1, h - 10); ctx.fillRect(cx + w / 2 - 5, cy - h + 8, 1, h - 10); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 6, cy - 11, 12, 13); ctx.fillStyle = "#F59E0B"; ctx.fillRect(cx - 5, cy - 10, 10, 12); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 3, cy - 8, 6, 8); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 5, cy - 5, 10, 1); ctx.fillRect(cx, cy - 10, 1, 12); if (b.type === "town_center") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy + 4, 20, 5); ctx.fillStyle = "#94A3B8"; ctx.fillRect(cx - 9, cy + 5, 18, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx - 7, cy + 7, 14, 2); ctx.fillStyle = "rgba(251, 191, 36, 0.35)"; ctx.beginPath(); ctx.arc(cx - 13, cy - 8, 6, 0, Math.PI * 2); ctx.arc(cx + 13, cy - 8, 6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 15, cy - 11, 5, 6); ctx.fillRect(cx + 10, cy - 11, 5, 6); ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 14, cy - 10, 3, 4); ctx.fillRect(cx + 11, cy - 10, 3, 4); } if (b.type === "blacksmith") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 11, cy - 10, 14, 12); ctx.fillStyle = "#57534E"; ctx.fillRect(cx - 10, cy - 9, 12, 11); const fl = Math.sin(t * 2) > 0 ? 1 : 0; ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 8, cy - 6, 8, 7); ctx.fillStyle = "#F97316"; ctx.fillRect(cx - 7, cy - 5 - fl, 6, 5 + fl); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 6, cy - 3, 4, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx + 6, cy - 2, 8, 5); ctx.fillStyle = "#64748B"; ctx.fillRect(cx + 7, cy - 1, 6, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx + 7, cy - 1, 4, 1); } drawRoof(cx, cy - h - 4, w, 14, "#FACC15"); const isAge2 = isP ? state.age >= 2 : (state.aiAge || 1) >= 2; if (b.type === "town_center" && isAge2) drawRoof(cx, cy - h - 16, w * 0.72, 11, "#FEF08A"); } if (state.selectedBuildingId === b.id) { const pad = b.type === "imperial_citadel" ? 36 : b.size === 2 ? 28 : 18; ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.strokeRect(cx - pad, cy - 54, pad * 2, 66); } if (b.hp < b.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(cx - 18, cy - 58, 36, 4); ctx.fillStyle = isP ? "#22C55E" : "#EF4444"; ctx.fillRect(cx - 18, cy - 58, 36 * Math.max(0, b.hp / b.maxHp), 4); } ctx.restore(); } function drawUnitLegacy(u) { const fState = state.fog[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.y)))]?.[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.x)))] ?? 0; if (fState !== 2 && u.team !== "player") return; const { x, y } = gridToIso(u.x, u.y); const wx = x, wy = y + TILE_H / 2; const isP = u.team === "player", tDark = isP ? "#7F1D1D" : "#1E3A8A", tMid = isP ? "#DC2626" : "#2563EB", tLight = isP ? "#FCA5A5" : "#93C5FD"; drawShadow(wx + 1, wy + 2, u.type === "war_elephant" ? 16 : u.type === "catapult" ? 13 : 8, 4); if (state.selectedIds.includes(u.id)) { ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(wx, wy + 1, u.type === "war_elephant" ? 18 : 11, 6, 0, 0, Math.PI * 2); ctx.stroke(); } if (u.type === "war_elephant") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 15, wy - 19, 28, 17); ctx.fillRect(wx + 11, wy - 14, 7, 10); ctx.fillStyle = "#475569"; ctx.fillRect(wx - 14, wy - 18, 26, 15); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 12, wy - 18, 20, 10); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 10, wy - 18, 12, 5); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 16, 6, 9); ctx.fillStyle = "#475569"; ctx.fillRect(wx + 6, wy - 15, 4, 7); ctx.fillStyle = "#64748B"; ctx.fillRect(wx + 12, wy - 13, 5, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 12, wy - 7, 8, 3); ctx.fillStyle = "#FEF3C7"; ctx.fillRect(wx + 13, wy - 6, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 24, 14, 8); ctx.fillStyle = "#991B1B"; ctx.fillRect(wx - 7, wy - 23, 12, 6); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 19, 12, 2); ctx.fillRect(wx - 4, wy - 25, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 2, wy - 24, 6, 8); ctx.fillStyle = tMid; ctx.fillRect(wx + 3, wy - 23, 4, 6); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx + 3, wy - 23, 4, 3); } else if (u.type === "catapult") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 13, wy - 13, 26, 13); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 12, wy - 12, 24, 11); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 10, wy - 11, 20, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 11, wy - 5, 7, 7); ctx.fillRect(wx + 4, wy - 5, 7, 7); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 10, wy - 4, 5, 5); ctx.fillRect(wx + 5, wy - 4, 5, 5); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 8, wy - 2, 1, 1); ctx.fillRect(wx + 7, wy - 2, 1, 1); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 2, wy - 22, 4, 14); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 1, wy - 21, 2, 12); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 7, wy - 24, 7, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 6, wy - 23, 5, 4); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx - 5, wy - 23, 2, 2); } else if (u.type === "cavalry" || u.type === "horse_archer") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 10, wy - 10, 20, 10); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 9, wy - 9, 18, 8); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 8, wy - 9, 14, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 19, 10, 11); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 18, 8, 9); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 22, 6, 4); } else if (u.type === "villager") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 12, 10, 12); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 11, 8, 10); ctx.fillStyle = tLight; ctx.fillRect(wx - 3, wy - 11, 3, 6); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 5, 8, 1); ctx.fillRect(wx - 4, wy - 16, 8, 5); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 15, 6, 4); ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(wx - 9, wy - 13); ctx.lineTo(wx, wy - 21); ctx.lineTo(wx + 9, wy - 13); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#B45309"; ctx.beginPath(); ctx.moveTo(wx - 7, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 7, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#FACC15"; ctx.beginPath(); ctx.moveTo(wx - 5, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 2, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 12, 3, 9); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx + 5, wy - 12, 3, 3); } else if (u.type === "archer" || u.type === "chuko_nu") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 18, 10, 6); ctx.fillStyle = u.type === "chuko_nu" ? "#FACC15" : "#475569"; ctx.fillRect(wx - 4, wy - 17, 8, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 14, 5, 9); ctx.fillStyle = "#B45309"; ctx.fillRect(wx + 5, wy - 13, 3, 7); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tDark; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 3, wy - 11, 6, 7); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx - 3, wy - 11, 3, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 18, 8, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 3, wy - 17, 6, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx - 1, wy - 21, 2, 3); if (u.type === "spearman") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 24, 3, 24); ctx.fillStyle = "#92400E"; ctx.fillRect(wx + 6, wy - 22, 1, 21); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 6, wy - 26, 2, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx + 4, wy - 21, 3, 3); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 15, 3, 11); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 5, wy - 14, 1, 9); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 11, 5, 8); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 10, 3, 6); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(wx - 6, wy - 9, 1, 4); } } if (u.hp < u.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(wx - 9, wy - 27, 18, 3); ctx.fillStyle = isP ? "#22C55E" : "#EF4444"; ctx.fillRect(wx - 9, wy - 27, 18 * Math.max(0, u.hp / u.maxHp), 3); } } function render() {
+  function drawBuildingLegacy(b) { const fState = state.fog[Math.min(state.mapSize - 1, b.ty)]?.[Math.min(state.mapSize - 1, b.tx)] ?? 0; if (fState === 0) return; const { x, y } = gridToIso(b.tx + ((b.size || 1) - 1) / 2, b.ty + ((b.size || 1) - 1) / 2); const cx = x, cy = y + TILE_H / 2, t = performance.now() * 0.004; ctx.save(); if (b.progress !== undefined && b.progress < 1) ctx.globalAlpha = 0.65; const isP = b.team === "player"; const rDark = isP ? "#7F1D1D" : "#1E3A8A", rMid = isP ? "#B91C1C" : "#1D4ED8", rLight = isP ? "#EF4444" : "#60A5FA"; const w = b.size === 2 ? 44 : b.type === "imperial_citadel" ? 64 : 30; const h = b.type === "imperial_citadel" ? 42 : b.size === 2 ? 32 : 24; drawShadow(cx + 3, cy + 4, w * 0.58, 12); const drawRoof = (rx, ry, rw, rh, gTrim) => { ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 8, ry + rh); ctx.lineTo(rx, ry - 4); ctx.lineTo(rx + rw / 2 + 8, ry + rh); ctx.closePath(); ctx.fill(); ctx.fillStyle = rDark; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 6, ry + rh - 1); ctx.lineTo(rx, ry - 2); ctx.lineTo(rx + rw / 2 + 6, ry + rh - 1); ctx.closePath(); ctx.fill(); ctx.fillStyle = rMid; ctx.beginPath(); ctx.moveTo(rx - rw / 2 - 3, ry + rh - 2); ctx.lineTo(rx, ry); ctx.lineTo(rx + rw / 4, ry + rh - 2); ctx.closePath(); ctx.fill(); ctx.fillStyle = rLight; ctx.fillRect(rx - 4, ry + 1, 6, 4); ctx.fillStyle = "#1A120E"; for (let tx = -rw / 2 - 4; tx <= rw / 2 + 2; tx += 4) ctx.fillRect(rx + tx, ry + rh - 1, 2, 3); ctx.fillStyle = gTrim; ctx.fillRect(rx - rw / 2 - 9, ry + rh - 4, 5, 3); ctx.fillRect(rx - rw / 2 - 10, ry + rh - 6, 3, 2); ctx.fillRect(rx + rw / 2 + 4, ry + rh - 4, 5, 3); ctx.fillRect(rx + rw / 2 + 7, ry + rh - 6, 3, 2); ctx.fillRect(rx - 6, ry - 5, 12, 3); ctx.fillStyle = "#FEF08A"; ctx.fillRect(rx - 3, ry - 6, 6, 2); }; if (b.type === "farm") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 18, cy - 8, 36, 18); ctx.fillStyle = "#78350F"; ctx.fillRect(cx - 17, cy - 7, 34, 16); ctx.fillStyle = "#CA8A04"; for (let fx = -14; fx <= 10; fx += 6) { ctx.fillRect(cx + fx, cy - 5, 4, 12); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx + fx, cy - 5, 2, 10); ctx.fillStyle = "#CA8A04"; } } else if (b.type === "imperial_citadel") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 34, cy - 26, 68, 34); ctx.fillStyle = "#475569"; ctx.fillRect(cx - 33, cy - 25, 66, 32); ctx.fillStyle = "#64748B"; ctx.fillRect(cx - 31, cy - 23, 62, 18); ctx.fillStyle = "#1A120E"; for (let mx = -32; mx < 32; mx += 8) ctx.fillRect(cx + mx, cy - 28, 5, 3); ctx.fillStyle = "#94A3B8"; for (let mx = -31; mx < 31; mx += 8) ctx.fillRect(cx + mx, cy - 27, 4, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy - 12, 20, 18); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 9, cy - 11, 18, 17); ctx.fillStyle = "#FACC15"; for (let dy = -9; dy <= 2; dy += 4) { ctx.fillRect(cx - 6, cy + dy, 2, 2); ctx.fillRect(cx + 4, cy + dy, 2, 2); } drawRoof(cx, cy - 40, 48, 15, "#FACC15"); drawRoof(cx, cy - 53, 34, 13, "#FEF08A"); const fl = Math.sin(t) * 2; ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 22, cy - 52, 2, 24); ctx.fillRect(cx + 20, cy - 52, 2, 24); ctx.fillStyle = rMid; ctx.fillRect(cx - 20, cy - 51, 9, 6 + fl * 0.4); ctx.fillRect(cx + 22, cy - 51, 9, 6 - fl * 0.4); ctx.fillStyle = "#FACC15"; ctx.fillRect(cx - 18, cy - 49, 4, 2); ctx.fillRect(cx + 24, cy - 49, 4, 2); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2 - 1, cy - h + 6, w + 2, h); ctx.fillStyle = "#475569"; ctx.fillRect(cx - w / 2, cy - 2, w, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - w / 2, cy + 2, w, 1); ctx.fillStyle = "#D6D3D1"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, w - 4, h - 10); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(cx - w / 2 + 2, cy - h + 8, 4, h - 10); ctx.fillRect(cx + w / 2 - 6, cy - h + 8, 4, h - 10); ctx.fillStyle = "#EF4444"; ctx.fillRect(cx - w / 2 + 3, cy - h + 8, 1, h - 10); ctx.fillRect(cx + w / 2 - 5, cy - h + 8, 1, h - 10); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 6, cy - 11, 12, 13); ctx.fillStyle = "#F59E0B"; ctx.fillRect(cx - 5, cy - 10, 10, 12); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 3, cy - 8, 6, 8); ctx.fillStyle = "#451A03"; ctx.fillRect(cx - 5, cy - 5, 10, 1); ctx.fillRect(cx, cy - 10, 1, 12); if (b.type === "town_center") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 10, cy + 4, 20, 5); ctx.fillStyle = "#94A3B8"; ctx.fillRect(cx - 9, cy + 5, 18, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx - 7, cy + 7, 14, 2); ctx.fillStyle = "rgba(251, 191, 36, 0.35)"; ctx.beginPath(); ctx.arc(cx - 13, cy - 8, 6, 0, Math.PI * 2); ctx.arc(cx + 13, cy - 8, 6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 15, cy - 11, 5, 6); ctx.fillRect(cx + 10, cy - 11, 5, 6); ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 14, cy - 10, 3, 4); ctx.fillRect(cx + 11, cy - 10, 3, 4); } if (b.type === "blacksmith") { ctx.fillStyle = "#1A120E"; ctx.fillRect(cx - 11, cy - 10, 14, 12); ctx.fillStyle = "#57534E"; ctx.fillRect(cx - 10, cy - 9, 12, 11); const fl = Math.sin(t * 2) > 0 ? 1 : 0; ctx.fillStyle = "#DC2626"; ctx.fillRect(cx - 8, cy - 6, 8, 7); ctx.fillStyle = "#F97316"; ctx.fillRect(cx - 7, cy - 5 - fl, 6, 5 + fl); ctx.fillStyle = "#FEF08A"; ctx.fillRect(cx - 6, cy - 3, 4, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(cx + 6, cy - 2, 8, 5); ctx.fillStyle = "#64748B"; ctx.fillRect(cx + 7, cy - 1, 6, 2); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(cx + 7, cy - 1, 4, 1); } drawRoof(cx, cy - h - 4, w, 14, "#FACC15"); const isAge2 = isP ? state.age >= 2 : (state.aiAge || 1) >= 2; if (b.type === "town_center" && isAge2) drawRoof(cx, cy - h - 16, w * 0.72, 11, "#FEF08A"); } if (state.selectedBuildingId === b.id) { const pad = b.type === "imperial_citadel" ? 36 : b.size === 2 ? 28 : 18; ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.strokeRect(cx - pad, cy - 54, pad * 2, 66); } if (b.hp < b.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(cx - 18, cy - 58, 36, 4); ctx.fillStyle = healthColor(b); ctx.fillRect(cx - 18, cy - 58, 36 * Math.max(0, b.hp / b.maxHp), 4); } ctx.restore(); } function drawUnitLegacy(u) { const fState = state.fog[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.y)))]?.[Math.max(0, Math.min(state.mapSize - 1, Math.round(u.x)))] ?? 0; if (fState !== 2 && u.team !== "player") return; const { x, y } = gridToIso(u.x, u.y); const wx = x, wy = y + TILE_H / 2; const isP = u.team === "player", tDark = isP ? "#7F1D1D" : "#1E3A8A", tMid = isP ? "#DC2626" : "#2563EB", tLight = isP ? "#FCA5A5" : "#93C5FD"; drawShadow(wx + 1, wy + 2, u.type === "war_elephant" ? 16 : u.type === "catapult" ? 13 : 8, 4); if (state.selectedIds.includes(u.id)) { ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(wx, wy + 1, u.type === "war_elephant" ? 18 : 11, 6, 0, 0, Math.PI * 2); ctx.stroke(); } if (u.type === "war_elephant") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 15, wy - 19, 28, 17); ctx.fillRect(wx + 11, wy - 14, 7, 10); ctx.fillStyle = "#475569"; ctx.fillRect(wx - 14, wy - 18, 26, 15); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 12, wy - 18, 20, 10); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 10, wy - 18, 12, 5); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 16, 6, 9); ctx.fillStyle = "#475569"; ctx.fillRect(wx + 6, wy - 15, 4, 7); ctx.fillStyle = "#64748B"; ctx.fillRect(wx + 12, wy - 13, 5, 8); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 12, wy - 7, 8, 3); ctx.fillStyle = "#FEF3C7"; ctx.fillRect(wx + 13, wy - 6, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 24, 14, 8); ctx.fillStyle = "#991B1B"; ctx.fillRect(wx - 7, wy - 23, 12, 6); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 19, 12, 2); ctx.fillRect(wx - 4, wy - 25, 6, 2); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 2, wy - 24, 6, 8); ctx.fillStyle = tMid; ctx.fillRect(wx + 3, wy - 23, 4, 6); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx + 3, wy - 23, 4, 3); } else if (u.type === "catapult") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 13, wy - 13, 26, 13); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 12, wy - 12, 24, 11); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 10, wy - 11, 20, 3); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 11, wy - 5, 7, 7); ctx.fillRect(wx + 4, wy - 5, 7, 7); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 10, wy - 4, 5, 5); ctx.fillRect(wx + 5, wy - 4, 5, 5); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 8, wy - 2, 1, 1); ctx.fillRect(wx + 7, wy - 2, 1, 1); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 2, wy - 22, 4, 14); ctx.fillStyle = "#92400E"; ctx.fillRect(wx - 1, wy - 21, 2, 12); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 7, wy - 24, 7, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 6, wy - 23, 5, 4); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx - 5, wy - 23, 2, 2); } else if (u.type === "cavalry" || u.type === "horse_archer") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 10, wy - 10, 20, 10); ctx.fillStyle = "#78350F"; ctx.fillRect(wx - 9, wy - 9, 18, 8); ctx.fillStyle = "#B45309"; ctx.fillRect(wx - 8, wy - 9, 14, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 19, 10, 11); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 18, 8, 9); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 22, 6, 4); } else if (u.type === "villager") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 12, 10, 12); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 11, 8, 10); ctx.fillStyle = tLight; ctx.fillRect(wx - 3, wy - 11, 3, 6); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 5, 8, 1); ctx.fillRect(wx - 4, wy - 16, 8, 5); ctx.fillStyle = "#FDE68A"; ctx.fillRect(wx - 3, wy - 15, 6, 4); ctx.fillStyle = "#1A120E"; ctx.beginPath(); ctx.moveTo(wx - 9, wy - 13); ctx.lineTo(wx, wy - 21); ctx.lineTo(wx + 9, wy - 13); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#B45309"; ctx.beginPath(); ctx.moveTo(wx - 7, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 7, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#FACC15"; ctx.beginPath(); ctx.moveTo(wx - 5, wy - 14); ctx.lineTo(wx, wy - 19); ctx.lineTo(wx + 2, wy - 14); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 12, 3, 9); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx + 5, wy - 12, 3, 3); } else if (u.type === "archer" || u.type === "chuko_nu") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tMid; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 18, 10, 6); ctx.fillStyle = u.type === "chuko_nu" ? "#FACC15" : "#475569"; ctx.fillRect(wx - 4, wy - 17, 8, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 14, 5, 9); ctx.fillStyle = "#B45309"; ctx.fillRect(wx + 5, wy - 13, 3, 7); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 5, wy - 13, 10, 13); ctx.fillStyle = tDark; ctx.fillRect(wx - 4, wy - 12, 8, 11); ctx.fillStyle = "#64748B"; ctx.fillRect(wx - 3, wy - 11, 6, 7); ctx.fillStyle = "#CBD5E1"; ctx.fillRect(wx - 3, wy - 11, 3, 4); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 4, wy - 18, 8, 6); ctx.fillStyle = "#94A3B8"; ctx.fillRect(wx - 3, wy - 17, 6, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx - 1, wy - 21, 2, 3); if (u.type === "spearman") { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 5, wy - 24, 3, 24); ctx.fillStyle = "#92400E"; ctx.fillRect(wx + 6, wy - 22, 1, 21); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 6, wy - 26, 2, 4); ctx.fillStyle = "#DC2626"; ctx.fillRect(wx + 4, wy - 21, 3, 3); } else { ctx.fillStyle = "#1A120E"; ctx.fillRect(wx + 4, wy - 15, 3, 11); ctx.fillStyle = "#E2E8F0"; ctx.fillRect(wx + 5, wy - 14, 1, 9); ctx.fillStyle = "#1A120E"; ctx.fillRect(wx - 8, wy - 11, 5, 8); ctx.fillStyle = "#FACC15"; ctx.fillRect(wx - 7, wy - 10, 3, 6); ctx.fillStyle = "#7F1D1D"; ctx.fillRect(wx - 6, wy - 9, 1, 4); } } if (u.hp < u.maxHp) { ctx.fillStyle = "#111"; ctx.fillRect(wx - 9, wy - 27, 18, 3); ctx.fillStyle = healthColor(u); ctx.fillRect(wx - 9, wy - 27, 18 * Math.max(0, u.hp / u.maxHp), 3); } } function render() {
     if (R3D) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       R3D.syncAndRender(state, cam, frameDt);
@@ -1908,6 +1898,7 @@ const updateBattleHud = initBattleHud();
     const relic = document.getElementById("relic-countdown");
     const remaining = Math.max(0, Math.ceil(state.relic?.remaining ?? 0));
     relic.hidden = !state.relic;
+    if (state.relic) relic.style.setProperty("--dote-relic-left", `${Math.min(100, remaining / 3)}%`);
     if (state.relic) relic.textContent = `Thánh Tích · ${state.relic.owner === "player" ? "Ta" : "AI"} · ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
     for (const shrine of state.shrines ?? []) {
       mctx.fillStyle = shrine.owner === "player" ? "#9de19b" : shrine.owner ? "#f28b7c" : "#f9db94";
@@ -1942,8 +1933,9 @@ const updateBattleHud = initBattleHud();
     document.getElementById("res-wood").textContent = state.resources.wood;
     document.getElementById("res-gold").textContent = state.resources.gold;
     document.getElementById("res-stone").textContent = state.resources.stone;
+    document.getElementById("dote-herbal-badge").hidden = !state.herbalMedicine;
     const { pop, cap } = getPopStats("player");
-    document.getElementById("res-pop").textContent = `${pop}/${cap}`; for (const n of [1, 2, 3]) { const alive = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = alive; const b = document.getElementById(`btn-grp-${n}`); if (b) b.textContent = `Đạo ${n} (${alive.length})`; }
+    document.getElementById("res-pop").textContent = `${pop}/${cap}`; for (const n of [1, 2, 3]) { const alive = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = alive; const b = document.getElementById(`btn-grp-${n}`); if (b) { const label = b.querySelector(".dote-btn-lbl"); (label || b).textContent = `Đạo ${n} (${alive.length})`; } }
   }
 
   function researchUpgrade(kind) {
@@ -1962,7 +1954,15 @@ const updateBattleHud = initBattleHud();
     renderCommandDock();
   }
 
-  function drawSelectionPortrait(selBldg, selUnit) { const cvs = document.getElementById("sel-portrait"); if (!cvs) return; const p = cvs.getContext("2d"); const dpr = Math.min(window.devicePixelRatio || 1, 2); cvs.width = 48 * dpr; cvs.height = 48 * dpr; p.setTransform(dpr, 0, 0, dpr, 0, 0); p.clearRect(0, 0, 48, 48); p.fillStyle = "#1A0F0A"; p.fillRect(0, 0, 48, 48); p.strokeStyle = "rgba(250, 204, 21, 0.28)"; p.strokeRect(1.5, 1.5, 45, 45); p.save(); p.imageSmoothingEnabled = true; p.translate(3, 3); p.scale(42 / 36, 42 / 36); const tc = (selBldg && selBldg.team !== "player") || (selUnit && selUnit.team !== "player") ? "#3B82F6" : "#DC2626"; if (selBldg) { const t = selBldg.type; p.fillStyle = "#1A120E"; if (t === "town_center" || t === "imperial_citadel") { p.fillRect(6, 16, 24, 15); p.fillRect(3, 12, 30, 7); p.fillRect(7, 8, 22, 6); p.fillRect(15, 3, 6, 7); } else if (t === "watch_tower") { p.fillRect(10, 9, 16, 22); p.fillRect(8, 6, 20, 6); } else if (t === "farm") { p.fillRect(4, 17, 28, 14); p.fillRect(6, 13, 7, 14); p.fillRect(14, 11, 8, 16); p.fillRect(23, 14, 7, 13); } else if (t === "blacksmith") { p.fillRect(6, 14, 24, 17); p.fillRect(14, 8, 8, 8); } else { p.fillRect(6, 16, 24, 15); p.fillRect(4, 11, 28, 8); } p.fillStyle = "#4A2C1D"; p.fillRect(7, 17, 22, 13); p.fillStyle = "#8B5E3C"; p.fillRect(9, 19, 18, 9); if (t === "town_center" || t === "imperial_citadel") { p.fillStyle = tc; p.fillRect(4, 13, 28, 5); p.fillRect(8, 9, 20, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 4, 4, 5); p.fillRect(14, 22, 8, 8); } else if (t === "watch_tower") { p.fillStyle = "#64748B"; p.fillRect(11, 10, 14, 20); p.fillStyle = tc; p.fillRect(9, 7, 18, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 13, 4, 5); } else if (t === "farm") { p.fillStyle = "#78350F"; p.fillRect(5, 18, 26, 12); p.fillStyle = "#EAB308"; p.fillRect(7, 14, 5, 12); p.fillRect(15, 12, 6, 14); p.fillRect(24, 15, 5, 11); } else if (t === "blacksmith") { p.fillStyle = "#475569"; p.fillRect(7, 15, 22, 15); p.fillStyle = "#F97316"; p.fillRect(13, 21, 10, 7); p.fillStyle = "#FACC15"; p.fillRect(15, 9, 6, 6); } else { p.fillStyle = tc; p.fillRect(5, 12, 26, 6); p.fillStyle = "#FACC15"; p.fillRect(15, 21, 6, 9); } } else if (selUnit) { const u = selUnit.type; p.fillStyle = "#1A120E"; p.fillRect(12, 8, 12, 11); p.fillRect(9, 17, 18, 14); if (u === "villager") { p.fillRect(8, 5, 20, 6); p.fillRect(12, 3, 12, 4); } else if (u === "war_elephant") { p.fillRect(6, 12, 24, 18); p.fillRect(4, 21, 7, 6); p.fillRect(25, 21, 7, 6); p.fillRect(11, 7, 14, 7); } else if (u === "catapult") { p.fillRect(5, 21, 26, 8); p.fillRect(14, 8, 7, 16); p.fillRect(12, 5, 10, 7); } else if (u === "cavalry" || u === "horse_archer") { p.fillRect(7, 17, 22, 14); p.fillRect(11, 7, 14, 12); p.fillRect(13, 4, 10, 5); } else if (u === "archer" || u === "chuko_nu") { p.fillRect(25, 9, 5, 18); p.fillRect(11, 5, 14, 6); } else { p.fillRect(8, 4, 16, 7); p.fillRect(9, 8, 18, 20); p.fillRect(25, 7, 5, 18); } p.fillStyle = "#FDE68A"; p.fillRect(13, 9, 10, 9); p.fillStyle = tc; p.fillRect(10, 18, 16, 12); if (u === "villager") { p.fillStyle = "#EAB308"; p.fillRect(9, 6, 18, 4); p.fillRect(13, 4, 10, 2); } else if (u === "war_elephant") { p.fillStyle = "#64748B"; p.fillRect(7, 13, 22, 16); p.fillStyle = "#E2E8F0"; p.fillRect(5, 22, 5, 4); p.fillRect(26, 22, 5, 4); p.fillStyle = "#FACC15"; p.fillRect(12, 8, 12, 5); } else if (u === "catapult") { p.fillStyle = "#78350F"; p.fillRect(6, 22, 24, 6); p.fillRect(15, 9, 5, 14); p.fillStyle = "#94A3B8"; p.fillRect(13, 6, 8, 5); } else if (u === "cavalry" || u === "horse_archer") { p.fillStyle = "#92400E"; p.fillRect(8, 18, 20, 12); p.fillStyle = tc; p.fillRect(12, 8, 12, 10); p.fillStyle = "#FACC15"; p.fillRect(14, 5, 8, 3); } else if (u === "archer" || u === "chuko_nu") { p.fillStyle = "#15803D"; p.fillRect(10, 18, 16, 12); p.fillStyle = "#FACC15"; p.fillRect(26, 10, 3, 16); p.fillStyle = tc; p.fillRect(12, 6, 12, 4); } else { p.fillStyle = tc; p.fillRect(11, 5, 14, 5); p.fillStyle = "#FACC15"; p.fillRect(9, 9, 18, 2); p.fillRect(26, 8, 3, 16); } } else { p.fillStyle = tc; p.fillRect(10, 9, 16, 18); p.fillStyle = "#FACC15"; p.fillRect(14, 13, 8, 10); } p.restore(); } function renderCommandDock() { try { updateTacticBtns(); } catch (e) {}
+  function drawSelectionPortrait(building, unit) {
+    const portrait = document.getElementById("sel-portrait");
+    const icon = portraitIcon(building?.type ?? unit?.type);
+    if (portrait.dataset.icon !== icon) {
+      portrait.dataset.icon = icon;
+      portrait.innerHTML = getIconSvg(icon, 24);
+    }
+  }
+  function renderCommandDock() { try { updateTacticBtns(); } catch (e) {}
   updateDoteCancelBtn();
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     const wrap = document.getElementById("cmd-buttons");
     const title = document.getElementById("sel-title");
@@ -1989,13 +1989,11 @@ const updateBattleHud = initBattleHud();
 
       if (selBldg.type === "town_center") {
         addBtn("Sinh Dân Làng", "50 Thực", pop < cap && canAfford(UNIT_DEFS.villager.cost), false, () => trainFrom(selBldg, "villager"));
-        const qh = selBldg.trainQueue?.[0];
-        if (qh) addBtn(`Dân làng · ${fmtClock(qh.remaining)}`, `${selBldg.trainQueue.length} trong hàng`, false, false, () => {});
         if (state.age < 4) {
           const next = AGES[state.age];
           const c = adjustedCost(next.cost, state.faction.ageCostMult);
           const ar = state.ageResearch;
-          if (ar) addBtn(`Lên Đời ${ar.target} · ${fmtClock(ar.remaining)}`, ar.buildingId === selBldg.id ? "Đang nghiên cứu" : "Đình khác đang nghiên cứu", false, false, () => {});
+          if (ar) addBtn(`Lên Đời ${ar.target}`, ar.buildingId === selBldg.id ? "Đang nghiên cứu" : "Đình khác đang nghiên cứu", false, false, () => {});
           else addBtn(`Lên ${next.name.split(" · ")[1]}`, `${formatCost(c)} · ${AGE_RESEARCH_SEC[next.age]}s`, canAfford(c), false, () => advanceAge(selBldg));
         }
       } else if (selBldg.type === "barracks") {
@@ -2087,6 +2085,7 @@ const updateBattleHud = initBattleHud();
         button.type = "button";
         button.className = "act-btn";
         button.dataset.unitId = String(abilityUnit.id);
+        button.innerHTML = `<span>${ability.name}</span><span class="act-cost">Sẵn sàng</span>`;
         button.addEventListener("click", () => {
           if (abilityUnit.hp <= 0 || abilityUnit.garrisoned || abilityUnit.abilityCooldown > 0 || !state.selectedIds.includes(abilityUnit.id)) return;
           abilityUnit.abilityTime = ability.duration;
@@ -2127,14 +2126,45 @@ const updateBattleHud = initBattleHud();
     title.textContent = "Chạm Đình Làng, Dân Làng hoặc bật Kéo chọn để quét cụm quân";
   }
 
+  const commandTimers = document.getElementById("dote-command-timers");
+  const timerRows = Array.from(commandTimers.querySelectorAll("[data-timer]"));
+  function refreshCommandTimers() {
+    const building = state.buildings.find(b => b.id === state.selectedBuildingId && b.team === "player");
+    const abilityId = Number(document.getElementById("btn-faction-ability")?.dataset.unitId);
+    const unit = abilityId ? state.units.find(u => u.id === abilityId) : null;
+    const progress = building?.progress ?? 1;
+    const buildTime = progress < 1 ? building.buildDuration ?? window.DOTEBuild?.getBuildDuration(building.type) ?? 10 : 0;
+    const builders = buildTime ? state.units.filter(u => u.hp > 0 && u.team === "player" && u.type === "villager" &&
+      u.task === "build" && u.buildTargetId === building.id && footDist(building, u.x, u.y) <= 1.4).length : 0;
+    const duration = buildTime / (1 + 0.55 * Math.max(0, builders - 1));
+    const head = building?.trainQueue?.[0], research = building?.type === "town_center" && state.ageResearch;
+    const ability = unit && ABILITIES[unit.type];
+    const timers = {
+      build: buildTime && ["Xây dựng", (1 - progress) * duration, duration, builders === 0],
+      train: head && [`Huấn luyện ${UNIT_DEFS[head.type]?.name ?? head.type}`, head.remaining, head.total],
+      age: research && [`Lên Đời ${research.target}`, research.remaining, research.total],
+      ability: ability && unit.abilityCooldown > 0 && [`Hồi chiêu ${ability.name}`, unit.abilityCooldown, 35],
+      effect: ability && unit.abilityTime > 0 && [`Đang dùng ${ability.name}`, unit.abilityTime, ability.duration],
+    };
+    let visible = false;
+    for (const row of timerRows) {
+      const timer = timers[row.dataset.timer];
+      if (timer) { updateCommandTimer(row, ...timer); visible = true; }
+      else row.hidden = true;
+    }
+    commandTimers.hidden = !visible;
+  }
+
   function updateAbilityButton() {
     const button = document.getElementById("btn-faction-ability");
     if (!button || !state) return;
     const unit = state.units.find(u => u.id === Number(button.dataset.unitId));
     if (!unit) { button.remove(); return; }
     const remaining = Math.ceil(unit.abilityCooldown || 0);
-    const label = ABILITIES[unit.type].name + (remaining ? ` · ${remaining}s` : "");
-    if (button.textContent !== label) button.textContent = label;
+    const status = remaining ? `Hồi chiêu · ${remaining}s` : "Sẵn sàng";
+    const badge = button.querySelector(".act-cost");
+    if (badge && badge.textContent !== status) badge.textContent = status;
+    button.setAttribute("aria-label", `${ABILITIES[unit.type].name} · ${status}`);
     button.disabled = remaining > 0;
   }
 
@@ -2199,7 +2229,7 @@ const updateBattleHud = initBattleHud();
     if (st && window.DOTETactics && state) {
       const army = selectedArmy();
       const cur = army.length && army.every(u => u.stance === "stand_ground") ? "stand_ground" : "aggressive";
-      st.textContent = window.DOTETactics.stanceLabel(cur);
+      (st.querySelector(".dote-btn-lbl") || st).textContent = window.DOTETactics.stanceLabel(cur);
       st.classList.toggle("active", cur === "stand_ground");
     }
   }
@@ -2670,24 +2700,23 @@ const updateBattleHud = initBattleHud();
     const k = e.key.toLowerCase();
     if (k === "q") R3D.rotate(-1); else if (k === "e") R3D.rotate(1);
   });
+  for (const slot of document.querySelectorAll("[data-battle-icon]")) {
+    slot.innerHTML = getIconSvg(slot.dataset.battleIcon, 16);
+  }
   const settingsButton = document.getElementById("btn-settings");
-  const settingsPanel = document.getElementById("hud-settings");
-  const compactHud = matchMedia("(orientation: landscape) and (max-height: 520px)");
-  const closeSettings = () => settingsButton.setAttribute("aria-expanded", "false");
+  const settingsPanel = document.getElementById("dote-pause-settings");
+  const audioControls = document.createElement("div");
+  audioControls.className = "dote-pause-audio";
+  audioControls.append(...audioSettingsControls());
+  settingsPanel.append(audioControls);
+  const closeSettings = () => {
+    settingsPanel.hidden = true;
+    settingsButton.setAttribute("aria-expanded", "false");
+  };
   settingsButton.addEventListener("click", () => {
-    settingsButton.setAttribute("aria-expanded", String(settingsButton.getAttribute("aria-expanded") !== "true"));
+    settingsPanel.hidden = !settingsPanel.hidden;
+    settingsButton.setAttribute("aria-expanded", String(!settingsPanel.hidden));
   });
-  compactHud.addEventListener("change", closeSettings);
-  document.addEventListener("pointerdown", e => {
-    if (!settingsButton.contains(e.target) && !settingsPanel.contains(e.target)) closeSettings();
-  });
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && settingsButton.getAttribute("aria-expanded") === "true") {
-      closeSettings();
-      settingsButton.focus();
-    }
-  });
-  document.getElementById("btn-restart").addEventListener("click", closeSettings);
 
   const gameWrap = document.getElementById("game-wrap");
   const topHud = gameWrap.querySelector(".top-hud");
@@ -2778,11 +2807,11 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     state.selectedBuildingId = tc.id; state.selectedIds = [];
     cam.x = (tc.tx + 1 - (tc.ty + 1)) * (TILE_W / 2); cam.y = (tc.tx + 1 + (tc.ty + 1)) * (TILE_H / 2);
     renderCommandDock();
-  }); document.getElementById("btn-grp-assign").addEventListener("click", () => { if (!state) return; state.assignGroupMode = !state.assignGroupMode; document.getElementById("btn-grp-assign").textContent = state.assignGroupMode ? "Chọn Đạo..." : "Gán đạo"; showToast(state.assignGroupMode ? "Bấm Đạo 1, 2 hoặc 3 để gán quân đang chọn!" : "Đã hủy chế độ gán đạo."); }); for (const n of [1, 2, 3]) { document.getElementById(`btn-grp-${n}`).addEventListener("click", () => { if (!state) return; if (state.assignGroupMode) { state.controlGroups[n] = state.selectedIds.filter(id => state.units.some(u => u.id === id && u.team === "player" && u.hp > 0)); state.assignGroupMode = false; document.getElementById("btn-grp-assign").textContent = "Gán đạo"; updateHud(); showToast(`Đã gán ${state.controlGroups[n].length} quân vào Đạo ${n}!`); } else { const ids = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = ids; if (ids.length === 0) { showToast(`Đạo ${n} chưa có quân!`); updateHud(); return; } state.selectedIds = ids; state.selectedBuildingId = null; const u0 = state.units.find(u => u.id === ids[0]); if (u0) { cam.x = (u0.x - u0.y) * (TILE_W / 2); cam.y = (u0.x + u0.y) * (TILE_H / 2); } renderCommandDock(); updateHud(); } }); }
-  document.getElementById("btn-town-bell").addEventListener("click", () => { if (!state) return; const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0); if (!tc) return; if (state.bellActive || state.garrisonedCount > 0) { state.bellActive = false; for (const u of state.units) { if (u.team === "player" && u.garrisoned) { u.garrisoned = false; u.task = "idle"; u.x = tc.tx + 1.5; u.y = tc.ty + 2.5; } } state.garrisonedCount = 0; document.getElementById("btn-town-bell").textContent = "Chuông Báo"; addFloat(tc.tx + 1, tc.ty, "Xuất kích", "#34D399"); updateHud(); } else { state.bellActive = true; sfxGong(); for (const u of state.units) { if (u.team === "player" && u.type === "villager" && !u.garrisoned && u.hp > 0) { u.task = "garrison"; u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } } document.getElementById("btn-town-bell").textContent = "Thả Dân"; showToast("Chuông báo động! Nông dân đang chạy vào Đình Làng!"); } });
+  }); document.getElementById("btn-grp-assign").addEventListener("click", () => { if (!state) return; state.assignGroupMode = !state.assignGroupMode; (document.querySelector("#btn-grp-assign .dote-btn-lbl") || document.getElementById("btn-grp-assign")).textContent = state.assignGroupMode ? "Chọn Đạo..." : "Gán đạo"; showToast(state.assignGroupMode ? "Bấm Đạo 1, 2 hoặc 3 để gán quân đang chọn!" : "Đã hủy chế độ gán đạo."); }); for (const n of [1, 2, 3]) { document.getElementById(`btn-grp-${n}`).addEventListener("click", () => { if (!state) return; if (state.assignGroupMode) { state.controlGroups[n] = state.selectedIds.filter(id => state.units.some(u => u.id === id && u.team === "player" && u.hp > 0)); state.assignGroupMode = false; document.getElementById("btn-grp-assign").textContent = "Gán đạo"; updateHud(); showToast(`Đã gán ${state.controlGroups[n].length} quân vào Đạo ${n}!`); } else { const ids = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = ids; if (ids.length === 0) { showToast(`Đạo ${n} chưa có quân!`); updateHud(); return; } state.selectedIds = ids; state.selectedBuildingId = null; const u0 = state.units.find(u => u.id === ids[0]); if (u0) { cam.x = (u0.x - u0.y) * (TILE_W / 2); cam.y = (u0.x + u0.y) * (TILE_H / 2); } renderCommandDock(); updateHud(); } }); }
+  document.getElementById("btn-town-bell").addEventListener("click", () => { if (!state) return; const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0); if (!tc) return; if (state.bellActive || state.garrisonedCount > 0) { state.bellActive = false; for (const u of state.units) { if (u.team === "player" && u.garrisoned) { u.garrisoned = false; u.task = "idle"; u.x = tc.tx + 1.5; u.y = tc.ty + 2.5; } } state.garrisonedCount = 0; (document.querySelector("#btn-town-bell .dote-btn-lbl") || document.getElementById("btn-town-bell")).textContent = "Chuông Báo"; addFloat(tc.tx + 1, tc.ty, "Xuất kích", "#34D399"); updateHud(); } else { state.bellActive = true; sfxGong(); for (const u of state.units) { if (u.team === "player" && u.type === "villager" && !u.garrisoned && u.hp > 0) { u.task = "garrison"; u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } } (document.querySelector("#btn-town-bell .dote-btn-lbl") || document.getElementById("btn-town-bell")).textContent = "Thả Dân"; showToast("Chuông báo động! Nông dân đang chạy vào Đình Làng!"); } });
 
   function resize() { const wrap = document.getElementById("game-wrap"); const w = wrap ? wrap.clientWidth : (window.visualViewport?.width || window.innerWidth); const h = wrap ? wrap.clientHeight : (window.visualViewport?.height || window.innerHeight); canvas.width = Math.round(w) || window.innerWidth; canvas.height = Math.round(h) || window.innerHeight; if (R3D) R3D.resize(canvas.width, canvas.height); }
-    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; if (e.key === "Escape" && retreatTarget) { e.preventDefault(); clearRetreatTarget(); renderCommandDock(); return; } e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
+    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (!target) closeSettings(); if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && !settingsPanel.hidden) { e.preventDefault(); closeSettings(); settingsButton.focus(); return; } if (e.key === "Escape" && retreatTarget) { e.preventDefault(); clearRetreatTarget(); renderCommandDock(); return; } e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
   
   let frameFailed = false;
   function loop(ts) {
@@ -2801,6 +2830,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
           gfx.atmosphere.update(dt, canvas.width, canvas.height);
         }
         updateAbilityButton();
+        refreshCommandTimers();
         render();
       }
       const setupVisible = !document.getElementById("modal").classList.contains("hidden") &&

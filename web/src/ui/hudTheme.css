@@ -6,21 +6,21 @@
 }
 
 #game-wrap.battle-hud-active {
-  --hud-ink: #160c09;
-  --hud-lac-surface: rgba(24, 13, 10, 0.9);
-  --hud-btn-bg: #2a1711;
-  --hud-btn-bg-hover: #3a2017;
-  --hud-brass: rgba(245, 184, 65, 0.5);
-  --hud-brass-soft: rgba(245, 184, 65, 0.28);
-  --hud-highlight: #ffe9a8;
-  --hud-gold: #f5b841;
-  --hud-crimson: #9e261e;
-  --hud-crimson-dark: #4d1614;
-  --hud-crimson-border: #e05a4f;
+  --hud-ink: #0e0e0e;
+  --hud-lac-surface: rgba(15, 15, 15, 0.9);
+  --hud-btn-bg: #1b1b1b;
+  --hud-btn-bg-hover: #252525;
+  --hud-brass: rgba(188, 188, 188, 0.5);
+  --hud-brass-soft: rgba(188, 188, 188, 0.28);
+  --hud-highlight: #e9e9e9;
+  --hud-gold: #bcbcbc;
+  --hud-crimson: #3f3f3f;
+  --hud-crimson-dark: #222222;
+  --hud-crimson-border: #767676;
   --hud-panel-shadow:
-    inset 0 1px 0 rgba(255, 233, 168, 0.16),
-    inset 0 -2px 0 rgba(10, 5, 3, 0.55),
-    0 3px 10px rgba(8, 4, 2, 0.55);
+    inset 0 1px 0 rgba(233, 233, 233, 0.16),
+    inset 0 -2px 0 rgba(6, 6, 6, 0.55),
+    0 3px 10px rgba(5, 5, 5, 0.55);
 }
 
 .battle-hud-active .top-hud,
@@ -98,7 +98,7 @@
   min-width: 5ch;
   border: 1px solid var(--hud-brass-soft);
   border-radius: 2px;
-  background: rgba(14, 8, 6, 0.85);
+  background: rgba(9, 9, 9, 0.85);
   color: var(--hud-highlight);
   font: 700 12px/1.15 ui-monospace, "SF Mono", Menlo, monospace;
   font-variant-numeric: tabular-nums;
@@ -117,14 +117,14 @@
   border: 1px solid var(--hud-brass-soft);
   border-radius: 2px;
   outline: none;
-  color: #fff3d6;
+  color: #f3f3f3;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   font-weight: 600;
   letter-spacing: 0.01em;
-  text-shadow: 0 1px 0 #120805;
+  text-shadow: 0 1px 0 #0a0a0a;
   box-shadow:
-    inset 0 1px 0 rgba(255, 233, 168, 0.14),
-    0 2px 0 rgba(12, 6, 4, 0.85);
+    inset 0 1px 0 rgba(233, 233, 233, 0.14),
+    0 2px 0 rgba(7, 7, 7, 0.85);
   transition: background-color 80ms ease, border-color 80ms ease, transform 60ms ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -143,18 +143,18 @@
 .battle-hud-active :is(.icon-btn, .mini-btn, .act-btn, .battle-dock-toggle):active:not(:disabled) {
   transform: translateY(1px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 233, 168, 0.08),
-    0 1px 0 rgba(12, 6, 4, 0.9);
+    inset 0 1px 0 rgba(233, 233, 233, 0.08),
+    0 1px 0 rgba(7, 7, 7, 0.9);
 }
 
 .battle-hud-active :is(.icon-btn, .mini-btn).active,
 .battle-hud-active .act-btn.selected {
   background: var(--hud-crimson);
   border-color: var(--hud-highlight);
-  color: #fffaf0;
+  color: #fafafa;
   box-shadow:
-    inset 0 1px 0 rgba(255, 233, 168, 0.35),
-    0 2px 0 rgba(12, 6, 4, 0.9);
+    inset 0 1px 0 rgba(233, 233, 233, 0.35),
+    0 2px 0 rgba(7, 7, 7, 0.9);
 }
 
 .battle-hud-active .icon-btn {
@@ -187,7 +187,7 @@
   pointer-events: none;
   color: var(--hud-gold);
   font: 700 8px/1 ui-monospace, monospace;
-  text-shadow: 0 1px 0 #160c09;
+  text-shadow: 0 1px 0 #0e0e0e;
   opacity: 0.85;
 }
 
@@ -277,8 +277,8 @@
 
 .battle-hud-active .act-btn:disabled {
   opacity: 0.44;
-  background: rgba(24, 14, 11, 0.72);
-  border-color: rgba(245, 184, 65, 0.16);
+  background: rgba(16, 16, 16, 0.72);
+  border-color: rgba(188, 188, 188, 0.16);
   box-shadow: none;
   cursor: not-allowed;
 }
@@ -286,10 +286,10 @@
 .battle-hud-active .act-btn.act-btn--cancel {
   background: var(--hud-crimson-dark);
   border-color: var(--hud-crimson-border);
-  color: #ffe2de;
+  color: #e8e8e8;
   box-shadow:
-    inset 0 1px 0 rgba(255, 190, 180, 0.22),
-    0 2px 0 rgba(12, 6, 4, 0.9);
+    inset 0 1px 0 rgba(203, 203, 203, 0.22),
+    0 2px 0 rgba(7, 7, 7, 0.9);
 }
 
 .battle-hud-active .act-btn.act-btn--cancel:hover:not(:disabled) {
@@ -298,7 +298,7 @@
 }
 
 .battle-hud-active .act-btn.act-btn--cancel .act-cost {
-  color: #ffb8b0;
+  color: #c7c7c7;
 }
 
 .battle-hud-active .battle-alerts {
@@ -318,7 +318,7 @@
   border: 1px solid var(--hud-brass);
   border-left: 3px solid var(--hud-crimson-border);
   border-radius: 2px;
-  background: rgba(34, 16, 12, 0.94);
+  background: rgba(20, 20, 20, 0.94);
   color: var(--hud-highlight);
   font-family: inherit;
   font-weight: 600;
