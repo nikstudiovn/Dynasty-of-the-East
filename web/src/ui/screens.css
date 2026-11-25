@@ -95,7 +95,7 @@ body.pd-menu-open .minimap-box {
   z-index: 1;
 }
 
-#modal > .modal-card:not(.pd-modal-setup):not(.pd-modal-endgame) {
+#modal > .modal-card:not(.pd-modal-subpage):not(.pd-modal-endgame) {
   background-color: rgba(37, 35, 33, 0.58);
   background-image: none;
 }
@@ -108,7 +108,7 @@ body.pd-menu-open .minimap-box {
   background: #282522;
 }
 
-.pd-modal-setup ~ .pd-menu-battlefield,
+.pd-modal-subpage ~ .pd-menu-battlefield,
 .pd-modal-endgame ~ .pd-menu-battlefield,
 #modal.hidden > .pd-menu-battlefield {
   display: none;
