@@ -9,9 +9,13 @@ import { applyWind } from "./wind3d";
 
 export type PbrName =
   | "mat_wood" | "mat_roof" | "mat_stone" | "mat_gold" | "mat_bamboo" | "mat_foliage"
-  | "mat_team_player" | "mat_team_enemy";
+  | "mat_team_player" | "mat_team_enemy"
+  // Units / wildlife / fleets (13 unit types + wildlife): metal, leather, skin, ivory, fur, hide, ship timber, sail, cloth
+  | "mat_steel" | "mat_bronze" | "mat_leather" | "mat_skin" | "mat_ivory" | "mat_fur" | "mat_hide"
+  | "mat_ship_wood" | "mat_sail" | "mat_cloth";
 export const PBR_NAMES: readonly PbrName[] = [
-  "mat_wood", "mat_roof", "mat_stone", "mat_gold", "mat_bamboo", "mat_foliage", "mat_team_player", "mat_team_enemy"
+  "mat_wood", "mat_roof", "mat_stone", "mat_gold", "mat_bamboo", "mat_foliage", "mat_team_player", "mat_team_enemy",
+  "mat_steel", "mat_bronze", "mat_leather", "mat_skin", "mat_ivory", "mat_fur", "mat_hide", "mat_ship_wood", "mat_sail", "mat_cloth"
 ];
 
 /** How texture coordinates are produced. `box` projects object-space position on the dominant normal axis
@@ -24,6 +28,8 @@ interface Spec {
   uv: UvMode;
   uvScale: number;
   metalness: number;
+  /** Base roughness factor; the generated roughnessMap only modulates it (texels stay within ~0.86–1.0). */
+  roughness?: number;
   normalScale: number;
   wet: number;
   side?: THREE.Side;
@@ -191,6 +197,118 @@ const SPECS: Record<PbrName, Spec> = {
       c = rgb(c, [10, 12, 18], hem);
       return [0.4 + weave * 0.12 + chevron * 0.28 - hem * 0.1 + hash(x, y, 103) * 0.03, c[0], c[1], c[2], 0.7 - chevron * 0.18];
     }
+  },
+  // ---- Units, fleets and wildlife. Texel roughness stays near 1 so `roughness` below is the effective value.
+  // Forged steel (helmets, blades, scale armour): brushed streaks and shallow hammer dents.
+  mat_steel: {
+    size: 128, uv: "box", uvScale: 9, metalness: 0.78, roughness: 0.30, normalScale: 0.55, wet: 0.12,
+    texel(u, v, x, y) {
+      const [d1, , id] = voronoi(u, v, 7, 211);
+      const dent = smooth(0.0, 0.55, d1);
+      const brush = noise(u, v, 4, 96, 213);
+      const h = 0.5 + dent * 0.28 + brush * 0.12;
+      const c = rgb([104, 110, 118], [182, 188, 196], sat(0.35 + brush * 0.4 + id * 0.2 + dent * 0.1));
+      return [h, c[0], c[1], c[2], 0.88 + brush * 0.08 + hash(x, y, 217) * 0.04];
+    }
+  },
+  // Cast bronze (shield rims, helmet crests, elephant brow plate): warm metal, verdigris in the recesses.
+  mat_bronze: {
+    size: 128, uv: "box", uvScale: 8, metalness: 0.72, roughness: 0.36, normalScale: 0.7, wet: 0.14,
+    texel(u, v) {
+      const cast = fbm(u, v, 6, 221), pits = smooth(0.62, 0.78, noise(u, v, 24, 24, 223));
+      const patina = smooth(0.58, 0.8, fbm(u, v, 4, 227)) * 0.75 + pits * 0.4;
+      let c = rgb([118, 76, 36], [198, 142, 72], sat(0.3 + cast * 0.6));
+      c = rgb(c, [74, 112, 94], sat(patina) * 0.55);
+      return [0.55 + cast * 0.3 - pits * 0.25, c[0], c[1], c[2], 0.86 + patina * 0.14];
+    }
+  },
+  // Tanned leather (quivers, archer jerkins, tack, saddles): creases, pores and worn highlights.
+  mat_leather: {
+    size: 128, uv: "box", uvScale: 9, metalness: 0.0, roughness: 0.78, normalScale: 0.75, wet: 0.3,
+    texel(u, v, x, y) {
+      const crease = Math.pow(1 - Math.abs(Math.sin((u * 3 + fbm(u, v, 3, 231) * 1.4) * TAU)), 12);
+      const wear = fbm(u, v, 5, 233), pore = hash(x, y, 237) > 0.9 ? 1 : 0;
+      const c = rgb([62, 38, 22], [128, 86, 50], sat(0.25 + wear * 0.6 - crease * 0.3));
+      return [0.55 + wear * 0.25 - crease * 0.3 - pore * 0.08, c[0], c[1], c[2], 0.9 + crease * 0.1 - wear * 0.04];
+    }
+  },
+  // Sun-warmed skin: soft, low-contrast pores (faces and hands only, so it stays subtle).
+  mat_skin: {
+    size: 64, uv: "box", uvScale: 10, metalness: 0.0, roughness: 0.62, normalScale: 0.25, wet: 0.2,
+    texel(u, v, x, y) {
+      const tone = fbm(u, v, 3, 241), pore = hash(x, y, 243) * 0.06;
+      const c = rgb([184, 136, 102], [226, 182, 146], sat(0.45 + tone * 0.4));
+      return [0.6 + tone * 0.1 - pore, c[0], c[1], c[2], 0.9 + tone * 0.1];
+    }
+  },
+  // Ivory tusks / bow nocks: creamy growth bands with a soft sheen.
+  mat_ivory: {
+    size: 64, uv: "box", uvScale: 8, metalness: 0.0, roughness: 0.42, normalScale: 0.35, wet: 0.1,
+    texel(u, v) {
+      const band = 0.5 + 0.5 * Math.sin((v * 9 + fbm(u, v, 3, 251) * 0.8) * TAU);
+      const c = rgb([200, 186, 156], [242, 234, 214], sat(0.4 + band * 0.45));
+      return [0.5 + band * 0.12, c[0], c[1], c[2], 0.88 + band * 0.12];
+    }
+  },
+  // Fur: directional clumped strands in a neutral tone — every species tints it (deer tan, goat grey-white, lion tawny).
+  mat_fur: {
+    size: 128, uv: "box", uvScale: 7, metalness: 0.0, roughness: 0.92, normalScale: 1.0, wet: 0.35,
+    texel(u, v, x, y) {
+      const clump = noise(u, v, 10, 4, 261);
+      const strand = 0.5 + 0.5 * Math.sin((u * 64 + clump * 3 + noise(u, v, 4, 16, 263)) * TAU);
+      const tip = hash(x, y, 267);
+      const c = rgb([92, 80, 66], [214, 200, 178], sat(0.25 + strand * 0.4 + clump * 0.25 + tip * 0.1));
+      return [0.35 + strand * 0.4 + clump * 0.2, c[0], c[1], c[2], 0.9 + tip * 0.1];
+    }
+  },
+  // Thick wrinkled hide (elephants, wild cattle, boar snout): folds and cracked creases.
+  mat_hide: {
+    size: 128, uv: "box", uvScale: 6, metalness: 0.0, roughness: 0.86, normalScale: 1.2, wet: 0.4,
+    texel(u, v) {
+      const [d1, d2] = voronoi(u, v, 12, 271);
+      const crack = 1 - smooth(0.0, 0.08, d2 - d1);
+      const fold = 0.5 + 0.5 * Math.sin((v * 10 + fbm(u, v, 4, 273) * 2) * TAU);
+      const c = rgb([70, 72, 72], [150, 150, 146], sat(0.3 + fold * 0.35 + fbm(u, v, 6, 277) * 0.3 - crack * 0.4));
+      return [0.5 + fold * 0.2 - crack * 0.35, c[0], c[1], c[2], 0.88 + crack * 0.12];
+    }
+  },
+  // Ship timber: clinker hull planks with dark pitch caulking and salt-bleached edges (fleets, catapult deck).
+  mat_ship_wood: {
+    size: 256, uv: "box", uvScale: 3.6, metalness: 0.02, roughness: 0.7, normalScale: 1.0, wet: 0.5,
+    texel(u, v, x, y) {
+      const rows = 8, rv = v * rows, row = Math.floor(rv), lv = rv - row;
+      const seam = 1 - smooth(0.0, 0.07, Math.min(lv, 1 - lv));
+      const butt = fract(u * 2 + hash(row, 0, 281)) < 0.012 ? 1 : 0;
+      const grain = 0.5 + 0.5 * Math.sin((u * 18 + fbm(u, v, 3, 283) * 2 + row) * TAU);
+      const plank = hash(row, 1, 287);
+      let c = rgb([52, 32, 20], [122, 82, 50], sat(0.2 + grain * 0.35 + plank * 0.35));
+      c = rgb(c, [150, 136, 112], smooth(0.75, 0.95, lv) * 0.18);
+      c = rgb(c, [18, 12, 8], Math.max(seam, butt) * 0.85);
+      return [0.65 + grain * 0.1 - seam * 0.5 - butt * 0.4, c[0], c[1], c[2], 0.86 + seam * 0.14 + hash(x, y, 289) * 0.02];
+    }
+  },
+  // Sail canvas: coarse weave with stitched panels; tinted per team on war galleys, natural on fishing boats.
+  mat_sail: {
+    size: 128, uv: "mesh", uvScale: 1, metalness: 0.0, roughness: 0.88, normalScale: 0.6, wet: 0.2, side: THREE.DoubleSide,
+    texel(u, v, x, y) {
+      const weave = 0.5 + 0.5 * Math.sin(u * 96 * Math.PI) * Math.sin(v * 96 * Math.PI);
+      const seam = fract(v * 5) < 0.04 ? 1 : 0;
+      const batten = fract(v * 5) > 0.93 ? 1 : 0;
+      let c = rgb([168, 150, 118], [222, 206, 172], sat(0.4 + weave * 0.3 + fbm(u, v, 4, 291) * 0.3));
+      c = rgb(c, [96, 70, 44], batten * 0.8);
+      return [0.45 + weave * 0.15 - seam * 0.25 + batten * 0.3, c[0], c[1], c[2], 0.88 + hash(x, y, 293) * 0.1];
+    }
+  },
+  // Woven linen / hemp for tunics, capes and robes; used tinted (team colour, jade healer robe).
+  mat_cloth: {
+    size: 128, uv: "box", uvScale: 11, metalness: 0.0, roughness: 0.86, normalScale: 0.55, wet: 0.35,
+    texel(u, v, x, y) {
+      const warp = Math.abs(Math.sin(u * 40 * Math.PI)), weft = Math.abs(Math.sin(v * 40 * Math.PI));
+      const over = (Math.floor(u * 80) + Math.floor(v * 80)) % 2 ? warp : weft;
+      const slub = noise(u, v, 32, 4, 297);
+      const c = rgb([150, 146, 138], [236, 232, 222], sat(0.45 + over * 0.25 + slub * 0.25));
+      return [0.45 + over * 0.3 + slub * 0.1, c[0], c[1], c[2], 0.9 + hash(x, y, 299) * 0.1];
+    }
   }
 };
 
@@ -312,7 +430,7 @@ function build(name: PbrName, o: PbrOptions, lazy: boolean): THREE.MeshStandardM
     name,
     color: o.color ?? 0xffffff,
     normalScale: new THREE.Vector2(spec.normalScale, spec.normalScale),
-    roughness: o.roughness ?? 1,
+    roughness: o.roughness ?? spec.roughness ?? 1,
     metalness: o.metalness ?? spec.metalness,
     side: o.side ?? spec.side ?? THREE.FrontSide,
     emissive: o.emissive ?? spec.emissive ?? 0x000000,
@@ -340,9 +458,20 @@ export const mat_bamboo = build("mat_bamboo", {}, true);
 export const mat_foliage = build("mat_foliage", {}, true);
 export const mat_team_player = build("mat_team_player", {}, true);
 export const mat_team_enemy = build("mat_team_enemy", {}, true);
+export const mat_steel = build("mat_steel", {}, true);
+export const mat_bronze = build("mat_bronze", {}, true);
+export const mat_leather = build("mat_leather", {}, true);
+export const mat_skin = build("mat_skin", {}, true);
+export const mat_ivory = build("mat_ivory", {}, true);
+export const mat_fur = build("mat_fur", {}, true);
+export const mat_hide = build("mat_hide", {}, true);
+export const mat_ship_wood = build("mat_ship_wood", {}, true);
+export const mat_sail = build("mat_sail", {}, true);
+export const mat_cloth = build("mat_cloth", {}, true);
 
 export const PBR_MATERIALS: Readonly<Record<PbrName, THREE.MeshStandardMaterial>> = {
-  mat_wood, mat_roof, mat_stone, mat_gold, mat_bamboo, mat_foliage, mat_team_player, mat_team_enemy
+  mat_wood, mat_roof, mat_stone, mat_gold, mat_bamboo, mat_foliage, mat_team_player, mat_team_enemy,
+  mat_steel, mat_bronze, mat_leather, mat_skin, mat_ivory, mat_fur, mat_hide, mat_ship_wood, mat_sail, mat_cloth
 };
 
 const tints = new Map<string, THREE.MeshStandardMaterial>();

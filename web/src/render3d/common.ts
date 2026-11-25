@@ -239,6 +239,11 @@ export function releaseRenderAssets(): void {
   lightMaterials.clear();
   disposeSurfaceMaps();
 }
+/** Keeps a renderer-wide material (shared PBR slot or tint) out of per-rig disposeTree() cleanup. */
+export function shareMaterial<T extends THREE.Material>(material: T): T {
+  cachedMaterials.add(material);
+  return material;
+}
 export interface MatOpts { metal?: number; rough?: number; emissive?: string; emissiveIntensity?: number; transparent?: boolean; opacity?: number; side?: THREE.Side; flat?: boolean; surface?: Surface; flagWind?: boolean; lantern?: boolean; rim?: string; }
 export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial {
   const key = color + JSON.stringify(o);
@@ -251,7 +256,7 @@ export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial 
     });
     if (o.surface) {
       bindSurface(m, o.surface);
-      m.bumpScale = o.surface === "thatch" ? 0.024 : o.surface === "scale" ? 0.021 : 0.015;
+      m.bumpScale = o.surface === "thatch" || o.surface === "fur" ? 0.024 : o.surface === "scale" || o.surface === "hide" ? 0.021 : 0.015;
       if (o.surface !== "lattice" && o.surface !== "silk") applyWetness(m, o.surface === "tile" || o.surface === "glaze" || o.surface === "thatch" ? 0.44 : 0.26);
     }
     if (o.rim) {

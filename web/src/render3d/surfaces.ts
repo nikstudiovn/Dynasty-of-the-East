@@ -1,6 +1,9 @@
 import * as THREE from "three";
 
-export type Surface = "tile" | "glaze" | "lacquer" | "teak" | "plaster" | "stone" | "thatch" | "silk" | "lattice" | "scale";
+export type Surface = "tile" | "glaze" | "lacquer" | "teak" | "plaster" | "stone" | "thatch" | "silk" | "lattice" | "scale"
+  // Unit / wildlife detail surfaces (tinted by the material colour): woven tunic cloth, tooled leather,
+  // directional fur strands, wrinkled thick hide, caulked hull planks and coarse sail canvas.
+  | "linen" | "leather" | "fur" | "hide" | "plank" | "canvas";
 
 interface SurfaceMaps {
   map: THREE.CanvasTexture;
@@ -100,6 +103,38 @@ export function surfaceMaps(kind: Surface): SurfaceMaps {
         const py = v * 10 % 1;
         h = 0.25 + 0.68 * Math.max(0, 1 - px * px * 2.6 - (py - 0.43) ** 2 * 1.6);
         if (py > 0.89 - 0.38 * px * px) h *= 0.48;
+        break;
+      }
+      case "linen": case "canvas": {
+        const fine = kind === "linen" ? 48 : 28;
+        const warp = Math.abs(wave(u * fine, 0)), weft = Math.abs(wave(v * fine, 0.25));
+        const over = (Math.floor(u * fine * 2) + Math.floor(v * fine * 2)) % 2 ? warp : weft;
+        h = 0.42 + over * 0.32 + noise * 0.1;
+        if (kind === "canvas" && v * 4 % 1 < 0.035) h -= 0.3; // stitched sail panel seams
+        break;
+      }
+      case "leather": {
+        const crease = Math.abs(wave(u * 3 + 0.4 * wave(v * 2.3, 0), 0.1 * wave(v * 5, 0)));
+        h = 0.55 + noise * 0.22 - Math.pow(1 - crease, 18) * 0.35 + 0.06 * wave(u * 17 + v * 11, 0);
+        break;
+      }
+      case "fur": {
+        // strands run along V (body axis) with clumped tips
+        const clump = wave(u * 9 + 0.3 * wave(v * 3, 0), 0);
+        h = 0.45 + 0.22 * Math.abs(wave(u * 41 + clump * 0.4, 0.08 * wave(v * 7, 0))) + clump * 0.12 + noise * 0.24;
+        break;
+      }
+      case "hide": {
+        const fold = Math.abs(wave(v * 7 + 0.35 * wave(u * 3, 0), 0));
+        const crack = Math.pow(1 - Math.abs(wave(u * 13 + 0.5 * wave(v * 9, 0), 0)), 14);
+        h = 0.5 + fold * 0.2 - crack * 0.28 + noise * 0.14;
+        break;
+      }
+      case "plank": {
+        const row = Math.floor(v * 6), lv = v * 6 % 1;
+        const seam = Math.min(lv, 1 - lv) < 0.06 ? 1 : 0;
+        const grain = 0.1 * wave(u * 9 + row * 1.7 + 0.4 * wave(v * 12, 0), 0);
+        h = seam ? 0.12 : 0.6 + grain + noise * 0.1;
         break;
       }
       case "lattice":

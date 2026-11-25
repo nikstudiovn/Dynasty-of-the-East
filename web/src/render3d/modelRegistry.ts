@@ -6,13 +6,21 @@ import type { Faction } from "./common";
 import { PBR_MATERIALS, pbrTint, type PbrName } from "./pbrMaterials";
 
 const BUILDINGS = new Set(["town_center", "imperial_citadel", "barracks", "archery_range", "stable", "siege_workshop"]);
-const UNITS = new Set(["healer", "villager", "swordsman", "spearman", "archer", "chuko_nu", "cavalry", "war_elephant", "horse_archer", "catapult"]);
-const WILDLIFE = new Set(["deer", "goat", "cattle", "lion", "wild_elephant"]);
-const SLOTS = ["wood", "roof", "stone", "gold", "foliage", "team"] as const;
+/** 10 land units + 3 fleets (sim ids) → ./models/units/{id}.glb; procedural PBR rigs stay visible while loading or on failure. */
+const UNITS = new Set(["healer", "villager", "swordsman", "spearman", "archer", "chuko_nu", "cavalry", "war_elephant", "horse_archer", "catapult",
+  "fishing_boat", "galley", "fire_ship"]);
+const NAVAL = new Set(["fishing_boat", "galley", "fire_ship"]);
+/** Every AnimalType in sim/wildlife.ts → ./models/wildlife/{id}.glb. */
+const WILDLIFE = new Set(["deer", "boar", "goat", "cattle", "lion", "wild_elephant"]);
+/** Material-name slots (`mat_<slot>` in the material or mesh name). Longer names first so `mat_ship_wood` never matches `mat_wood`. */
+const SLOTS = ["ship_wood", "wood", "roof", "stone", "gold", "bamboo", "foliage", "steel", "bronze", "leather", "skin", "ivory", "fur", "hide", "sail", "cloth", "team"] as const;
+/** Friendly aliases accepted from DCC tools: copper/brass → bronze, iron → steel, canvas → sail, linen → cloth. */
+const SLOT_ALIASES: Record<string, (typeof SLOTS)[number]> = { copper: "bronze", brass: "bronze", iron: "steel", canvas: "sail", linen: "cloth" };
 
 type Pose = "idle" | "walk" | "run" | "attack" | "gather" | "build" | "die";
 type Side = "player" | "enemy";
-type Fit = { footprint: number; targetHeight?: number } | { height: number };
+/** `sink`: fraction of the fitted height pushed below y=0 (ship keels sit under the waterline). */
+type Fit = { footprint: number; targetHeight?: number } | { height: number; sink?: number };
 type Appearance = { side: Side; color: string };
 interface ModelAsset { gltf: GLTF; bounds: THREE.Box3 }
 interface ModelInstance {
@@ -25,7 +33,11 @@ interface ModelInstance {
 }
 
 function materialFor(source: THREE.Material, meshName: string, appearance?: Appearance): THREE.Material {
-  const slotIn = (name: string) => SLOTS.find(slot => name.toLowerCase().includes(`mat_${slot}`));
+  const slotIn = (name: string) => {
+    const lower = name.toLowerCase();
+    return SLOTS.find(slot => lower.includes(`mat_${slot}`))
+      ?? SLOT_ALIASES[Object.keys(SLOT_ALIASES).find(alias => lower.includes(`mat_${alias}`)) ?? ""];
+  };
   const marked = slotIn(source.name) ?? slotIn(meshName);
   const tokens = (name: string) => name.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/);
   const names = [...tokens(source.name), ...tokens(meshName)];
@@ -116,7 +128,8 @@ function instantiate(asset: ModelAsset, fit: Fit, appearance?: Appearance): Mode
   const scale = "footprint" in fit ? (fit.footprint * 0.96) / Math.max(size.x, size.z, 0.001) : fit.height / size.y;
   const yScale = "footprint" in fit && fit.targetHeight && size.y > 0.001 ? fit.targetHeight / size.y : scale;
   const grounded = new THREE.Group(); // animation tracks can safely target the imported root
-  grounded.position.set(-center.x * scale, -bounds.min.y * yScale, -center.z * scale);
+  const sink = "sink" in fit && fit.sink ? fit.sink * fit.height : 0;
+  grounded.position.set(-center.x * scale, -bounds.min.y * yScale - sink, -center.z * scale);
   grounded.scale.set(scale, yScale, scale);
   grounded.add(animatedRoot);
   root.add(grounded);
@@ -317,7 +330,8 @@ export class ModelRegistry {
   creature(kind: "units" | "wildlife", type: string, height: number, parent: THREE.Object3D,
     fallback: THREE.Object3D, appearance?: Appearance): ModelVisual | undefined {
     if (!(kind === "units" ? UNITS : WILDLIFE).has(type)) return;
-    return new ModelVisual(parent, [fallback], this.load(`./models/${kind}/${type}.glb`), { height }, appearance);
+    const fit: Fit = kind === "units" && NAVAL.has(type) ? { height, sink: 0.1 } : { height };
+    return new ModelVisual(parent, [fallback], this.load(`./models/${kind}/${type}.glb`), fit, appearance);
   }
 
   dispose(): void {

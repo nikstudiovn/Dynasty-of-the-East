@@ -2,11 +2,38 @@
 import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import { NAVAL_TYPES } from "../sim/naval";
 import * as THREE from "three";
-import { box, cyl, cone, sphere, geo, mat, mesh, shade, WATER_LEVEL, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, fxGuard, type Faction } from "./common";
+import { box, cyl, cone, sphere, geo, mat, mesh, shade, WATER_LEVEL, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, fxGuard, shareMaterial, type Faction } from "./common";
+import { PBR_MATERIALS, pbrTint, type PbrName } from "./pbrMaterials";
 import type { FX3D } from "./fx3d";
 
-const SKIN = "#e8c39e", PANTS = "#3a2a1e", WOOD = "#7a4f2a", STEEL = "#cbd5e1", IRON = "#6b7280", GOLD = "#e8b53a", BAMBOO = "#d4b06a";
+
+// Muted cinematic palette: cloth and metal stay desaturated so team colours (plumes, tassels, shields, sails, flags) read from far zoom.
+const PAL = {
+  steel: "#b3bbc3", steelDark: "#7c848c", bronze: "#b98b52", leather: "#7b5535", leatherDark: "#4b3322",
+  skin: "#d4a983", ivory: "#ede2c8", wood: "#7a5434", woodDark: "#4c3221", hull: "#6e4a32", sail: "#d6c9ab",
+  rope: "#a48a62", pants: "#3b2d23", jade: "#4f8f78", bamboo: "#c9a964", ore: "#9aa1a9", gold: "#d9a93a"
+};
+const PANTS = PAL.pants, STEEL = PAL.steel, BAMBOO = PAL.bamboo, GOLD = PAL.gold;
 const TAU = Math.PI * 2;
+/** Humanoids are sized so a villager measures ≈0.6 world units from foot to hat tip (PR #23 building scale). */
+const HUMAN_SCALE = 1.05, MOUNT_SCALE = 1.1, NAVAL_SCALE = 1.4;
+
+type PbrOpts = Parameters<typeof pbrTint>[2];
+/** Shared PBR slot from pbrMaterials.ts, optionally tinted; registered as renderer-wide so rig disposal never frees it. */
+function pbr(name: PbrName, color?: THREE.ColorRepresentation, o: PbrOpts = {}): THREE.MeshStandardMaterial {
+  return shareMaterial(color === undefined && !Object.keys(o ?? {}).length ? PBR_MATERIALS[name] : pbrTint(name, color ?? 0xffffff, o));
+}
+const steel = (c: string = PAL.steel) => pbr("mat_steel", c);
+const bronze = () => pbr("mat_bronze", PAL.bronze);
+const leather = (c: string = PAL.leather) => pbr("mat_leather", c);
+const skinM = () => pbr("mat_skin", PAL.skin);
+const ivory = (c: string = PAL.ivory) => pbr("mat_ivory", c);
+const cloth = (c: string) => pbr("mat_cloth", c);
+const woodM = (c: string = PAL.wood) => pbr("mat_wood", c);
+const fur = (c: string) => pbr("mat_fur", c);
+const hide = (c: string) => pbr("mat_hide", c);
+/** Team colour pulled 18% toward warm grey for large cloth areas; accents keep the pure team colour. */
+function mute(team: string, k = 0.18): string { return "#" + new THREE.Color(team).lerp(new THREE.Color("#6b6358"), k).getHexString(); }
 
 let trailTexture: THREE.CanvasTexture | undefined;
 /** 64×64 arrow trail: ivory at the shaft fading to bronze and transparent at the tail, soft at the edges. */
@@ -39,9 +66,11 @@ interface Rig {
   root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group;
   legL: THREE.Group | null; legR: THREE.Group | null;
   tools: Record<string, THREE.Object3D>; carry: Record<string, THREE.Object3D>;
-  legs4: THREE.Group[]; trunk: THREE.Group[]; arm: THREE.Group | null; wheels: THREE.Object3D[];
+  legs4: THREE.Group[]; knees: THREE.Group[]; trunk: THREE.Group[]; arm: THREE.Group | null; wheels: THREE.Object3D[]; oars: THREE.Object3D[];
   ring: THREE.Mesh; faction: Faction; health: THREE.Group; healthFill: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; height: number; type: string; key: string;
   yaw: number; walk: number; lastPhase: number; atk: number; melee: number; nextPose: number; lastPose: number; dustT: number; previousCooldown: number; px: number; pz: number; init: boolean; u: any;
+  /** healer: >0 while a heal is being channelled; previous sim healPulse value. Ships: sail/mast lowering 0..1. */
+  heal: number; prevHeal: number; sailK: number;
 }
 
 function limb(len: number, w: number, m: THREE.Material, x: number, y: number, z: number): THREE.Group {
@@ -58,7 +87,7 @@ function newRig(type: string, key: string, faction: Faction): Rig {
   const ring = new THREE.Mesh(geo("selring", () => { const g = new THREE.RingGeometry(0.24, 0.35, 32); g.rotateX(-Math.PI / 2); return g; }), ringM);
   ring.position.y = 0.03; ring.visible = false; ring.renderOrder = 4;
   const large = type === "war_elephant", mounted = type === "cavalry" || type === "horse_archer";
-  root.add(ring, contactShadow(large ? 0.97 : mounted ? 0.68 : 0.51, large ? 1.48 : mounted ? 0.99 : 0.54));
+  root.add(ring, contactShadow(large ? 0.8 : mounted ? 0.56 : 0.42, large ? 1.2 : mounted ? 0.82 : 0.45));
   const health = new THREE.Group();
   const panel = new THREE.MeshBasicMaterial({ color: "#1d130d", depthTest: false, depthWrite: false, toneMapped: false });
   const fillMaterial = new THREE.MeshBasicMaterial({ color: "#a3ec65", depthTest: false, depthWrite: false, toneMapped: false });
@@ -70,52 +99,95 @@ function newRig(type: string, key: string, faction: Faction): Rig {
   health.add(frame, healthFill);
   health.visible = false;
   root.add(health);
-  return { root, body, faction, health, healthFill, armL: new THREE.Group(), armR: new THREE.Group(), legL: null, legR: null, tools: {}, carry: {}, legs4: [], trunk: [], arm: null, wheels: [], ring, height: 0.6, type, key, yaw: 0, walk: 0, lastPhase: 0, atk: 0, melee: 0, nextPose: 0, lastPose: 0, dustT: 0, previousCooldown: 0, px: 0, pz: 0, init: false, u: null };
+  return { root, body, faction, health, healthFill, armL: new THREE.Group(), armR: new THREE.Group(), legL: null, legR: null, tools: {}, carry: {}, legs4: [], knees: [], trunk: [], arm: null, wheels: [], oars: [], ring, height: 0.6, type, key, yaw: 0, walk: 0, lastPhase: 0, atk: 0, melee: 0, nextPose: 0, lastPose: 0, dustT: 0, previousCooldown: 0, px: 0, pz: 0, init: false, u: null, heal: 0, prevHeal: NaN, sailK: 0 };
 }
 
-/** Humanoid torso/head/limbs into `parent` (feet at y=0). */
-function humanoid(r: Rig, parent: THREE.Group, tunic: string, opts: { armor?: boolean; legs?: boolean } = {}): void {
+type Armor = "none" | "scale" | "leather" | "lamellar";
+type Headgear = "auto" | "steel" | "bronze" | "fur" | "hood" | "band";
+interface HumanOpts { armor?: Armor; legs?: boolean; head?: Headgear; robe?: boolean; accent?: string }
+
+/** Humanoid torso/head/limbs into `parent` (feet at y=0, head centre y=0.44). */
+function humanoid(r: Rig, parent: THREE.Group, tunic: string, o: HumanOpts = {}): void {
   const faction = r.faction;
   const civilian = r.type === "villager";
+  const armor = o.armor ?? "none";
+  const accent = o.accent ?? tunic;
   const armWidth = civilian && faction === "trung_nguyen" ? 0.077 : faction === "bac_cuong" ? 0.060 : 0.045;
-  const tm = mat(tunic, { rim: shade(tunic, 0.4) }), pm = mat(PANTS), sm = mat(SKIN);
-  if (opts.legs !== false) {
+  const tm = cloth(tunic), pm = cloth(PANTS), sm = skinM();
+  if (o.legs !== false) {
     r.legL = limb(0.17, 0.055, pm, -0.045, 0.17, 0); r.legR = limb(0.17, 0.055, pm, 0.045, 0.17, 0);
+    for (const l of [r.legL, r.legR]) l.add(mesh(box(0.06, 0.03, 0.08), leather(PAL.leatherDark), 0, -0.165, 0.012, false)); // boots
     parent.add(r.legL, r.legR);
   }
-  parent.add(mesh(box(0.17, 0.2, 0.11), opts.armor ? mat(shade(tunic, -0.33), { metal: 0.47, rough: 0.55, surface: "scale", rim: shade(tunic, 0.45) }) : tm, 0, 0.27, 0));
-  if (opts.armor) {
-    // lamellar plates: team-coloured bands over iron
-    for (let k = 0; k < 3; k++) parent.add(mesh(box(0.18, 0.027, 0.12), tm, 0, 0.2 + k * 0.06, 0, false));
-  } else parent.add(mesh(box(0.18, 0.08, 0.12), mat(shade(tunic, -0.25)), 0, 0.2, 0, false));
-  parent.add(mesh(box(0.175, 0.025, 0.115), mat("#2a1a10"), 0, 0.235, 0, false));
+  if (o.robe) parent.add(mesh(cyl(0.085, 0.13, 0.2, 10), tm, 0, 0.13, 0)); // long healer robe skirt
+  const torsoM = armor === "scale" ? steel(PAL.steelDark) : armor === "leather" ? leather() : armor === "lamellar" ? bronze() : tm;
+  parent.add(mesh(box(0.17, 0.2, 0.11), torsoM, 0, 0.27, 0));
+  if (armor === "scale") {
+    // steel scale coat banded with the team colour, steel pauldrons
+    for (let k = 0; k < 3; k++) parent.add(mesh(box(0.18, 0.022, 0.12), cloth(accent), 0, 0.2 + k * 0.06, 0, false));
+    for (const s of [-1, 1]) parent.add(mesh(box(0.06, 0.035, 0.12), steel(), s * 0.105, 0.36, 0, false));
+  } else if (armor === "lamellar") {
+    // Central-Plains lamellar: bronze rows over a team-coloured skirt
+    parent.add(mesh(box(0.18, 0.07, 0.12), tm, 0, 0.19, 0, false));
+    for (let k = 0; k < 2; k++) parent.add(mesh(box(0.178, 0.012, 0.118), steel(PAL.steelDark), 0, 0.27 + k * 0.06, 0, false));
+  } else if (armor === "leather") {
+    parent.add(mesh(box(0.18, 0.07, 0.12), tm, 0, 0.2, 0, false));
+    const strap = mesh(box(0.02, 0.24, 0.118), leather(PAL.leatherDark), 0, 0.29, 0, false); strap.rotation.z = 0.6; parent.add(strap);
+  } else parent.add(mesh(box(0.18, 0.08, 0.12), cloth(shade(tunic, -0.25)), 0, 0.2, 0, false));
+  parent.add(mesh(box(0.175, 0.025, 0.115), leather(PAL.leatherDark), 0, 0.235, 0, false)); // belt
   parent.add(mesh(sphere(0.065, 12, 10), sm, 0, 0.44, 0));
-  const dark = mat("#302018");
-  if (faction === "dai_viet") {
+  const dark = cloth("#2e221a");
+  let head = o.head ?? "auto";
+  if (head === "auto" && !civilian) head = faction === "trung_nguyen" ? "bronze" : faction === "bac_cuong" ? "fur" : "auto";
+  if (head === "steel") {
+    // steel helmet (mũ trụ): dome, brim, spike and team plume
+    const s = steel();
+    parent.add(mesh(geo("steel-helm", () => new THREE.SphereGeometry(0.078, 10, 6, 0, TAU, 0, Math.PI * 0.55)), s, 0, 0.462, 0));
+    parent.add(mesh(cyl(0.088, 0.088, 0.012, 12), s, 0, 0.47, 0, false));
+    for (const sign of [-1, 1]) parent.add(mesh(box(0.016, 0.07, 0.05), s, sign * 0.066, 0.43, 0.005, false));
+    parent.add(mesh(cone(0.012, 0.05, 5), bronze(), 0, 0.555, 0, false));
+    parent.add(mesh(cone(0.026, 0.07, 6), cloth(accent), 0, 0.565, -0.02, false));
+  } else if (head === "bronze") {
+    const b = bronze();
+    parent.add(mesh(geo("crown-helmet", () => new THREE.SphereGeometry(0.082, 10, 6, 0, TAU, 0, Math.PI * 0.55)), b, 0, 0.468, 0));
+    for (const sign of [-1, 1]) parent.add(mesh(box(0.019, 0.075, 0.044), b, sign * 0.067, 0.449, 0));
+    parent.add(mesh(cone(0.024, 0.076, 6), cloth(accent), 0, 0.565, -0.013));
+  } else if (head === "fur") {
+    const f = fur("#c9ab84");
+    parent.add(mesh(cyl(0.089, 0.092, 0.045, 12), f, 0, 0.489, 0));
+    parent.add(mesh(sphere(0.077, 9, 6), dark, 0, 0.525, 0));
+    for (const sign of [-1, 1]) parent.add(mesh(box(0.036, 0.077, 0.065), f, sign * 0.075, 0.455, -0.012));
+    if (!civilian) {
+      parent.add(mesh(box(0.185, 0.038, 0.121), f, 0, 0.339, 0));
+      const cloak = mesh(box(0.19, 0.25, 0.035), tm, 0, 0.255, -0.071, false);
+      cloak.rotation.x = -0.18;
+      parent.add(cloak);
+    }
+  } else if (head === "hood") {
+    parent.add(mesh(cone(0.09, 0.14, 10), cloth(shade(tunic, -0.15)), 0, 0.5, -0.01));
+  } else if (head === "band") {
+    parent.add(mesh(sphere(0.067, 9, 6), dark, 0, 0.465, -0.008));
+    parent.add(mesh(cyl(0.069, 0.069, 0.022, 12), cloth(accent), 0, 0.47, 0, false));
+    parent.add(mesh(sphere(0.03, 7, 5), dark, 0, 0.53, -0.03));
+  } else if (faction === "dai_viet") {
+    // nón lá: bamboo conical hat — its tip defines the 0.6-unit villager height
     const cap = mat(civilian ? BAMBOO : "#856445", { surface: "thatch", rough: 0.81 });
     parent.add(mesh(cone(civilian ? 0.145 : 0.102, civilian ? 0.078 : 0.115, 12), cap, 0, 0.533, 0));
-  } else if (faction === "trung_nguyen" && civilian) {
+  } else if (faction === "trung_nguyen") {
     parent.add(mesh(sphere(0.066, 8, 6), dark, 0, 0.487, -0.009));
     parent.add(mesh(sphere(0.044, 8, 6), dark, 0, 0.56, -0.028));
-    const lapel = mesh(box(0.022, 0.15, 0.014), mat("#ead9b5"), 0.012, 0.304, 0.062, false);
+    const lapel = mesh(box(0.022, 0.15, 0.014), cloth("#ead9b5"), 0.012, 0.304, 0.062, false);
     lapel.rotation.z = -0.62;
     parent.add(lapel);
-  } else if (faction === "trung_nguyen") {
-    const bronze = mat("#ae854b", { metal: 0.66, rough: 0.36, rim: "#edc47b" });
-    parent.add(mesh(geo("crown-helmet", () => new THREE.SphereGeometry(0.082, 10, 6, 0, TAU, 0, Math.PI * 0.55)), bronze, 0, 0.468, 0));
-    for (const sign of [-1, 1]) parent.add(mesh(box(0.019, 0.075, 0.044), bronze, sign * 0.067, 0.449, 0));
-    parent.add(mesh(cone(0.024, 0.076, 6), tm, 0, 0.565, -0.013));
   } else {
-    const fur = mat("#d3b58e", { surface: "thatch", rough: 0.92 });
-    parent.add(mesh(cyl(0.089, 0.092, 0.045, 12), fur, 0, 0.489, 0));
-    parent.add(mesh(sphere(0.077, 9, 6), dark, 0, 0.525, 0));
-    for (const sign of [-1, 1]) parent.add(mesh(box(0.036, 0.077, 0.065), fur, sign * 0.075, 0.455, -0.012));
-    parent.add(mesh(box(0.185, 0.038, 0.121), fur, 0, 0.339, 0));
-    const cloak = mesh(box(0.19, 0.25, 0.035), tm, 0, 0.255, -0.071, false);
-    cloak.rotation.x = -0.18;
-    parent.add(cloak);
+    // northern steppe villager: felt cap and fur collar
+    const f = fur("#c9ab84");
+    parent.add(mesh(cyl(0.08, 0.088, 0.05, 12), f, 0, 0.49, 0));
+    parent.add(mesh(sphere(0.07, 9, 6), cloth(shade(tunic, -0.2)), 0, 0.52, 0));
+    parent.add(mesh(box(0.185, 0.034, 0.121), f, 0, 0.345, 0));
   }
-  r.armL = limb(0.17, armWidth, tm, -0.11, 0.36, 0); r.armR = limb(0.17, armWidth, tm, 0.11, 0.36, 0);
+  const armM = armor === "leather" ? leather() : armor === "scale" ? steel(PAL.steelDark) : tm;
+  r.armL = limb(0.17, armWidth, armM, -0.11, 0.36, 0); r.armR = limb(0.17, armWidth, armM, 0.11, 0.36, 0);
   for (const a of [r.armL, r.armR]) a.add(mesh(sphere(0.028, 8, 6), sm, 0, -0.18, 0));
   parent.add(r.armL, r.armR);
 }
@@ -123,7 +195,7 @@ function humanoid(r: Rig, parent: THREE.Group, tunic: string, opts: { armor?: bo
 function hand(arm: THREE.Group, obj: THREE.Object3D): THREE.Object3D { obj.position.y = -0.18; arm.add(obj); return obj; }
 
 function tool(kind: string): THREE.Group {
-  const g = new THREE.Group(), wm = mat(WOOD), sm = mat(STEEL, { metal: 0.85, rough: 0.3 });
+  const g = new THREE.Group(), wm = woodM(), sm = steel();
   const handle = mesh(cyl(0.012, 0.012, kind === "hammer" ? 0.2 : 0.26, 5), wm, 0, 0, 0.08);
   handle.rotation.x = Math.PI / 2; g.add(handle);
   if (kind === "axe") g.add(mesh(box(0.012, 0.08, 0.06), sm, 0, 0.03, 0.19));
@@ -134,169 +206,314 @@ function tool(kind: string): THREE.Group {
     tip.rotation.x = Math.PI / 2;
     g.add(tip);
   }
-  else if (kind === "hammer") g.add(mesh(box(0.05, 0.05, 0.08), mat("#57534e", { metal: 0.6 }), 0, 0, 0.17));
+  else if (kind === "hammer") g.add(mesh(box(0.05, 0.05, 0.08), steel(PAL.steelDark), 0, 0, 0.17));
   return g;
 }
 
+/** Carried loads: firewood on the shoulder, a rice sheaf (bó lúa), or a woven back-basket (gùi) of ore / stone. */
 function carryBundle(kind: string): THREE.Group {
   const g = new THREE.Group();
-  if (kind === "wood") for (let k = 0; k < 3; k++) { const l = mesh(cyl(0.022, 0.022, 0.3, 6), mat("#9bb54a"), 0, k * 0.035, (k - 1) * 0.03); l.rotation.x = Math.PI / 2; l.rotation.z = 0.3; g.add(l); }
-  else if (kind === "food") { const s = mesh(cone(0.07, 0.24, 7), mat("#e2b23a", { flat: true }), 0, 0.06, 0); s.rotation.z = Math.PI / 2.4; g.add(s); g.add(mesh(cyl(0.03, 0.03, 0.03, 6), mat("#8a5a2e"), 0.02, 0.05, 0)); }
-  else if (kind === "gold") g.add(mesh(geo("ore", () => new THREE.DodecahedronGeometry(0.07, 0)), mat("#f5b830", { metal: 0.75, rough: 0.25, flat: true }), 0, 0.05, 0));
-  else g.add(mesh(box(0.11, 0.09, 0.1), mat("#9aa1a9", { rough: 0.9 }), 0, 0.05, 0));
-  g.position.set(0.08, 0.42, -0.03);
+  if (kind === "wood") {
+    for (let k = 0; k < 3; k++) { const l = mesh(cyl(0.022, 0.022, 0.3, 6), woodM("#8a6a3c"), 0, k * 0.035, (k - 1) * 0.03); l.rotation.x = Math.PI / 2; l.rotation.z = 0.3; g.add(l); }
+    g.position.set(0.08, 0.42, -0.03);
+  } else if (kind === "food") {
+    const s = mesh(cone(0.07, 0.24, 7), pbr("mat_bamboo", "#d8b048"), 0, 0.06, 0); s.rotation.z = Math.PI / 2.4; g.add(s);
+    g.add(mesh(cyl(0.03, 0.03, 0.03, 6), leather(), 0.02, 0.05, 0));
+    g.position.set(0.08, 0.42, -0.03);
+  } else {
+    // gùi: tapered bamboo basket on the back with the load heaped on top
+    g.add(mesh(cyl(0.07, 0.05, 0.14, 8), pbr("mat_bamboo", PAL.bamboo), 0, 0, 0));
+    g.add(mesh(cyl(0.073, 0.073, 0.012, 8), woodM(PAL.woodDark), 0, 0.07, 0, false));
+    const load = kind === "gold" ? mat(PAL.gold, { metal: 0.75, rough: 0.3, flat: true }) : pbr("mat_stone", PAL.ore);
+    g.add(mesh(geo("ore", () => new THREE.DodecahedronGeometry(0.055, 0)), load, 0, 0.085, 0));
+    g.position.set(0, 0.3, -0.1);
+  }
   g.visible = false;
   return g;
 }
 
 function flag(parent: THREE.Object3D, x: number, y: number, z: number, color: string, h = 0.35): void {
-  parent.add(mesh(cyl(0.008, 0.008, h, 5), mat("#3a2412"), x, y + h / 2, z));
+  parent.add(mesh(cyl(0.008, 0.008, h, 5), woodM(PAL.woodDark), x, y + h / 2, z));
   const g = geo("unit-flag", () => new THREE.PlaneGeometry(0.16, 0.1, 5, 1).translate(0.08, 0, 0));
   const f = mesh(g, mat(color, { side: THREE.DoubleSide, surface: "silk", flagWind: true }), x, y + h - 0.06, z, false);
   f.rotation.y = Math.PI / 2;
   parent.add(f);
 }
 
-function horse(r: Rig, parent: THREE.Group): THREE.Group {
-  const hm = mat("#6b4226"), dm = mat("#3b2414"), tack = mat("#7f1d1d");
+/** Swallow-tailed pennant (cờ đuôi nheo) on a back pole. */
+function pennant(parent: THREE.Object3D, x: number, y: number, z: number, color: string, h = 0.4): void {
+  parent.add(mesh(cyl(0.006, 0.006, h, 5), woodM(PAL.woodDark), x, y + h / 2, z));
+  const g = geo("unit-pennant", () => {
+    const s = new THREE.Shape();
+    s.moveTo(0, 0.045); s.lineTo(0.22, 0.03); s.lineTo(0.15, 0); s.lineTo(0.22, -0.03); s.lineTo(0, -0.045); s.lineTo(0, 0.045);
+    return new THREE.ShapeGeometry(s, 4);
+  });
+  const f = mesh(g, mat(color, { side: THREE.DoubleSide, surface: "silk", flagWind: true }), x, y + h - 0.05, z, false);
+  f.rotation.y = Math.PI / 2;
+  parent.add(f);
+}
+
+function bowGroup(radius: number, team: string): { bow: THREE.Group; string: THREE.Object3D } {
+  const bow = new THREE.Group();
+  bow.add(mesh(geo(`bow-${radius}`, () => new THREE.TorusGeometry(radius, 0.009, 4, 14, Math.PI)), woodM(PAL.woodDark), 0, 0, 0, false));
+  for (const s of [-1, 1]) bow.add(mesh(sphere(0.012, 5, 4), ivory(), s * radius, 0, 0, false)); // ivory nocks
+  bow.add(mesh(box(0.03, 0.03, 0.02), cloth(team), 0, radius, 0, false)); // team grip wrap
+  const string = mesh(box(radius * 2, 0.003, 0.003), cloth("#e8dfc8"), 0, 0, 0, false);
+  bow.add(string);
+  return { bow, string };
+}
+
+/** Articulated horse: neck/head pivot, mane, swinging tail, four legs with hip + knee joints and hooves. */
+function horse(r: Rig, parent: THREE.Group, team: string, steppe: boolean): THREE.Group {
+  const coat = steppe ? "#9a7b55" : "#6a4730", hm = fur(coat), dm = fur(shade(coat, -0.45)), hoofM = hide("#2b2420");
   const h = new THREE.Group();
-  h.add(mesh(box(0.17, 0.17, 0.44), hm, 0, 0.3, 0));
-  const neck = mesh(box(0.1, 0.22, 0.1), hm, 0, 0.43, 0.2); neck.rotation.x = 0.5; h.add(neck);
-  h.add(mesh(box(0.09, 0.09, 0.18), hm, 0, 0.52, 0.31));
-  h.add(mesh(box(0.03, 0.14, 0.05), dm, 0, 0.5, 0.17)); // mane
-  const tail = mesh(box(0.03, 0.18, 0.03), dm, 0, 0.28, -0.25); tail.rotation.x = -0.4; h.add(tail);
-  h.add(mesh(box(0.19, 0.04, 0.16), tack, 0, 0.395, -0.02));
-  for (const [x, z] of [[-0.06, 0.16], [0.06, 0.16], [-0.06, -0.16], [0.06, -0.16]]) { const l = limb(0.22, 0.045, hm, x, 0.23, z); h.add(l); r.legs4.push(l); }
+  if (steppe) h.scale.setScalar(0.9);
+  const torso = mesh(sphere(0.5, 10, 7), hm, 0, 0.31, 0); torso.scale.set(0.18, 0.18, 0.46); h.add(torso);
+  const neck = new THREE.Group(); neck.position.set(0, 0.36, 0.17); neck.rotation.x = 0.55; h.add(neck);
+  neck.add(mesh(box(0.09, 0.22, 0.1), hm, 0, 0.1, 0));
+  for (let k = 0; k < 4; k++) neck.add(mesh(box(0.025, 0.06, 0.045), dm, 0, 0.03 + k * 0.05, -0.05, false)); // mane
+  const head = new THREE.Group(); head.position.set(0, 0.21, 0); head.rotation.x = 0.05; neck.add(head);
+  head.add(mesh(box(0.08, 0.08, 0.18), hm, 0, 0, 0.06));
+  head.add(mesh(box(0.07, 0.06, 0.05), dm, 0, -0.01, 0.16, false));
+  for (const s of [-1, 1]) head.add(mesh(cone(0.015, 0.05, 4), hm, s * 0.025, 0.06, -0.01, false));
+  r.tools.neck = neck;
+  const tail = new THREE.Group(); tail.position.set(0, 0.36, -0.23); h.add(tail);
+  const tm = mesh(box(0.035, 0.2, 0.03), dm, 0, -0.1, 0); tail.add(tm); tail.rotation.x = -0.45;
+  r.tools.tail = tail;
+  // tack: leather saddle on a team saddle cloth
+  h.add(mesh(box(0.2, 0.012, 0.18), cloth(team), 0, 0.41, -0.02, false));
+  h.add(mesh(box(0.12, 0.035, 0.12), leather(), 0, 0.43, -0.02));
+  for (const [x, z] of [[-0.055, 0.15], [0.055, 0.15], [-0.055, -0.15], [0.055, -0.15]]) {
+    const hip = new THREE.Group(); hip.position.set(x, 0.27, z);
+    hip.add(mesh(box(0.05, 0.13, 0.055), hm, 0, -0.065, 0));
+    const knee = new THREE.Group(); knee.position.y = -0.13; hip.add(knee);
+    knee.add(mesh(box(0.035, 0.12, 0.035), dm, 0, -0.06, 0));
+    knee.add(mesh(box(0.042, 0.022, 0.05), hoofM, 0, -0.125, 0.004, false));
+    h.add(hip); r.legs4.push(hip); r.knees.push(knee);
+  }
   parent.add(h);
   return h;
+}
+
+/** Spoked siege / cart wheel whose axle is the local X axis (roll with rotation.x). */
+function spokedWheel(radius: number): THREE.Group {
+  const w = new THREE.Group(), dm = woodM(PAL.woodDark), iron = steel(PAL.steelDark);
+  const rim = mesh(geo(`wheel-rim-${radius}`, () => new THREE.TorusGeometry(radius, 0.012, 5, 14)), iron, 0, 0, 0); rim.rotation.y = Math.PI / 2; w.add(rim);
+  const hub = mesh(cyl(0.022, 0.022, 0.04, 8), dm, 0, 0, 0, false); hub.rotation.z = Math.PI / 2; w.add(hub);
+  for (let k = 0; k < 3; k++) { const s = mesh(box(0.012, radius * 2, 0.014), dm, 0, 0, 0, false); s.rotation.x = (k / 3) * Math.PI; w.add(s); }
+  return w;
+}
+
+function buildShip(r: Rig, type: string, team: string): void {
+  const b = r.body;
+  const fishing = type === "fishing_boat", fire = type === "fire_ship";
+  const width = fishing ? 0.44 : fire ? 0.56 : 0.70;
+  const length = fishing ? 0.85 : fire ? 1.2 : 1.3;
+  const hullM = pbr("mat_ship_wood", fire ? "#4f3526" : PAL.hull);
+  const trim = cloth(fishing ? mute(team, 0.4) : team);
+  // hull sits on the waterline (body y = 0 is WATER_LEVEL): keel slightly submerged, gunwale at ~0.16
+  const hull = mesh(cyl(0.5, 0.39, 0.17, 8), hullM, 0, 0.07, 0);
+  hull.scale.set(width, 1, length);
+  b.add(hull);
+  const prow = mesh(cone(width * 0.3, length * 0.22, 6), hullM, 0, 0.11, length * 0.52); prow.rotation.x = Math.PI / 2; b.add(prow);
+  b.add(mesh(box(width * 0.6, 0.08, length * 0.16), hullM, 0, 0.2, -length * 0.38)); // raised stern
+  b.add(mesh(box(width * 0.78, 0.022, length * 0.74), trim, 0, 0.162, 0, false)); // team gunwale band
+  b.add(mesh(box(width * 0.66, 0.02, length * 0.66), woodM("#8a6a48"), 0, 0.15, 0)); // deck
+  // mast pivots at the deck so it can be lowered aft when passing under a bridge
+  const mast = new THREE.Group(); mast.position.set(0, 0.16, 0.04); b.add(mast);
+  const mastH = fishing ? 0.5 : 0.62;
+  mast.add(mesh(cyl(0.018, 0.024, mastH, 6), woodM(PAL.woodDark), 0, mastH / 2, 0));
+  const yard = mesh(cyl(0.01, 0.01, width * 0.95, 5), woodM(PAL.woodDark), 0, mastH - 0.04, 0.02, false); yard.rotation.z = Math.PI / 2; mast.add(yard);
+  const sailH = fishing ? 0.3 : 0.4;
+  const sailPivot = new THREE.Group(); sailPivot.position.set(0, mastH - 0.04, 0.03); mast.add(sailPivot);
+  const sailColor = fishing ? PAL.sail : fire ? "#6b5a4a" : mute(team, 0.25);
+  const sail = mesh(geo(`sail-${width}-${sailH}`, () => new THREE.PlaneGeometry(width * 0.85, sailH, 2, 4).translate(0, -sailH / 2, 0)), pbr("mat_sail", sailColor, { side: THREE.DoubleSide }), 0, 0, 0);
+  sail.rotation.x = -0.06;
+  sailPivot.add(sail);
+  if (!fishing) sailPivot.add(mesh(box(width * 0.2, sailH * 0.3, 0.004), cloth(team), 0, -sailH * 0.45, 0.004, false)); // team emblem
+  flag(mast, 0, mastH - 0.02, 0, team, 0.16);
+  r.tools.mast = mast; r.tools.sail = sailPivot;
+  r.height = 0.81; // unchanged: keeps the ship health bar and tap point where they were
+  if (fishing) {
+    // net on a pole (lowered while fishing) and a fish basket filled while returning to the dock
+    const netArm = new THREE.Group(); netArm.position.set(width * 0.36, 0.17, length * 0.12); b.add(netArm);
+    const pole = mesh(cyl(0.008, 0.008, 0.42, 5), woodM(), 0, 0.21, 0, false); netArm.add(pole);
+    const net = mesh(cone(0.07, 0.12, 8, ), mat("#8d7f60", { surface: "lattice", side: THREE.DoubleSide, rough: 0.9 }), 0, 0.37, 0, false);
+    net.rotation.x = Math.PI; netArm.add(net);
+    netArm.rotation.z = -0.35;
+    r.tools.net = netArm;
+    b.add(mesh(box(0.14, 0.03, 0.1), mat("#8d7f60", { surface: "lattice", rough: 0.9 }), -width * 0.15, 0.175, -length * 0.15, false)); // folded net heap
+    const basket = new THREE.Group(); basket.position.set(-width * 0.12, 0.16, length * 0.14); b.add(basket);
+    basket.add(mesh(cyl(0.065, 0.05, 0.08, 8), pbr("mat_bamboo", PAL.bamboo), 0, 0.04, 0));
+    const fish = new THREE.Group(); fish.position.y = 0.07; basket.add(fish);
+    for (let k = 0; k < 4; k++) { const f = mesh(box(0.06, 0.016, 0.022), steel("#9fb3bd"), Math.cos(k * 1.7) * 0.025, k * 0.008, Math.sin(k * 1.7) * 0.025, false); f.rotation.y = k * 1.1; fish.add(f); }
+    fish.visible = false;
+    r.tools.fish = fish;
+  } else if (!fire) {
+    // galley: oar banks, raised fighting deck with team shields along the rails and a bow-mounted repeating crossbow
+    for (const side of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const oar = new THREE.Group(); oar.position.set(side * width * 0.5, 0.13, (i - 1.5) * 0.24);
+      const blade = mesh(box(0.36, 0.018, 0.036), woodM(), side * 0.17, 0, 0, false); blade.rotation.z = -side * 0.3; oar.add(blade);
+      b.add(oar); r.oars.push(oar);
+    }
+    for (const side of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const sh = mesh(geo("rail-shield", () => new THREE.CylinderGeometry(0.045, 0.045, 0.012, 10)), cloth(team), side * width * 0.47, 0.21, (i - 1.5) * 0.24, false);
+      sh.rotation.z = Math.PI / 2; b.add(sh);
+    }
+    b.add(mesh(box(width * 0.5, 0.06, length * 0.22), woodM("#8a6a48"), 0, 0.2, length * 0.26));
+    const mount = new THREE.Group(); mount.position.set(0, 0.26, length * 0.3); b.add(mount);
+    mount.add(mesh(box(0.05, 0.05, 0.22), woodM(PAL.woodDark), 0, 0, 0.04));
+    mount.add(mesh(box(0.26, 0.016, 0.02), steel(), 0, 0.01, 0.13, false));
+    r.tools.ballista = mount;
+  } else {
+    // fire ship: slim hull, straw bundles and a glowing fire basket at the prow, readable from far zoom
+    for (let k = 0; k < 3; k++) { const s = mesh(cyl(0.05, 0.05, width * 0.5, 7), pbr("mat_bamboo", "#b89a52"), 0, 0.2, (k - 1) * 0.2, false); s.rotation.z = Math.PI / 2; b.add(s); }
+    const basket = new THREE.Group(); basket.position.set(0, 0.2, length * 0.36); b.add(basket);
+    basket.add(mesh(cyl(0.1, 0.07, 0.08, 8), steel("#5a5048"), 0, 0, 0));
+    const flame = mesh(cone(0.075, 0.2, 7), mat("#ffb05a", { emissive: "#ff6a1a", emissiveIntensity: 1.8 }), 0, 0.13, 0, false);
+    const core = mesh(cone(0.04, 0.12, 6), mat("#fff1b8", { emissive: "#ffc46a", emissiveIntensity: 2.2 }), 0, 0.1, 0, false);
+    basket.add(flame, core);
+    r.tools.flame = flame; r.tools.flameCore = core; r.tools.brazier = basket;
+  }
 }
 
 function buildUnit(type: string, team: string, faction: Faction): Rig {
   const r = newRig(type, `${type}|${team}|${faction}`, faction);
   const b = r.body;
+  const cape = mute(team);
   switch (type) {
     case "villager": {
-      humanoid(r, b, shade(team, -0.05));
+      humanoid(r, b, mute(shade(team, -0.05), 0.3));
       for (const k of ["axe", "pick", "sickle", "hammer", "spear"]) { r.tools[k] = hand(r.armR, tool(k)); r.tools[k].visible = false; }
       for (const k of ["wood", "food", "gold", "stone"]) { r.carry[k] = carryBundle(k); b.add(r.carry[k]); }
-      r.height = 0.6;
+      r.height = faction === "dai_viet" ? 0.572 : 0.6;
       break;
     }
     case "fishing_boat":
     case "galley":
-    case "fire_ship": {
-      const fishing = type === "fishing_boat";
-      const width = fishing ? 0.44 : 0.70;
-      const length = fishing ? 0.85 : 1.25;
-      const wood = mat("#6c4530", { surface: "teak" });
-      const trim = mat(shade(team, -0.12), { surface: "lacquer" });
-      const hull = mesh(cyl(0.5, 0.39, 0.17, 8), wood, 0, 0.07, 0);
-      hull.scale.set(width, 1, length);
-      b.add(hull, mesh(box(width * 0.75, 0.03, length * 0.72), trim, 0, 0.16, 0));
-      b.add(mesh(cyl(0.023, 0.028, 0.66, 6), wood, 0, 0.46, 0.04));
-      const sail = mesh(box(width * 0.85, 0.38, 0.045), mat(team, { surface: "silk" }), 0, 0.55, 0.04);
-      sail.rotation.z = -0.1;
-      b.add(sail);
-      r.tools.sail = sail;
-      if (type === "galley") {
-        for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
-          const oar = mesh(box(0.36, 0.024, 0.042), wood, side * width * 0.54, 0.13, (i - 1) * 0.22);
-          oar.rotation.z = -side * 0.24;
-          b.add(oar);
-        }
-      }
-      if (type === "fire_ship") {
-        b.add(mesh(cyl(0.13, 0.1, 0.09, 8), mat("#713e23", { metal: 0.4, emissive: "#893209" }), 0, 0.21, length * 0.28));
-        b.add(mesh(cone(0.07, 0.15, 6), mat("#ffac50", { emissive: "#ac3d0b" }), 0, 0.30, length * 0.28));
-      }
-      r.height = 0.81;
-      break;
-    }
+    case "fire_ship": buildShip(r, type, team); break;
     case "healer": {
-      humanoid(r, r.body, "#447c62", { legs: true });
-      r.body.add(mesh(cyl(0.018, 0.018, 0.56, 6), mat("#604a32", { surface: "teak" }), 0.22, 0.29, 0.1));
-      r.body.add(mesh(sphere(0.055, 8, 6), mat("#87d9ac", { emissive: "#135635" }), 0.22, 0.59, 0.1));
-      r.height = 0.67;
+      humanoid(r, b, PAL.jade, { robe: true, head: "band", accent: team });
+      // medicine satchel on a strap
+      b.add(mesh(box(0.07, 0.07, 0.04), leather(), -0.1, 0.2, 0.04));
+      b.add(mesh(box(0.03, 0.018, 0.045), cloth(team), -0.1, 0.24, 0.04, false));
+      const strap = mesh(box(0.015, 0.25, 0.118), leather(PAL.leatherDark), 0, 0.3, 0, false); strap.rotation.z = -0.6; b.add(strap);
+      // staff with a team ribbon and the jade orb used by the heal glow
+      const staff = new THREE.Group();
+      staff.add(mesh(cyl(0.014, 0.016, 0.62, 6), woodM(PAL.woodDark), 0, 0.1, 0));
+      staff.add(mesh(box(0.05, 0.03, 0.006), cloth(team), 0.03, 0.35, 0, false));
+      staff.add(mesh(sphere(0.045, 8, 6), mat("#87d9ac", { emissive: "#1f8a5a", emissiveIntensity: 0.9 }), 0, 0.43, 0, false));
+      r.tools.staff = hand(r.armR, staff);
+      r.height = 0.58;
       break;
     }
     case "swordsman": {
-      humanoid(r, b, team, { armor: true });
+      humanoid(r, b, cape, { armor: "scale", head: "steel", accent: team });
+      // trường đao: leather-wrapped grip, bronze guard, long steel blade
       const blade = new THREE.Group();
-      blade.add(mesh(box(0.016, 0.26, 0.035), mat(STEEL, { metal: 0.9, rough: 0.2 }), 0, -0.14, 0.0));
-      blade.add(mesh(box(0.06, 0.015, 0.03), mat(GOLD, { metal: 0.7 }), 0, -0.01, 0));
+      blade.add(mesh(cyl(0.011, 0.011, 0.12, 5), leather(PAL.leatherDark), 0, -0.02, 0));
+      blade.add(mesh(box(0.05, 0.012, 0.03), bronze(), 0, -0.085, 0, false));
+      blade.add(mesh(box(0.012, 0.3, 0.034), steel(), 0, -0.24, 0));
+      const tip = mesh(cone(0.017, 0.06, 4), steel(), 0, -0.42, 0, false); tip.rotation.x = Math.PI; blade.add(tip);
       blade.rotation.x = Math.PI / 2 + 0.3;
       r.tools.weapon = hand(r.armR, blade);
-      const shield = mesh(geo("shield", () => new THREE.CylinderGeometry(0.09, 0.09, 0.02, 14)), mat(faction === "dai_viet" ? "#b39860" : shade(team, -0.2), { metal: faction === "trung_nguyen" ? 0.6 : 0.12, surface: faction === "dai_viet" ? "thatch" : "teak" }), -0.04, -0.12, 0.04);
-      shield.rotation.z = Math.PI / 2;
+      // round shield: team-lacquered face, bronze rim and boss
+      const shield = new THREE.Group(); shield.position.set(-0.04, -0.12, 0.04);
+      const face = mesh(geo("shield", () => new THREE.CylinderGeometry(0.09, 0.09, 0.02, 14)), woodM(team)); face.rotation.z = Math.PI / 2; shield.add(face);
+      const rim = mesh(geo("shield-rim", () => new THREE.TorusGeometry(0.09, 0.009, 5, 16)), bronze(), 0, 0, 0, false); rim.rotation.y = Math.PI / 2; shield.add(rim);
+      shield.add(mesh(sphere(0.022, 6, 5), bronze(), -0.015, 0, 0, false));
       r.armL.add(shield);
-      r.armL.add(mesh(sphere(0.022, 6, 5), mat(GOLD, { metal: 0.8 }), -0.055, -0.12, 0.04, false));
-      r.height = 0.65;
+      r.height = 0.62;
       break;
     }
     case "spearman": {
-      humanoid(r, b, team, { armor: true });
+      humanoid(r, b, cape, { armor: "leather", accent: team });
       const spear = new THREE.Group();
-      spear.add(mesh(cyl(0.01, 0.01, 0.95, 5), mat(WOOD), 0, 0.18, 0));
-      spear.add(mesh(cone(0.022, 0.09, 5), mat(STEEL, { metal: 0.9, rough: 0.2 }), 0, 0.7, 0));
-      spear.add(mesh(sphere(0.03, 6, 5), mat("#dc2626"), 0, 0.62, 0));
+      spear.add(mesh(cyl(0.01, 0.011, 0.95, 5), woodM(), 0, 0.18, 0));
+      spear.add(mesh(cone(0.02, 0.16, 4), steel(), 0, 0.73, 0));
+      const tassel = mesh(cone(0.032, 0.07, 6), cloth(team), 0, 0.62, 0, false); tassel.rotation.x = Math.PI; spear.add(tassel);
       r.tools.weapon = hand(r.armR, spear);
-      r.height = 0.75;
+      r.height = 0.62;
       break;
     }
-    case "archer":
+    case "archer": {
+      humanoid(r, b, cape, { armor: "leather", head: r.faction === "dai_viet" ? "auto" : "hood", accent: team });
+      const cloak = mesh(box(0.2, 0.26, 0.02), cloth(shade(cape, -0.15)), 0, 0.25, -0.07); cloak.rotation.x = 0.12; b.add(cloak);
+      // quiver on the back with fletchings showing
+      const quiver = new THREE.Group(); quiver.position.set(0.05, 0.32, -0.09); quiver.rotation.z = -0.35; b.add(quiver);
+      quiver.add(mesh(cyl(0.026, 0.022, 0.2, 7), leather(), 0, 0, 0));
+      for (let k = 0; k < 3; k++) quiver.add(mesh(box(0.012, 0.04, 0.004), cloth("#efe6d2"), (k - 1) * 0.012, 0.12, 0, false));
+      const { bow, string } = bowGroup(0.17, team);
+      bow.rotation.y = Math.PI / 2; bow.rotation.x = Math.PI / 2;
+      r.tools.weapon = hand(r.armL, bow);
+      r.tools.string = string;
+      r.height = 0.6;
+      break;
+    }
     case "chuko_nu": {
-      humanoid(r, b, team);
-      b.add(mesh(cone(0.09, 0.14, 10), mat(shade(team, -0.15)), 0, 0.5, -0.01)); // hood
-      const cloak = mesh(box(0.2, 0.26, 0.02), mat(shade(team, -0.15)), 0, 0.25, -0.07); cloak.rotation.x = 0.12; b.add(cloak);
-      b.add(mesh(cyl(0.025, 0.025, 0.18, 6), mat("#5a3a22"), 0.05, 0.32, -0.08)); // quiver
-      if (type === "archer") {
-        const bow = mesh(geo("bow", () => new THREE.TorusGeometry(0.17, 0.009, 4, 14, Math.PI)), mat("#7a4f2a"), 0, 0, 0.03);
-        bow.rotation.y = Math.PI / 2; bow.rotation.x = Math.PI / 2;
-        r.tools.weapon = hand(r.armL, bow);
-      } else {
-        const xb = new THREE.Group();
-        xb.add(mesh(box(0.03, 0.03, 0.26), mat(WOOD), 0, 0, 0.1));
-        xb.add(mesh(box(0.22, 0.015, 0.02), mat("#5a3a22"), 0, 0, 0.2));
-        xb.add(mesh(box(0.05, 0.06, 0.12), mat(GOLD, { metal: 0.6 }), 0, 0.04, 0.12));
-        r.tools.weapon = hand(r.armR, xb);
-      }
+      humanoid(r, b, cape, { armor: "lamellar", head: "bronze", accent: team });
+      b.add(mesh(cyl(0.028, 0.024, 0.18, 6), leather(), 0.05, 0.32, -0.09)); // bolt case
+      // repeating crossbow (nỏ hộp): stock, bolt magazine, transverse prod, string and cocking lever
+      const xb = new THREE.Group();
+      xb.add(mesh(box(0.03, 0.03, 0.26), woodM(), 0, 0, 0.1));
+      xb.add(mesh(box(0.035, 0.06, 0.13), woodM(PAL.woodDark), 0, 0.045, 0.12)); // magazine
+      xb.add(mesh(box(0.24, 0.014, 0.018), woodM(PAL.woodDark), 0, 0, 0.21));
+      for (const s of [-1, 1]) xb.add(mesh(box(0.016, 0.016, 0.02), bronze(), s * 0.12, 0, 0.21, false));
+      xb.add(mesh(box(0.24, 0.003, 0.003), cloth("#e8dfc8"), 0, 0.006, 0.18, false));
+      const lever = new THREE.Group(); lever.position.set(0, 0.075, 0.06); xb.add(lever);
+      lever.add(mesh(box(0.012, 0.012, 0.16), bronze(), 0, 0, 0.07, false));
+      r.tools.weapon = hand(r.armR, xb);
+      r.tools.lever = lever;
       r.height = 0.62;
       break;
     }
     case "cavalry":
     case "horse_archer": {
-      horse(r, b);
-      const rider = new THREE.Group(); rider.position.set(0, 0.24, -0.02); rider.scale.setScalar(0.85);
-      humanoid(r, rider, team, { armor: type === "cavalry", legs: false });
-      rider.add(mesh(box(0.2, 0.05, 0.09), mat(PANTS), 0, 0.17, 0.02)); // seated legs
-      if (type === "cavalry") {
+      const steppe = type === "horse_archer";
+      horse(r, b, team, steppe);
+      const rider = new THREE.Group(); rider.position.set(0, steppe ? 0.23 : 0.25, -0.02); rider.scale.setScalar(0.85);
+      humanoid(r, rider, cape, steppe ? { armor: "leather", head: "fur", accent: team } : { armor: "scale", head: "steel", accent: team });
+      rider.add(mesh(box(0.2, 0.05, 0.09), cloth(PANTS), 0, 0.17, 0.02)); // seated legs
+      for (const s of [-1, 1]) rider.add(mesh(box(0.045, 0.12, 0.06), leather(PAL.leatherDark), s * 0.11, 0.1, 0.03, false));
+      if (!steppe) {
+        const capeM = mesh(box(0.19, 0.24, 0.02), cloth(team), 0, 0.27, -0.075, false); capeM.rotation.x = 0.25; rider.add(capeM);
+        r.tools.cape = capeM;
         const lance = new THREE.Group();
-        lance.add(mesh(cyl(0.01, 0.01, 0.9, 5), mat(WOOD), 0, 0.2, 0));
-        lance.add(mesh(cone(0.02, 0.08, 5), mat(STEEL, { metal: 0.9 }), 0, 0.68, 0));
-        lance.add(mesh(sphere(0.028, 6, 5), mat("#dc2626"), 0, 0.6, 0));
+        lance.add(mesh(cyl(0.01, 0.011, 0.9, 5), woodM(), 0, 0.2, 0));
+        lance.add(mesh(cone(0.02, 0.12, 4), steel(), 0, 0.71, 0));
+        const tassel = mesh(cone(0.028, 0.06, 6), cloth(team), 0, 0.62, 0, false); tassel.rotation.x = Math.PI; lance.add(tassel);
         lance.rotation.x = 1.0;
         r.tools.weapon = hand(r.armR, lance);
       } else {
-        const bow = mesh(geo("bow", () => new THREE.TorusGeometry(0.17, 0.009, 4, 14, Math.PI)), mat("#7a4f2a"), 0, 0, 0.03);
+        const { bow, string } = bowGroup(0.13, team);
         bow.rotation.y = Math.PI / 2; bow.rotation.x = Math.PI / 2;
         r.tools.weapon = hand(r.armL, bow);
+        r.tools.string = string;
+        rider.add(mesh(cyl(0.024, 0.02, 0.16, 6), leather(), 0.07, 0.3, -0.08));
       }
       b.add(rider);
-      flag(rider, -0.08, 0.3, -0.07, team, 0.4);
+      if (steppe) pennant(rider, -0.07, 0.28, -0.08, team, 0.42);
+      else flag(rider, -0.08, 0.3, -0.07, team, 0.4);
       r.height = 0.95;
       break;
     }
     case "war_elephant": {
-      const em = mat("#7d8590", { rough: 0.85 });
+      const em = hide("#767b7c");
       const e = new THREE.Group(); e.scale.setScalar(1.25);
       const torso = mesh(sphere(0.2, 14, 10), em, 0, 0.42, 0); torso.scale.set(1, 0.95, 1.45); e.add(torso);
       e.add(mesh(sphere(0.13, 12, 10), em, 0, 0.5, 0.3));
+      // bronze brow plate with a team crest
+      const plate = mesh(box(0.15, 0.12, 0.03), bronze(), 0, 0.56, 0.41); plate.rotation.x = -0.35; e.add(plate);
+      e.add(mesh(cone(0.025, 0.05, 6), cloth(team), 0, 0.64, 0.4, false));
       for (const s of [-1, 1]) {
-        const ear = mesh(sphere(0.1, 8, 6), mat("#6b7280"), s * 0.12, 0.52, 0.26); ear.scale.set(0.25, 1, 0.9); e.add(ear);
-        const tusk = mesh(geo("tusk", () => new THREE.TorusGeometry(0.1, 0.014, 5, 10, Math.PI / 1.6)), mat("#f5f0e1", { rough: 0.4 }), s * 0.06, 0.4, 0.4);
+        // wide ears on pivots so they can flare during the charge
+        const ear = new THREE.Group(); ear.position.set(s * 0.1, 0.55, 0.26); e.add(ear);
+        const flap = mesh(sphere(0.12, 8, 6), em, s * 0.06, -0.03, -0.02); flap.scale.set(0.9, 1.1, 0.18); flap.rotation.y = s * 1.2; ear.add(flap);
+        r.tools[s < 0 ? "earL" : "earR"] = ear;
+        const tusk = mesh(geo("tusk", () => new THREE.TorusGeometry(0.1, 0.014, 5, 10, Math.PI / 1.6)), ivory(), s * 0.06, 0.4, 0.4);
         tusk.rotation.set(0, Math.PI / 2, Math.PI * 0.9); e.add(tusk);
       }
-      // swinging trunk: chain of pivots
+      // articulated trunk: chain of pivots
       let parent: THREE.Object3D = e; let y = 0.44, z = 0.4;
       for (let k = 0; k < 4; k++) {
         const seg = new THREE.Group(); seg.position.set(0, y, z);
@@ -306,38 +523,54 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       }
       for (const [x, zz] of [[-0.11, 0.17], [0.11, 0.17], [-0.11, -0.17], [0.11, -0.17]]) {
         const l = new THREE.Group(); l.position.set(x, 0.3, zz);
-        l.add(mesh(cyl(0.06, 0.065, 0.3, 8), em, 0, -0.15, 0));
-        e.add(l); r.legs4.push(l);
+        l.add(mesh(cyl(0.06, 0.065, 0.16, 8), em, 0, -0.08, 0));
+        const knee = new THREE.Group(); knee.position.y = -0.16; l.add(knee);
+        knee.add(mesh(cyl(0.062, 0.07, 0.14, 8), em, 0, -0.07, 0));
+        e.add(l); r.legs4.push(l); r.knees.push(knee);
       }
-      // ornate crimson-gold battle howdah
-      e.add(mesh(box(0.34, 0.03, 0.42), mat("#991b1b"), 0, 0.6, -0.02));
-      e.add(mesh(box(0.36, 0.015, 0.44), mat(GOLD, { metal: 0.75, rough: 0.3 }), 0, 0.585, -0.02, false));
-      e.add(mesh(box(0.24, 0.14, 0.24), mat("#b91c1c"), 0, 0.69, -0.05));
-      for (const [x, zz] of [[-0.11, 0.06], [0.11, 0.06], [-0.11, -0.16], [0.11, -0.16]]) e.add(mesh(cyl(0.01, 0.01, 0.16, 5), mat(GOLD, { metal: 0.7 }), x, 0.84, zz));
-      e.add(mesh(cone(0.2, 0.1, 4), mat(shade(team, -0.2)), 0, 0.96, -0.05));
+      // wooden howdah (bành) on a team caparison, with a spearman and Đại Việt-style banners
+      e.add(mesh(box(0.38, 0.02, 0.46), cloth(team), 0, 0.59, -0.02, false));
+      e.add(mesh(box(0.3, 0.03, 0.38), woodM(), 0, 0.615, -0.03));
+      for (const [x, zz] of [[-0.14, 0.14], [0.14, 0.14], [-0.14, -0.2], [0.14, -0.2]]) e.add(mesh(cyl(0.012, 0.012, 0.2, 5), woodM(PAL.woodDark), x, 0.72, zz));
+      for (const s of [-1, 1]) e.add(mesh(box(0.012, 0.06, 0.36), woodM(PAL.woodDark), s * 0.14, 0.68, -0.03, false));
+      e.add(mesh(cone(0.24, 0.1, 4), cloth(mute(team, 0.3)), 0, 0.86, -0.03));
       const rider = new THREE.Group(); rider.position.set(0, 0.62, -0.05); rider.scale.setScalar(0.65);
-      humanoid(r, rider, team, { armor: true, legs: false });
+      humanoid(r, rider, cape, { armor: "scale", head: r.faction === "dai_viet" ? "auto" : "steel", legs: false, accent: team });
+      const spear = new THREE.Group();
+      spear.add(mesh(cyl(0.01, 0.01, 0.8, 5), woodM(), 0, 0.15, 0));
+      spear.add(mesh(cone(0.02, 0.12, 4), steel(), 0, 0.6, 0));
+      r.tools.weapon = hand(r.armR, spear);
       e.add(rider);
-      flag(e, -0.13, 0.74, -0.17, team, 0.35);
-      flag(e, 0.13, 0.74, -0.17, team, 0.35);
+      flag(e, -0.14, 0.82, -0.2, team, 0.3);
+      flag(e, 0.14, 0.82, -0.2, team, 0.3);
       b.add(e);
+      r.tools.frame = e;
       r.height = 1.3;
       break;
     }
     case "catapult": {
-      const wm = mat("#8a5a2e"), dm = mat("#5a3a22");
+      const wm = woodM(), dm = woodM(PAL.woodDark), iron = steel(PAL.steelDark);
       for (const s of [-1, 1]) b.add(mesh(box(0.05, 0.05, 0.5), wm, s * 0.14, 0.12, 0));
       for (const zz of [-0.2, 0.2]) b.add(mesh(box(0.33, 0.04, 0.05), wm, 0, 0.13, zz));
-      for (const s of [-1, 1]) { const up = mesh(box(0.04, 0.3, 0.04), dm, s * 0.12, 0.28, -0.02); b.add(up); }
-      const axle = mesh(cyl(0.02, 0.02, 0.3, 6), mat(IRON, { metal: 0.6 }), 0, 0.4, -0.02); axle.rotation.z = Math.PI / 2; b.add(axle);
+      // iron straps around the beams
+      for (const s of [-1, 1]) for (const zz of [-0.2, 0, 0.2]) b.add(mesh(box(0.056, 0.056, 0.014), iron, s * 0.14, 0.12, zz, false));
+      for (const s of [-1, 1]) {
+        const up = mesh(box(0.04, 0.3, 0.04), dm, s * 0.12, 0.28, -0.02); b.add(up);
+        const brace = mesh(box(0.03, 0.26, 0.03), dm, s * 0.12, 0.25, 0.08, false); brace.rotation.x = -0.5; b.add(brace);
+        b.add(mesh(box(0.046, 0.016, 0.046), iron, s * 0.12, 0.4, -0.02, false));
+      }
+      const axle = mesh(cyl(0.02, 0.02, 0.3, 6), iron, 0, 0.4, -0.02); axle.rotation.z = Math.PI / 2; b.add(axle);
       for (const s of [-1, 1]) for (const zz of [-0.17, 0.17]) {
-        const w = mesh(cyl(0.08, 0.08, 0.035, 12), dm, s * 0.18, 0.08, zz); w.rotation.z = Math.PI / 2; b.add(w); r.wheels.push(w);
+        const w = spokedWheel(0.08); w.position.set(s * 0.18, 0.08, zz); b.add(w); r.wheels.push(w);
       }
       const arm = new THREE.Group(); arm.position.set(0, 0.4, -0.02);
       arm.add(mesh(box(0.04, 0.04, 0.5), wm, 0, 0, 0.12));
-      arm.add(mesh(cyl(0.06, 0.04, 0.05, 8), dm, 0, 0.03, 0.36));
-      arm.add(mesh(sphere(0.04, 7, 5), mat("#9aa1a9", { flat: true }), 0, 0.07, 0.36));
-      arm.add(mesh(box(0.1, 0.1, 0.1), mat("#57534e"), 0, -0.05, -0.14));
+      arm.add(mesh(box(0.046, 0.046, 0.014), iron, 0, 0, 0.25, false));
+      arm.add(mesh(cyl(0.06, 0.04, 0.05, 8), leather(), 0, 0.03, 0.36));
+      arm.add(mesh(sphere(0.04, 7, 5), pbr("mat_stone", PAL.ore), 0, 0.07, 0.36));
+      // banded counterweight box
+      arm.add(mesh(box(0.1, 0.1, 0.1), woodM(PAL.woodDark), 0, -0.05, -0.14));
+      for (const yy of [-0.08, -0.02]) arm.add(mesh(box(0.106, 0.012, 0.106), iron, 0, yy, -0.14, false));
       arm.rotation.x = -0.9;
       b.add(arm); r.arm = arm;
       flag(b, -0.15, 0.14, -0.24, team, 0.4);
@@ -349,18 +582,24 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       r.height = 0.6;
     }
   }
+  const naval = NAVAL_TYPES.has(type);
   const heavy = type === "cavalry" || type === "horse_archer" || type === "catapult" || type === "war_elephant";
-  const scale = heavy ? 1.43 : 1.4;
+  const scale = naval ? NAVAL_SCALE : heavy ? MOUNT_SCALE : HUMAN_SCALE;
   r.body.scale.multiplyScalar(scale);
   r.height *= scale;
-  r.ring.scale.setScalar(type === "war_elephant" ? 2.55 : heavy ? 1.84 : 1.22);
+  // selection rings (and hit area) stay generous: infantry and ships keep the previous ring so small units remain easy to tap
+  r.ring.scale.setScalar(type === "war_elephant" ? 2.0 : heavy ? 1.5 : 1.22);
   return r;
 }
 
 // ---------------------------------------------------------------------------
-interface AnimalRig { model?: ModelVisual; root: THREE.Group; legs: THREE.Group[]; body: THREE.Group; yaw: number; px: number; pz: number; walk: number; init: boolean; type: string; dead: number; }
+interface AnimalRig {
+  model?: ModelVisual; root: THREE.Group; legs: THREE.Group[]; knees: THREE.Group[]; body: THREE.Group;
+  neck: THREE.Group | null; head: THREE.Group | null; tail: THREE.Group | null; trunk: THREE.Group[]; ears: THREE.Group[];
+  neckRest: number; yaw: number; px: number; pz: number; walk: number; init: boolean; type: string; dead: number;
+}
 
-/** Stylized low-poly deer (antlered stag with spotted flanks) and wild boar (bristled, tusked). */
+/** Sim animal ids → procedural species (main: deer, boar, goat, cattle, lion, wild_elephant; aliases kept for old saves). */
 function wildlifeSpecies(type: string): string {
   if (type === "cow" || type === "ox") return "cattle";
   if (type === "buffalo" || type === "water_buffalo") return "buffalo";
@@ -368,102 +607,122 @@ function wildlifeSpecies(type: string): string {
   return type;
 }
 
+interface Body {
+  coat: string; dark: string; belly?: string; skin: "fur" | "hide";
+  len: number; wid: number; dep: number; legH: number; legW: number;
+  neckLen: number; neckW: number; neckRest: number; headLen: number; headW: number; tailLen: number;
+}
+const BODIES: Record<string, Body> = {
+  deer: { coat: "#a8743f", dark: "#6c4423", belly: "#e8dcc2", skin: "fur", len: 0.4, wid: 0.15, dep: 0.17, legH: 0.27, legW: 0.032, neckLen: 0.2, neckW: 0.07, neckRest: 0.45, headLen: 0.15, headW: 0.075, tailLen: 0.06 },
+  goat: { coat: "#cfc8bb", dark: "#7c746a", belly: "#e9e4da", skin: "fur", len: 0.32, wid: 0.16, dep: 0.17, legH: 0.2, legW: 0.035, neckLen: 0.12, neckW: 0.07, neckRest: 0.5, headLen: 0.13, headW: 0.07, tailLen: 0.05 },
+  cattle: { coat: "#a06a3e", dark: "#5a3a22", belly: "#c9a27a", skin: "fur", len: 0.62, wid: 0.3, dep: 0.3, legH: 0.3, legW: 0.06, neckLen: 0.14, neckW: 0.16, neckRest: 0.9, headLen: 0.2, headW: 0.13, tailLen: 0.3 },
+  buffalo: { coat: "#55576a", dark: "#2f3038", skin: "hide", len: 0.66, wid: 0.32, dep: 0.31, legH: 0.28, legW: 0.065, neckLen: 0.13, neckW: 0.17, neckRest: 1.0, headLen: 0.2, headW: 0.14, tailLen: 0.28 },
+  lion: { coat: "#c28a45", dark: "#6e4422", belly: "#dcb27a", skin: "fur", len: 0.56, wid: 0.24, dep: 0.24, legH: 0.27, legW: 0.055, neckLen: 0.12, neckW: 0.14, neckRest: 0.7, headLen: 0.17, headW: 0.15, tailLen: 0.4 },
+  tiger: { coat: "#c9772f", dark: "#2b1d14", belly: "#efe2c6", skin: "fur", len: 0.58, wid: 0.24, dep: 0.23, legH: 0.26, legW: 0.055, neckLen: 0.12, neckW: 0.14, neckRest: 0.7, headLen: 0.16, headW: 0.15, tailLen: 0.42 },
+  elephant: { coat: "#6f7472", dark: "#4a4e4d", skin: "hide", len: 0.95, wid: 0.55, dep: 0.52, legH: 0.5, legW: 0.13, neckLen: 0.08, neckW: 0.34, neckRest: 1.2, headLen: 0.32, headW: 0.34, tailLen: 0.3 },
+  boar: { coat: "#4a3a2e", dark: "#2a2018", skin: "fur", len: 0.42, wid: 0.22, dep: 0.22, legH: 0.12, legW: 0.045, neckLen: 0.06, neckW: 0.18, neckRest: 1.25, headLen: 0.16, headW: 0.14, tailLen: 0.08 }
+};
+
 function buildAnimal(species: string, seed: number): AnimalRig {
   const type = wildlifeSpecies(species);
+  const sp = BODIES[type] ?? BODIES.deer;
   const root = new THREE.Group(), body = new THREE.Group();
-  root.add(body, contactShadow(type === "deer" ? 0.56 : 0.61, type === "deer" ? 0.81 : 0.7));
-  const legs: THREE.Group[] = [];
+  root.add(body, contactShadow(0.3 + sp.wid, 0.35 + sp.len));
+  const coatM = sp.skin === "fur" ? fur(sp.coat) : hide(sp.coat);
+  const darkM = sp.skin === "fur" ? fur(sp.dark) : hide(sp.dark);
+  const legs: THREE.Group[] = [], knees: THREE.Group[] = [], trunk: THREE.Group[] = [], ears: THREE.Group[] = [];
+  const top = sp.legH + sp.dep;
+  // torso
+  const torso = mesh(sphere(0.5, 12, 8), coatM, 0, sp.legH + sp.dep * 0.5, 0);
+  torso.scale.set(sp.wid, sp.dep, sp.len);
+  body.add(torso);
+  if (sp.belly) { const belly = mesh(sphere(0.5, 10, 6), sp.skin === "fur" ? fur(sp.belly) : hide(sp.belly), 0, sp.legH + sp.dep * 0.3, 0.01, false); belly.scale.set(sp.wid * 0.85, sp.dep * 0.5, sp.len * 0.8); body.add(belly); }
+  // neck pivot at the shoulders; rotation.x > rest lowers the head (grazing), < rest raises it (alert / flee)
+  const neck = new THREE.Group(); neck.position.set(0, sp.legH + sp.dep * 0.7, sp.len * 0.36); neck.rotation.x = sp.neckRest; body.add(neck);
+  neck.add(mesh(box(sp.neckW, sp.neckLen + sp.neckW * 0.5, sp.neckW * 1.1), coatM, 0, sp.neckLen * 0.5, 0));
+  const head = new THREE.Group(); head.position.y = sp.neckLen; head.rotation.x = 1.15 - sp.neckRest; neck.add(head);
+  const skull = mesh(box(sp.headW, sp.headW * 0.95, sp.headLen), coatM, 0, 0, sp.headLen * 0.35); head.add(skull);
+  head.add(mesh(box(sp.headW * 0.75, sp.headW * 0.6, sp.headLen * 0.4), darkM, 0, -sp.headW * 0.12, sp.headLen * 0.75, false)); // muzzle
+  for (const s of [-1, 1]) head.add(mesh(sphere(sp.headW * 0.09, 5, 4), cloth("#120d0a"), s * sp.headW * 0.5, sp.headW * 0.15, sp.headLen * 0.5, false)); // eyes
+  // tail pivot at the rump
+  const tail = new THREE.Group(); tail.position.set(0, sp.legH + sp.dep * 0.75, -sp.len * 0.48); tail.rotation.x = 0.5; body.add(tail);
+  tail.add(mesh(cyl(sp.wid * 0.05, sp.wid * 0.07, sp.tailLen, 5), type === "deer" ? fur("#f6efe2") : darkM, 0, -sp.tailLen / 2, 0));
+  // legs: hip + knee joints with hooves / paws
+  const upper = sp.legH * 0.52, lower = sp.legH * 0.48;
+  for (const [x, z] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    const hip = new THREE.Group(); hip.position.set(x * sp.wid * 0.3, sp.legH + sp.dep * 0.12, z * sp.len * 0.3);
+    hip.add(mesh(box(sp.legW * 1.3, upper + sp.dep * 0.12, sp.legW * 1.4), coatM, 0, -(upper + sp.dep * 0.12) / 2, 0));
+    const knee = new THREE.Group(); knee.position.y = -(upper + sp.dep * 0.12); hip.add(knee);
+    knee.add(mesh(box(sp.legW, lower, sp.legW * 1.1), darkM, 0, -lower / 2, 0));
+    knee.add(mesh(box(sp.legW * 1.15, sp.legW * 0.6, sp.legW * 1.4), hide("#2b2420"), 0, -lower, sp.legW * 0.15, false));
+    body.add(hip); legs.push(hip); knees.push(knee);
+  }
+  const hornM = ivory("#b8a88a");
   if (type === "deer") {
-    const fur = mat("#b8793a"), dark = mat("#7b4a22"), belly = mat("#efe0c4"), white = mat("#fbf5e8");
-    body.add(mesh(box(0.15, 0.16, 0.38), fur, 0, 0.32, 0));
-    body.add(mesh(box(0.14, 0.05, 0.3), belly, 0, 0.245, 0.01));
-    for (const [x, z] of [[-0.04, -0.05], [0.05, 0.04], [-0.03, 0.1], [0.04, -0.12]]) body.add(mesh(sphere(0.014, 5, 4), white, x + (x < 0 ? -0.07 : 0.07), 0.36, z, false));
-    const neck = mesh(box(0.08, 0.2, 0.08), fur, 0, 0.46, 0.18); neck.rotation.x = 0.45; body.add(neck);
-    body.add(mesh(box(0.08, 0.08, 0.15), fur, 0, 0.56, 0.27));
-    body.add(mesh(box(0.05, 0.04, 0.05), dark, 0, 0.55, 0.36, false));
-    for (const sx of [-1, 1]) {
-      body.add(mesh(box(0.025, 0.05, 0.015), fur, sx * 0.04, 0.62, 0.22, false));
-      const a1 = mesh(cyl(0.006, 0.008, 0.12, 4), dark, sx * 0.045, 0.66, 0.23, false); a1.rotation.z = -sx * 0.4; body.add(a1);
-      const a2 = mesh(cyl(0.005, 0.006, 0.07, 4), dark, sx * 0.075, 0.7, 0.23, false); a2.rotation.z = sx * 0.5; body.add(a2);
+    // slender stag: branched antlers, white flank spots and a white tail flag
+    for (const [x, z] of [[-0.05, -0.08], [0.05, 0.02], [-0.04, 0.1], [0.05, -0.13]]) body.add(mesh(sphere(0.013, 5, 4), fur("#f6efe2"), x < 0 ? -sp.wid * 0.48 : sp.wid * 0.48, top - 0.03, z, false));
+    for (const s of [-1, 1]) {
+      head.add(mesh(box(0.02, 0.05, 0.012), coatM, s * 0.045, 0.05, 0.02, false)); // ears
+      const beam = new THREE.Group(); beam.position.set(s * 0.025, 0.04, 0.03); beam.rotation.set(-0.35, 0, -s * 0.45); head.add(beam);
+      const antler = ivory("#8a6a48");
+      beam.add(mesh(cyl(0.005, 0.008, 0.14, 4), antler, 0, 0.07, 0, false));
+      for (const [h, a] of [[0.05, 0.9], [0.1, -0.7], [0.13, 0.6]]) { const tine = mesh(cyl(0.004, 0.005, 0.06, 4), antler, 0, h, 0.02, false); tine.rotation.set(a > 0 ? 0.9 : 0.3, 0, s * a); beam.add(tine); }
     }
-    const tail = mesh(box(0.04, 0.05, 0.03), white, 0, 0.36, -0.2, false); body.add(tail);
-    for (const [x, z] of [[-0.05, 0.13], [0.05, 0.13], [-0.05, -0.13], [0.05, -0.13]]) {
-      const l = new THREE.Group(); l.position.set(x, 0.26, z);
-      l.add(mesh(box(0.035, 0.26, 0.035), dark, 0, -0.13, 0)); body.add(l); legs.push(l);
+  } else if (type === "goat") {
+    // grey-white goat: swept-back curved horns and a beard
+    for (const s of [-1, 1]) {
+      const horn = mesh(geo("goat-horn", () => new THREE.TorusGeometry(0.05, 0.011, 5, 8, Math.PI * 1.1)), hornM, s * 0.025, 0.04, 0.0, false);
+      horn.rotation.set(0, Math.PI / 2, Math.PI * 0.15); head.add(horn);
+      head.add(mesh(box(0.035, 0.015, 0.02), coatM, s * 0.05, 0.02, 0.02, false));
     }
-  } else if (["goat", "cattle", "buffalo", "lion", "tiger", "elephant"].includes(type)) {
-    const goat = type === "goat", cat = type === "lion" || type === "tiger", giant = type === "elephant";
-    const furColor = goat ? "#dbd0b9" : cat ? "#c98035" : giant ? "#777d7a" : type === "buffalo" ? "#55576a" : "#9c684a";
-    const fur = mat(furColor, { rough: 0.91 }), dark = mat(shade(furColor, -0.38)), horn = mat("#dfc9a6");
-    const width = goat ? 0.18 : cat ? 0.30 : giant ? 0.63 : 0.40;
-    const length = width * (cat ? 2.05 : 1.73);
-    const h = goat ? 0.26 : cat ? 0.29 : giant ? 0.56 : 0.37;
-    const mass = mesh(sphere(0.5, 9, 6), fur, 0, h + width * 0.33, 0);
-    mass.scale.set(width, width * 0.9, length);
-    body.add(mass);
-    const head = mesh(sphere(0.5, 10, 7), fur, 0, h + width * 0.62, length * 0.46);
-    head.scale.set(width * 0.61, width * 0.60, width * 0.73);
-    body.add(head);
-    const nose = mesh(sphere(0.5, 8, 6), dark, 0, h + width * 0.46, length * 0.62);
-    nose.scale.set(width * 0.49, width * 0.28, width * 0.25);
-    body.add(nose);
-    const tail = mesh(cyl(width * 0.05, width * 0.055, width * (cat ? 1.38 : 0.65), 5),
-      dark, 0, h + 0.1, -length * 0.53);
-    tail.rotation.x = cat ? 0.95 : 0.53;
-    body.add(tail);
-    for (const x of [-1, 1]) {
-      const ear = mesh(sphere(0.5, 7, 5), giant ? fur : dark, x * width * (giant ? 0.47 : 0.28), h + width * 0.79, length * 0.44);
-      ear.scale.set(width * (giant ? 0.46 : 0.19), width * (giant ? 0.69 : 0.21), width * 0.16);
-      ear.rotation.z = x * 0.28;
-      body.add(ear);
-      if (!cat) {
-        const tip = mesh(cone(width * 0.055, width * (goat ? 0.63 : 0.49), 6), horn, x * width * 0.24,
-          h + width * (giant ? 0.43 : 0.98), length * (giant ? 0.67 : 0.45));
-        tip.rotation.z = -x * (type === "buffalo" ? 1.12 : 0.45);
-        tip.rotation.x = giant ? -0.95 : goat ? -0.48 : 0;
-        body.add(tip);
-      }
-      for (const z of [-1, 1]) {
-        const leg = new THREE.Group();
-        leg.position.set(x * width * 0.32, h, z * length * 0.29);
-        leg.add(mesh(cyl(width * 0.11, width * 0.095, h, 6), dark, 0, -h * 0.5, 0));
-        body.add(leg); legs.push(leg);
-      }
+    const beard = mesh(cone(0.018, 0.06, 5), darkM, 0, -0.06, sp.headLen * 0.55, false); beard.rotation.x = Math.PI; head.add(beard);
+  } else if (type === "cattle" || type === "buffalo") {
+    // yellow-brown cattle (bò vàng) with a dewlap and short curved horns; buffalo keep wide swept horns
+    neck.add(mesh(box(sp.neckW * 0.4, sp.neckLen, sp.neckW * 0.9), coatM, 0, sp.neckLen * 0.2, sp.neckW * 0.45, false));
+    for (const s of [-1, 1]) {
+      const horn = mesh(cone(0.016, type === "buffalo" ? 0.2 : 0.09, 5), hornM, s * sp.headW * 0.55, sp.headW * 0.45, 0.02, false);
+      horn.rotation.z = -s * (type === "buffalo" ? 1.2 : 0.7); head.add(horn);
+      head.add(mesh(box(0.05, 0.02, 0.03), coatM, s * sp.headW * 0.6, sp.headW * 0.25, -0.01, false));
     }
-    if (giant) {
-      const trunk = mesh(cyl(0.069, 0.105, 0.46, 8), fur, 0, h + 0.05, length * 0.69);
-      trunk.rotation.x = -0.14;
-      body.add(trunk);
-    } else if (type === "lion") {
-      const mane = mesh(geo("wild-mane", () => new THREE.IcosahedronGeometry(0.19, 1)), dark, 0, h + width * 0.56, length * 0.37);
-      mane.scale.set(1, 1.06, 0.69);
-      body.add(mane);
-    } else if (type === "tiger") {
-      for (let i = 0; i < 5; i++) for (const sign of [-1, 1]) {
-        const stripe = mesh(box(0.008, 0.078, 0.027), dark, sign * width * 0.45, h + width * 0.46, (i - 2) * length * 0.15, false);
-        stripe.rotation.x = (i % 2 ? 1 : -1) * 0.28;
-        body.add(stripe);
-      }
+    tail.add(mesh(sphere(0.025, 5, 4), darkM, 0, -sp.tailLen, 0, false)); // tuft
+  } else if (type === "lion" || type === "tiger") {
+    if (type === "lion") {
+      const mane = mesh(geo("wild-mane", () => new THREE.IcosahedronGeometry(0.15, 1)), fur(sp.dark), 0, 0.0, 0.02);
+      mane.scale.set(1.05, 1.1, 0.75); head.add(mane);
+      neck.add(mesh(geo("wild-mane-neck", () => new THREE.IcosahedronGeometry(0.11, 1)), fur(sp.dark), 0, sp.neckLen * 0.4, -0.02));
+    } else for (let i = 0; i < 5; i++) for (const sign of [-1, 1]) {
+      const stripe = mesh(box(0.008, 0.078, 0.027), darkM, sign * sp.wid * 0.5, top - 0.06, (i - 2) * sp.len * 0.15, false);
+      stripe.rotation.x = (i % 2 ? 1 : -1) * 0.28; body.add(stripe);
     }
-  } else {
-    const fur = mat("#4a3a2e", { rough: 0.95 }), dark = mat("#2a2018", { rough: 0.95 }), tusk = mat("#f0e8d0");
-    body.add(mesh(box(0.22, 0.2, 0.4), fur, 0, 0.22, 0));
-    body.add(mesh(box(0.2, 0.22, 0.18), fur, 0, 0.23, 0.17));
-    for (let k = 0; k < 5; k++) body.add(mesh(box(0.025, 0.05, 0.05), dark, 0, 0.35 - Math.abs(k - 2) * 0.012, -0.14 + k * 0.08, false));
-    body.add(mesh(box(0.14, 0.13, 0.12), fur, 0, 0.2, 0.3));
-    body.add(mesh(box(0.09, 0.07, 0.07), mat("#c58a7a"), 0, 0.17, 0.375, false));
-    for (const sx of [-1, 1]) {
-      const t = mesh(cone(0.012, 0.07, 5), tusk, sx * 0.05, 0.15, 0.37, false); t.rotation.z = sx * 0.4; t.rotation.x = -0.5; body.add(t);
-      body.add(mesh(box(0.03, 0.05, 0.02), dark, sx * 0.06, 0.3, 0.27, false));
-      body.add(mesh(sphere(0.012, 5, 4), mat("#ffdd88", { emissive: "#442200" }), sx * 0.055, 0.25, 0.355, false));
+    for (const s of [-1, 1]) head.add(mesh(sphere(0.025, 5, 4), coatM, s * sp.headW * 0.4, sp.headW * 0.5, 0.0, false));
+    tail.add(mesh(sphere(0.025, 5, 4), fur(sp.dark), 0, -sp.tailLen, 0, false)); // tail tuft
+  } else if (type === "elephant") {
+    // wild elephant: flapping ears, ivory tusks and an articulated trunk
+    for (const s of [-1, 1]) {
+      const ear = new THREE.Group(); ear.position.set(s * sp.headW * 0.45, sp.headW * 0.15, 0.0); head.add(ear);
+      const flap = mesh(sphere(0.5, 8, 6), coatM, s * 0.09, -0.04, -0.03); flap.scale.set(0.2, 0.28, 0.05); flap.rotation.y = s * 1.25; ear.add(flap);
+      ears.push(ear);
+      const tusk = mesh(geo("wild-tusk", () => new THREE.TorusGeometry(0.12, 0.016, 5, 10, Math.PI / 1.7)), ivory(), s * 0.07, -0.08, sp.headLen * 0.55, false);
+      tusk.rotation.set(0, Math.PI / 2, Math.PI * 0.9); head.add(tusk);
     }
-    for (const [x, z] of [[-0.07, 0.14], [0.07, 0.14], [-0.07, -0.13], [0.07, -0.13]]) {
-      const l = new THREE.Group(); l.position.set(x, 0.14, z);
-      l.add(mesh(box(0.045, 0.14, 0.045), dark, 0, -0.07, 0)); body.add(l); legs.push(l);
+    let parent: THREE.Object3D = head; let y = -0.05, z = sp.headLen * 0.7;
+    for (let k = 0; k < 4; k++) {
+      const seg = new THREE.Group(); seg.position.set(0, y, z); seg.rotation.x = 0.15;
+      seg.add(mesh(cyl(0.05 - k * 0.008, 0.06 - k * 0.008, 0.12, 7), coatM, 0, -0.06, 0));
+      parent.add(seg); trunk.push(seg);
+      parent = seg; y = -0.12; z = 0;
+    }
+  } else if (type === "boar") {
+    // bristled boar: dorsal crest, pink snout, small ivory tusks
+    for (let k = 0; k < 5; k++) body.add(mesh(box(0.025, 0.05, 0.05), darkM, 0, top - Math.abs(k - 2) * 0.012, -0.14 + k * 0.07, false));
+    head.add(mesh(box(0.08, 0.06, 0.04), hide("#c58a7a"), 0, -0.02, sp.headLen * 0.95, false));
+    for (const s of [-1, 1]) {
+      const t = mesh(cone(0.011, 0.06, 5), ivory(), s * 0.045, -0.03, sp.headLen * 0.85, false); t.rotation.z = s * 0.4; t.rotation.x = -0.5; head.add(t);
+      head.add(mesh(box(0.03, 0.05, 0.02), darkM, s * 0.055, 0.06, 0.0, false));
     }
   }
   body.scale.setScalar(0.87 + hash2(seed, 97) * 0.24);
-  return { root, legs, body, yaw: 0, px: 0, pz: 0, walk: 0, init: false, type, dead: 0 };
+  return { root, legs, knees, body, neck, head, tail, trunk, ears, neckRest: sp.neckRest, yaw: 0, px: 0, pz: 0, walk: 0, init: false, type, dead: 0 };
 }
 
 interface Proj { mesh: THREE.Object3D; kind: string; lx: number; ly: number; lz: number; tx: number; tz: number; }
@@ -644,6 +903,15 @@ export class Units3D {
         want = Math.atan2(u.targetTile.tx + 0.5 - u.x, u.targetTile.ty + 0.5 - u.y);
       } else if (u.type === "villager" && u.task === "hunt" && u.huntFace) {
         want = Math.atan2(u.huntFace.x - u.x, u.huntFace.y - u.y);
+      } else if (u.type === "healer" && r.heal > 0) {
+        // face the nearest wounded ally inside the 4.5-tile heal radius (render-only lookup)
+        let best = 4.5 * 4.5, px = 0, pz = 0, found = false;
+        for (const o of state.units) {
+          if (o === u || o.team !== u.team || o.hp <= 0 || o.hp >= o.maxHp || o.garrisoned) continue;
+          const d = (o.x - u.x) ** 2 + (o.y - u.y) ** 2;
+          if (d <= best) { best = d; px = o.x; pz = o.y; found = true; }
+        }
+        if (found) want = Math.atan2(px - u.x, pz - u.y);
       }
       let dYaw = want - r.yaw;
       while (dYaw > Math.PI) dYaw -= TAU;
@@ -671,17 +939,11 @@ export class Units3D {
         const elapsed = r.lastPose === 0 ? dt : Math.min(0.12, t - r.lastPose);
         r.lastPose = t;
         r.nextPose = t + (dist > 1600 ? 0.063 : dist > 500 ? 0.033 : 0);
-        if (naval) {
-          const underBridge = state.grid[Math.floor(u.y)]?.[Math.floor(u.x)]?.terrain === "bridge";
-          const sail = r.tools.sail;
-          if (sail) sail.scale.y = underBridge ? 0.18 : 1;
-          r.body.position.y = Math.sin(t * 3 + u.x) * 0.022;
-          r.body.rotation.z = Math.sin(t * 2 + u.y) * 0.035;
-          if (moving && t >= r.dustT) {
-            this.fx.ripple(u.x - Math.sin(r.yaw) * 0.46, WATER_LEVEL + 0.02, u.y - Math.cos(r.yaw) * 0.46);
-            r.dustT = t + 0.55;
-          }
-        } else this.animate(r, u, state, t, elapsed, moving, speed, target);
+        if (naval) fxGuard("naval-anim", () => this.animateShip(r!, u, state, t, elapsed, moving, speed));
+        else {
+          const rig = r;
+          fxGuard("unit-anim", () => this.animate(rig, u, state, t, elapsed, moving, speed, target));
+        }
         const pose = u.hp <= 0 ? "die" : moving ? (speed > 2.35 ? "run" : "walk")
           : u.task === "attack" || u.task === "hunt" ? "attack"
           : u.task === "build" ? "build" : u.task === "gather" ? "gather" : "idle";
@@ -748,12 +1010,8 @@ export class Units3D {
         r.yaw += d * (1 - Math.exp(-dt * 9));
       }
       r.root.rotation.y = r.yaw;
-      r.walk += dt * (moving ? 5 + speed * 3.2 : 0);
-      const amp = moving ? Math.min(0.9, 0.3 + speed * 0.2) : 0;
-      r.legs.forEach((l, i) => { l.rotation.x = Math.sin(r!.walk + (i === 0 || i === 3 ? 0 : Math.PI)) * amp; });
-      const grazing = !a.dead && !moving && a.type === "deer";
-      r.body.position.y = moving ? Math.abs(Math.sin(r.walk)) * (speed > 1.5 ? 0.06 : 0.015) : 0;
-      r.body.rotation.x = grazing ? 0.06 * Math.sin(t * 0.8 + a.id) : 0;
+      const rig = r;
+      fxGuard("wildlife-anim", () => this.animateAnimal(rig, a, t, dt, moving, speed));
       // carcass: topple onto its side and shrink as the meat is harvested
       const target = a.dead ? 1 : 0;
       r.dead += (target - r.dead) * Math.min(1, dt * 5);
@@ -762,13 +1020,89 @@ export class Units3D {
       r.root.scale.setScalar(meat);
       r.model?.update(dt, a.dead ? "die" : moving ? (speed > 1.5 ? "run" : "walk")
         : a.aggroId != null ? "attack" : "idle", shadows);
-      // fresh hurt flash for charging boar: raise head
-      if (a.type === "boar" && a.aggroId != null) r.body.rotation.x = -0.12;
     }
     for (const [id, r] of this.animals) {
       if (seenA.has(id)) continue;
       this.disposeRig(r);
       this.animals.delete(id);
+    }
+  }
+
+  /** Low-poly wildlife joints: walk / flee gait with knees, grazing neck, tail flick, ear flap, trunk sway, charge lunge. */
+  private animateAnimal(r: AnimalRig, a: any, t: number, dt: number, moving: boolean, speed: number): void {
+    const fleeing = moving && speed > 1.5;
+    const attacking = !a.dead && a.aggroId != null;
+    const elephant = r.type === "elephant", cat = r.type === "lion" || r.type === "tiger";
+    const herbivore = r.type === "deer" || r.type === "goat" || r.type === "cattle" || r.type === "buffalo";
+    r.walk += dt * (moving ? 5 + speed * 3.2 : 0);
+    const amp = moving ? Math.min(0.9, 0.3 + speed * 0.2) * (elephant ? 0.55 : 1) : 0;
+    r.legs.forEach((l, i) => {
+      // trot / walk: diagonal pairs; a fleeing deer or goat bounds with front and hind pairs together
+      const bound = fleeing && (r.type === "deer" || r.type === "goat");
+      const ph = r.walk + (bound ? (i < 2 ? 0 : Math.PI) : (i === 0 || i === 3 ? 0 : Math.PI));
+      l.rotation.x = moving ? Math.sin(ph) * amp : 0;
+      const knee = r.knees[i];
+      if (knee) knee.rotation.x = moving ? Math.max(0, -Math.cos(ph)) * amp * 0.9 * (i < 2 ? 1 : -1) : 0;
+    });
+    const grazing = !a.dead && !moving && !attacking && herbivore && Math.sin(t * 0.45 + a.id * 1.7) > -0.1;
+    let neckTarget = r.neckRest;
+    if (grazing) neckTarget = r.neckRest + 0.85;
+    else if (fleeing) neckTarget = r.neckRest - 0.25;
+    else if (attacking) neckTarget = r.neckRest + (cat ? 0.1 : 0.35);
+    if (r.neck) r.neck.rotation.x += (neckTarget - r.neck.rotation.x) * Math.min(1, dt * 4);
+    if (r.head) r.head.rotation.x = 1.15 - r.neckRest + (grazing ? Math.sin(t * 5 + a.id) * 0.08 : 0);
+    if (r.tail) {
+      const flag = fleeing && r.type === "deer"; // white tail flag raised while fleeing
+      r.tail.rotation.x += ((flag ? -0.9 : cat && attacking ? -0.3 : 0.5 + Math.sin(t * 2 + a.id) * 0.08) - r.tail.rotation.x) * Math.min(1, dt * 6);
+      r.tail.rotation.z = Math.sin(t * (moving ? 6 : 1.8) + a.id) * 0.25;
+    }
+    r.ears.forEach((e, i) => { const s = i === 0 ? -1 : 1; e.rotation.y = s * ((attacking ? 0.55 : 0) + Math.sin(t * 1.4 + a.id) * 0.2); });
+    if (r.trunk.length) {
+      const swing = attacking ? -0.45 : Math.sin(t * 1.6 + a.id) * 0.15;
+      r.trunk.forEach((s, i) => { s.rotation.x = 0.15 + swing * (0.4 + i * 0.25); s.rotation.z = Math.sin(t * 1.1 + i) * 0.05; });
+    }
+    r.body.position.y = moving ? Math.abs(Math.sin(r.walk)) * (fleeing ? 0.06 : 0.015) : 0;
+    // charge / bite lunge for boar, lion, cattle and elephant when standing at the target
+    const lunge = attacking && !moving ? Math.max(0, Math.sin(t * 6 + a.id)) : 0;
+    r.body.position.z = lunge * 0.04;
+    r.body.rotation.x = attacking ? -0.06 - lunge * 0.06 : fleeing ? 0.04 : 0;
+  }
+
+  /** Ships: waterline bob/roll, speed-scaled wake, oars, mast lowering under bridges, per-type work / attack cues. */
+  private animateShip(r: Rig, u: any, state: any, t: number, dt: number, moving: boolean, speed: number): void {
+    const terrainAt = (x: number, z: number) => state.grid[Math.floor(z)]?.[Math.floor(x)]?.terrain;
+    const aheadX = u.x + Math.sin(r.yaw) * 0.9, aheadZ = u.y + Math.cos(r.yaw) * 0.9;
+    const bridge = terrainAt(u.x, u.y) === "bridge" || terrainAt(aheadX, aheadZ) === "bridge";
+    r.sailK += ((bridge ? 1 : 0) - r.sailK) * Math.min(1, dt * 7);
+    // mast folds aft and the sail furls so nothing pokes through the bridge deck
+    if (r.tools.mast) r.tools.mast.rotation.x = -r.sailK * 1.4;
+    if (r.tools.sail) r.tools.sail.scale.y = 1 - r.sailK * 0.8;
+    r.body.position.y = Math.sin(t * 3 + u.x) * 0.022;
+    r.body.rotation.z = Math.sin(t * 2 + u.y) * 0.035;
+    r.body.rotation.x = -Math.min(0.05, speed * 0.02) + Math.sin(t * 2.4 + u.x) * 0.012;
+    r.atk = Math.max(0, r.atk - dt * 2.2);
+    const row = t * (moving ? 2.2 + speed * 2 : 0.8);
+    for (const o of r.oars) { const side = o.position.x < 0 ? -1 : 1; o.rotation.y = side * Math.sin(row) * 0.35; o.rotation.z = side * Math.cos(row) * 0.12; }
+    if (r.tools.ballista) r.tools.ballista.rotation.x = -r.atk * 0.3; // bow crossbow kicks as the arrow leaves (synced to projectile spawn)
+    if (r.tools.net) {
+      const fishing = u.task === "fish" && !moving;
+      const target = fishing ? -1.25 + Math.sin(t * 1.5) * 0.06 : -0.35;
+      r.tools.net.rotation.z += (target - r.tools.net.rotation.z) * Math.min(1, dt * 3);
+    }
+    if (r.tools.fish) r.tools.fish.visible = u.task === "return_fish" || (u.carryAmt ?? 0) > 0;
+    if (r.tools.flame) {
+      r.tools.flame.scale.set(1 + Math.sin(t * 17) * 0.1, 1 + Math.sin(t * 23 + 1) * 0.18, 1 + Math.sin(t * 19 + 2) * 0.1);
+      r.tools.flameCore?.scale.setScalar(1 + Math.sin(t * 29) * 0.15);
+      if (this.fx.rich && t >= r.lastPhase && r.tools.brazier) {
+        r.lastPhase = t + 0.25;
+        r.tools.brazier.getWorldPosition(this.tmp);
+        this.fx.smoke.emit(this.tmp.x, this.tmp.y + 0.25, this.tmp.z, 0, 0.25, 0, 0.6, 0.45, 0x3a3430, 0, 1.2);
+      }
+    }
+    if (moving && t >= r.dustT) {
+      this.fx.ripple(u.x - Math.sin(r.yaw) * 0.46, WATER_LEVEL + 0.02, u.y - Math.cos(r.yaw) * 0.46);
+      if (speed > 1.2) this.fx.ripple(u.x + Math.sin(r.yaw) * 0.5, WATER_LEVEL + 0.02, u.y + Math.cos(r.yaw) * 0.5);
+      r.dustT = t + THREE.MathUtils.clamp(0.9 - speed * 0.25, 0.22, 0.7);
     }
   }
 
@@ -778,6 +1112,7 @@ export class Units3D {
     r.atk = Math.max(0, r.atk - dt * 2.2);
     const inMelee = u.task === "attack" && !moving && target && (target.hp ?? 1) > 0;
     const cooldown = u.atkCooldown ?? 0;
+    const ability = (u.abilityTime ?? 0) > 0;
     const hit = inMelee && cooldown - r.previousCooldown > 0.35;
     if (hit) {
       r.melee = 1;
@@ -811,39 +1146,96 @@ export class Units3D {
           const k = r.melee > 0 ? recover : 1 - windup;
           r.armR.rotation.x = r.type === "spearman" ? -1.2 + k * 0.4 : -2.3 + k * 2.1;
           if (r.type === "spearman") r.armR.position.z = k * 0.06;
-          if (r.type === "swordsman") r.armL.rotation.x = -0.9;
+          if (r.type === "swordsman") r.armL.rotation.x = -0.9; // shield up
         } else if (r.type === "spearman") {
           r.armR.rotation.x = -0.3 + sw * 0.2;
           r.armR.position.z = 0;
         }
         break;
-      case "archer": case "chuko_nu":
-        if (r.atk > 0 || inMelee) { r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.1 - smoothstep(0.8, 0.05, cooldown) * 0.7 + smoothstep(0, 0.65, r.atk) * 0.78; }
+      case "archer": {
+        // full draw: bow arm extended, string hand pulled to the cheek, string bent back; release on projectile spawn
+        const aiming = r.atk > 0 || inMelee;
+        const draw = aiming ? smoothstep(0.8, 0.1, cooldown) * (1 - smoothstep(0.35, 1, r.atk)) : 0;
+        if (aiming) { r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.2 - draw * 0.6; r.armR.rotation.z = draw * 0.35; }
+        if (r.tools.string) r.tools.string.position.y = -draw * 0.08;
         break;
+      }
+      case "chuko_nu": {
+        // repeating crossbow: lever pumps once per shot; Mưa Tên (0.5 s cooldown) pumps twice as fast
+        const aiming = r.atk > 0 || inMelee;
+        if (aiming) {
+          r.armL.rotation.x = -1.35; r.armR.rotation.x = -1.35;
+          const period = ability ? 0.5 : 1;
+          const pump = Math.sin(THREE.MathUtils.clamp(1 - cooldown / period, 0, 1) * Math.PI);
+          if (r.tools.lever) r.tools.lever.rotation.x = -pump * 0.9;
+          r.body.rotation.x = -r.atk * 0.06; // recoil
+        } else if (r.tools.lever) r.tools.lever.rotation.x = 0;
+        break;
+      }
       case "cavalry": case "horse_archer": {
+        // stride follows the real ground speed, so Phi Mã (faster) visibly gallops harder
         const gal = moving ? r.walk * 1.4 : 0;
-        r.legs4.forEach((l, i) => { l.rotation.x = moving ? Math.sin(gal + (i < 2 ? 0 : Math.PI) + (i % 2) * 0.6) * 0.7 : 0; });
+        r.legs4.forEach((l, i) => {
+          const ph = gal + (i < 2 ? 0 : Math.PI) + (i % 2) * 0.6;
+          l.rotation.x = moving ? Math.sin(ph) * 0.7 : 0;
+          const knee = r.knees[i];
+          if (knee) knee.rotation.x = moving ? Math.max(0, -Math.cos(ph)) * 0.9 * (i < 2 ? 1 : -1) : 0;
+        });
         r.body.position.y = moving ? Math.abs(Math.sin(gal)) * 0.05 : 0;
-        r.body.rotation.x = moving ? Math.sin(gal) * 0.05 : 0;
+        r.body.rotation.x = moving ? Math.sin(gal) * 0.05 + (ability ? 0.05 : 0) : 0;
+        if (r.tools.neck) r.tools.neck.rotation.x = 0.55 + (moving ? Math.sin(gal * 2) * 0.08 + (speed > 2 ? 0.15 : 0) : Math.sin(t * 0.7 + u.id) * 0.05);
+        if (r.tools.tail) { r.tools.tail.rotation.x = -0.45 - (moving ? 0.5 : 0) + Math.sin(t * 2 + u.id) * 0.08; r.tools.tail.rotation.z = Math.sin(t * (moving ? 7 : 1.6)) * 0.15; }
+        if (r.tools.cape) r.tools.cape.rotation.x = 0.25 + (moving ? 0.45 + Math.sin(t * 9) * 0.08 : Math.sin(t * 1.5) * 0.04);
         if (r.type === "cavalry" && inMelee) r.armR.rotation.x = -0.6 + smoothstep(0.05, 0.9, r.melee) * 0.5;
-        if (r.type === "horse_archer" && (r.atk > 0 || inMelee)) { r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.2 - smoothstep(0.8, 0.05, cooldown) * 0.54 + r.atk * 0.5; }
+        if (r.type === "horse_archer" && (r.atk > 0 || inMelee)) {
+          const draw = smoothstep(0.8, 0.05, cooldown) * (1 - r.atk);
+          r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.2 - draw * 0.54;
+          if (r.tools.string) r.tools.string.position.y = -draw * 0.06;
+        } else if (r.tools.string) r.tools.string.position.y = 0;
         break;
       }
       case "war_elephant": {
-        const st = moving ? r.walk * 0.7 : 0;
-        r.legs4.forEach((l, i) => { l.rotation.x = moving ? Math.sin(st + ((i === 0 || i === 3) ? 0 : Math.PI)) * 0.35 : 0; });
+        // Xung Phong: ears flared, trunk curled up, head down and a heavier, faster stride
+        const st = moving ? r.walk * (ability ? 0.95 : 0.7) : 0;
+        r.legs4.forEach((l, i) => {
+          const ph = st + ((i === 0 || i === 3) ? 0 : Math.PI);
+          l.rotation.x = moving ? Math.sin(ph) * (ability ? 0.5 : 0.35) : 0;
+          const knee = r.knees[i];
+          if (knee) knee.rotation.x = moving ? Math.max(0, -Math.cos(ph)) * 0.45 * (i < 2 ? 1 : -1) : 0;
+        });
         r.body.position.y = moving ? Math.abs(Math.sin(st)) * 0.03 : 0;
+        r.body.rotation.x = ability ? 0.07 : 0;
+        const charge = ability ? 1 : 0;
         const swing = inMelee ? smoothstep(0.05, 0.9, r.melee) * 0.6 : Math.sin(t * 1.8 + u.id) * 0.18;
-        r.trunk.forEach((s, i) => { s.rotation.x = swing * (0.5 + i * 0.25) + (i === 0 ? 0.2 : 0.12); s.rotation.z = Math.sin(t * 1.3 + i) * 0.06; });
+        r.trunk.forEach((s, i) => { s.rotation.x = charge ? -0.55 - i * 0.1 : swing * (0.5 + i * 0.25) + (i === 0 ? 0.2 : 0.12); s.rotation.z = Math.sin(t * 1.3 + i) * 0.06; });
+        const flap = Math.sin(t * (ability ? 6 : 1.3) + u.id) * (ability ? 0.12 : 0.18);
+        if (r.tools.earL) r.tools.earL.rotation.y = -(charge * 0.7 + flap);
+        if (r.tools.earR) r.tools.earR.rotation.y = charge * 0.7 + flap;
+        if (inMelee || ability) r.armR.rotation.x = -1.3 + smoothstep(0.05, 0.9, r.melee) * 0.8;
         break;
       }
       case "catapult": {
-        const roll = speed * dt * 12;
+        // wheels roll by distance travelled (arc length / radius)
+        const roll = (speed * dt) / (0.08 * MOUNT_SCALE);
         for (const w of r.wheels) w.rotation.x += moving ? roll : 0;
         if (r.arm) {
+          // r.atk = 1 on the frame the boulder spawns: fast fling, then slow rewind
           const a = r.atk;
           const fling = a > 0.82 ? (1 - a) / 0.18 : a / 0.82;
           r.arm.rotation.x = -0.9 + Math.min(1, fling) * 1.9;
+        }
+        break;
+      }
+      case "healer": {
+        // a heal pulse in the sim (healPulse changes) keeps the channel pose alive for half a second
+        const pulse = u.healPulse;
+        if (pulse !== undefined && !Number.isNaN(r.prevHeal) && pulse !== r.prevHeal) r.heal = 0.5;
+        r.prevHeal = pulse ?? NaN;
+        r.heal = Math.max(0, r.heal - dt);
+        if (r.heal > 0 && !moving) {
+          r.armR.rotation.x = -2.1 + Math.sin(t * 6) * 0.12; // staff raised toward the patient
+          r.armL.rotation.x = -1.0; r.armL.rotation.z = -0.3 + Math.sin(t * 4) * 0.1;
+          r.body.rotation.x = -0.04;
         }
         break;
       }
