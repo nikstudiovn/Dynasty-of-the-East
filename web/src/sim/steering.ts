@@ -98,6 +98,7 @@ function settle(u: any): void {
   u._vx = 0; u._vy = 0; u._stk = 0; u._blk = 0; u._pinT = 0; u._best = undefined;
   u._settled = true;
   if (u.task === "move") u.task = "idle";
+  else if (u.task === "retreat") { u.task = "idle"; u.retreatDest = null; u.moveDest = null; }
 }
 
 /**
