@@ -11,6 +11,8 @@ import type { Scene3D } from "./scene3d";
 import {
   MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, shallowAt, rockiness, setWaterGrid, setFoundations, archLift, mat, Env3D, rainWetness, groundPadWeight
 } from "./common";
+import { createPbrMaterial } from "./pbrMaterials";
+import { bambooCulmGeometry, branchedTrunkGeometry, broadCanopyGeometry, chiselledRockGeometry, goldCrystalGeometry, pineCanopyGeometry, slateSlabGeometry } from "./nature3d";
 
 /** Terrain quad density: 3 per tile, 2 per tile on 96×96 to keep vertex count mobile-friendly. */
 const segFor = () => (MAP_N >= 96 ? MAP_N * 2 : MAP_N * 3);
@@ -59,7 +61,7 @@ class InstLayer {
   private readonly e = new THREE.Euler(0, 0, 0, "YXZ");
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
-  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64, private shadows = true, private windShape?: "stalk" | "leaf" | "rice" | "crown" | "grass") {
+  constructor(readonly group: THREE.Group, readonly geometry: THREE.BufferGeometry, readonly material: THREE.Material, private capacity = 64, private shadows = true, private windShape?: "stalk" | "leaf" | "rice" | "crown" | "canopy" | "grass") {
     if (windShape) applyWind(material, windShape);
     this.mesh = this.make(capacity);
     if (windShape && shadows) {
@@ -127,28 +129,6 @@ function strip(g: THREE.BufferGeometry): THREE.BufferGeometry {
   return c;
 }
 
-/** Slender segmented bamboo culm (height 1): 6 internodes, dark node rings with a pale band. */
-function bambooStalkGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const N = 6;
-  for (let k = 0; k < N; k++) {
-    const y0 = k / N, h = 1 / N;
-    const r0 = 0.034 - k * 0.003, r1 = 0.034 - (k + 1) * 0.003;
-    const seg = new THREE.CylinderGeometry(r1, r0, h * 0.94, 6, 1);
-    seg.translate(0, y0 + h * 0.47, 0);
-    parts.push(colorize(strip(seg), (_x, y) => {
-      const t = (y - y0) / h; // light at the base of each internode, deeper green toward the next node
-      return [0.5 - t * 0.14 + k * 0.01, 0.74 - t * 0.12, 0.3 - t * 0.08];
-    }));
-    const node = new THREE.CylinderGeometry(r1 * 1.25, r1 * 1.25, h * 0.07, 6, 1);
-    node.translate(0, y0 + h, 0);
-    parts.push(colorize(strip(node), (_x, y) => (y > y0 + h ? [0.78, 0.82, 0.52] : [0.2, 0.34, 0.12])));
-  }
-  const merged = mergeGeometries(parts, false)!;
-  parts.forEach(part => part.dispose());
-  return merged;
-}
-
 /** Airy drooping tuft of 7 lanceolate bamboo leaves radiating from a twig point. */
 function leafTuftGeometry(): THREE.BufferGeometry {
   const blades: THREE.BufferGeometry[] = [];
@@ -190,7 +170,7 @@ export function riceTuftGeometry(): THREE.BufferGeometry {
   return merged;
 }
 
-export const RICE_COLORS = ["#8fe08a", "#5cb83c", "#e2b23a"];
+export const RICE_COLORS = ["#7fb86a", "#4f8a36", "#c99a34"];
 export function paddyMaterial(dry = false): THREE.MeshStandardMaterial {
   return dry ? mat("#766347", { rough: 0.92, surface: "plaster" }) : mat("#5f7046", { rough: 0.22, metal: 0.15 });
 }
@@ -254,12 +234,13 @@ export class Terrain3D {
   private rice: InstLayer;
   private bunds: InstLayer;
   private paddy: InstLayer;
-  private rocks: InstLayer;
-  private angularRocks: InstLayer;
+  private boulders: InstLayer;
+  private slabs: InstLayer;
   private crystals: InstLayer;
   private moss: InstLayer;
-  private crowns: InstLayer;
-  private branches: InstLayer;
+  private trunks: InstLayer;
+  private canopies: InstLayer;
+  private pines: InstLayer;
   private grass: InstLayer;
   private flowers: InstLayer;
   private pebbles: InstLayer;
@@ -277,26 +258,24 @@ export class Terrain3D {
 
   constructor() {
     this.group.add(this.lake, this.bridges, this.res);
-    this.stalks = new InstLayer(this.res, bambooStalkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }), 600, true, "stalk");
-    this.leaves = new InstLayer(this.res, leafTuftGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), 1200, true, "leaf");
+    // Nature & resources share the PBR library; each layer owns a material instance for its wind hook.
+    this.stalks = new InstLayer(this.res, bambooCulmGeometry(), createPbrMaterial("mat_bamboo"), 600, true, "stalk");
+    this.leaves = new InstLayer(this.res, leafTuftGeometry(), createPbrMaterial("mat_foliage"), 1200, true, "leaf");
     this.rice = new InstLayer(this.res, riceTuftGeometry(), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), 600, false, "rice");
     const bundG = new THREE.BoxGeometry(1, 0.07, 0.09); bundG.translate(0, 0.035, 0);
     this.bunds = new InstLayer(this.res, bundG, mat("#6f5430", { rough: 0.95 }), 200);
     const paddyG = new THREE.BoxGeometry(0.9, 0.02, 0.9); paddyG.translate(0, 0.01, 0);
     this.paddy = new InstLayer(this.res, paddyG, paddyMaterial(), 60, false);
-    this.rocks = new InstLayer(this.res, new THREE.DodecahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true }), 160);
-    this.angularRocks = new InstLayer(this.res, new THREE.IcosahedronGeometry(0.22, 0),
-      new THREE.MeshStandardMaterial({ roughness: 0.84, flatShading: true }), 160);
-    const crysG = new THREE.OctahedronGeometry(0.08, 0); crysG.scale(1, 2.2, 1);
-    this.crystalMat = new THREE.MeshStandardMaterial({ color: 0xf5b830, metalness: 0.85, roughness: 0.22, emissive: 0x7a4200, emissiveIntensity: 0.6, flatShading: true });
-    this.crystals = new InstLayer(this.res, crysG, this.crystalMat, 200);
+    this.boulders = new InstLayer(this.res, chiselledRockGeometry(3), createPbrMaterial("mat_stone"), 240);
+    this.slabs = new InstLayer(this.res, slateSlabGeometry(), createPbrMaterial("mat_stone"), 160);
+    this.crystalMat = createPbrMaterial("mat_gold");
+    this.crystals = new InstLayer(this.res, goldCrystalGeometry(), this.crystalMat, 320);
     const mossG = new THREE.SphereGeometry(0.12, 7, 5); mossG.scale(1, 0.4, 1);
-    this.moss = new InstLayer(this.res, mossG, mat("#4f7a2c", { rough: 0.95 }), 120);
+    this.moss = new InstLayer(this.res, mossG, mat("#3d5229", { rough: 0.95 }), 120);
 
-    this.crowns = new InstLayer(this.res, new THREE.IcosahedronGeometry(0.24, 0),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.84, flatShading: true }), 60, true, "crown");
-    const branch = new THREE.CylinderGeometry(0.026, 0.053, 1, 6).translate(0, 0.5, 0);
-    this.branches = new InstLayer(this.res, branch, new THREE.MeshStandardMaterial({ color: "#75543c", roughness: 0.88 }), 30);
+    this.trunks = new InstLayer(this.res, branchedTrunkGeometry(), createPbrMaterial("mat_wood"), 160);
+    this.canopies = new InstLayer(this.res, broadCanopyGeometry(), createPbrMaterial("mat_foliage"), 120, true, "canopy");
+    this.pines = new InstLayer(this.res, pineCanopyGeometry(), createPbrMaterial("mat_foliage"), 200, true, "canopy");
     this.grass = new InstLayer(this.res, grassGeometry(),
       new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.93 }), 200, false, "grass");
     this.flowers = new InstLayer(this.res, new THREE.IcosahedronGeometry(0.085, 0),
@@ -692,138 +671,185 @@ export class Terrain3D {
   // -------------------------------------------------------------------------
   private rebuildResources(state: any): void {
     const grid = state.grid, fog = state.fog;
-    const stalks: Item[] = [], leaves: Item[] = [], rice: Item[] = [], bunds: Item[] = [], paddy: Item[] = [], rocks: Item[] = [], crys: Item[] = [], moss: Item[] = [];
-    const crowns: Item[] = [], branches: Item[] = [], crownColors: THREE.Color[] = [];
-    const angular: Item[] = [], angularColors: THREE.Color[] = [];
-    const grouped = new Set<number>();
     const seed = state.mapSeed || 0;
-    const rockCol: THREE.Color[] = [], riceCol: THREE.Color[] = [];
+    const stalks: Item[] = [], leaves: Item[] = [], rice: Item[] = [], bunds: Item[] = [], paddy: Item[] = [], riceCol: THREE.Color[] = [];
+    const trunks: Item[] = [], canopies: Item[] = [], canopyCol: THREE.Color[] = [], pines: Item[] = [], pineCol: THREE.Color[] = [];
+    const boulders: Item[] = [], boulderCol: THREE.Color[] = [], slabs: Item[] = [], slabCol: THREE.Color[] = [];
+    const crys: Item[] = [], moss: Item[] = [];
+    const grouped = new Set<number>();
     const RICE = RICE_COLORS.map(color => new THREE.Color(color));
+    // light multipliers over mat_foliage keep the canopy muted but avoid copy-paste uniformity
+    const LEAF_TINTS = ["#ffffff", "#e6eccd", "#f2e2bd", "#d3dfc8"].map(color => new THREE.Color(color));
+    const h = (wx: number, wz: number) => terrainHeight(wx, wz);
+    const visible = (x: number, y: number) => (fog[y]?.[x] ?? 0) > 0;
+    const item = (x: number, y: number, z: number, tx: number, ty: number, ry: number, sx: number, sy = sx, sz = sx, extra: Partial<Item> = {}): Item =>
+      ({ x, y, z, ry, sx, sy, sz, tx, ty, sway: 0, ...extra });
+
+    // --- trees: branched trunk (mat_wood) + multi-tier canopy (mat_foliage), one InstancedMesh each
+    const broadTree = (px: number, pz: number, tx: number, ty: number, s: number, sy: number, k: number) => {
+      const tree = item(px, h(px, pz) - 0.02, pz, tx, ty, k * TAU, s, sy, s, { sway: k * 6 });
+      trunks.push(tree);
+      canopies.push(tree);
+      canopyCol.push(LEAF_TINTS[Math.floor(k * 97) % LEAF_TINTS.length]);
+    };
+    const pineTree = (px: number, pz: number, tx: number, ty: number, s: number, k: number) => {
+      const tree = item(px, h(px, pz) - 0.02, pz, tx, ty, k * TAU, s * 0.5, s * 1.05, s * 0.5, { sway: k * 6 });
+      trunks.push(tree);
+      pines.push({ ...tree, sx: s, sz: s });
+      pineCol.push(LEAF_TINTS[Math.floor(k * 53) % LEAF_TINTS.length].clone().multiplyScalar(0.92));
+    };
+    const singleTree = (x: number, y: number, amt: number) => {
+      const k = hash2(x + 43 + seed % 101, y - 25);
+      const px = x + 0.5 + (k - 0.5) * 0.12, pz = y + 0.5 + (hash2(y, x) - 0.5) * 0.12;
+      const s = 0.7 * (0.88 + amt * 0.12);
+      broadTree(px, pz, x, y, s, s * (1.25 + k * 0.25), k);
+    };
+    const forest = (x: number, y: number, amt: number) => {
+      const n = hash2(x * 1.7, y * 2.3) > 0.45 ? 3 : 2;
+      const rot = hash2(x, y + seed % 13) * TAU;
+      for (let i = 0; i < n; i++) {
+        const a = rot + (i / n) * TAU, r = 0.2 + hash2(x + i, y) * 0.07;
+        const k = hash2(x * 3 + i, y * 5);
+        pineTree(x + 0.5 + Math.cos(a) * r, y + 0.5 + Math.sin(a) * r, x, y, (0.5 + k * 0.16) * (0.85 + amt * 0.15), k);
+      }
+    };
+    const ancientTree = (px: number, pz: number, x: number, y: number) => {
+      const k = hash2(x + 7, y + seed % 31);
+      broadTree(px, pz, x, y, 1.22, 1.75, k);
+      // banyan-like secondary stems with their own crowns + mossy root stones
+      for (let i = 0; i < 2; i++) {
+        const a = k * TAU + i * 2.6 + 0.8;
+        broadTree(px + Math.cos(a) * 0.5, pz + Math.sin(a) * 0.5, x, y, 0.72, 1.05, hash2(i + x, y));
+      }
+      for (let i = 0; i < 4; i++) {
+        const a = k * 5 + i * 1.57, rx = px + Math.cos(a) * 0.42, rz = pz + Math.sin(a) * 0.42;
+        boulders.push(item(rx, h(rx, rz) - 0.03, rz, x, y, a, 0.32, 0.22, 0.26));
+        boulderCol.push(new THREE.Color("#9c9078"));
+        moss.push(item(rx, h(rx, rz) + 0.07, rz, x, y, 0, 1.1, 0.6, 1));
+      }
+    };
+    const bambooClump = (x: number, y: number, amt: number) => {
+      // 4–6 slender culms leaning slightly outward, layered leaf tufts near the crown
+      const n = 4 + Math.floor(hash2(x * 1.3, y * 2.9) * 3);
+      const rot = hash2(x, y) * TAU;
+      for (let k = 0; k < n; k++) {
+        const a = rot + (k / n) * TAU + (hash2(x + k, y) - 0.5) * 0.6;
+        const r = 0.06 + hash2(x + k * 3, y + 1) * 0.16;
+        const px = x + 0.5 + Math.cos(a) * r, pz = y + 0.5 + Math.sin(a) * r;
+        const ht = (1.25 + hash2(x * 2 + k, y * 3) * 0.75) * (0.7 + amt * 0.3);
+        const tl = 0.05 + hash2(x * 7 + k, y) * 0.13;
+        const ry = Math.PI / 2 - a; // leans along (cos a, sin a)
+        const base = h(px, pz);
+        const sway = k + hash2(x, y * 5) * 6;
+        stalks.push({ x: px, y: base, z: pz, ry, tl, sx: 1, sy: ht, sz: 1, tx: x, ty: y, sway });
+        for (const [f, s] of [[0.72, 1.05], [0.88, 0.95], [1.0, 0.75]]) {
+          if (f === 0.72 && k % 2) continue;
+          const L = ht * f, off = Math.sin(tl) * L;
+          leaves.push({ x: px + Math.cos(a) * off, y: base + Math.cos(tl) * L, z: pz + Math.sin(a) * off, ry: hash2(k, x + f) * TAU, sx: s, sy: s, sz: s, tx: x, ty: y, sway, lift: L });
+        }
+      }
+    };
+
+    // --- mines: bevelled dark rock studded with low-roughness gold crystals, or layered slate outcrops
+    const mine = (cx: number, cz: number, x: number, y: number, gold: boolean, big: boolean, amt: number) => {
+      const n = big ? 7 : 3, spread = big ? 0.6 : 0.2;
+      const rot = hash2(x + seed % 57, y) * TAU;
+      for (let i = 0; i < n; i++) {
+        const a = rot + i * 2.399, r = i === 0 ? 0 : spread * (0.55 + hash2(x + i, y) * 0.45);
+        const px = cx + Math.cos(a) * r, pz = cz + Math.sin(a) * r;
+        const s = (big ? (i === 0 ? 1.05 : 0.6) : (i === 0 ? 0.56 : 0.34)) * (0.85 + hash2(x * 3 + i, y) * 0.3) * amt;
+        const base = h(px, pz) - 0.03 * s;
+        if (gold) {
+          boulders.push(item(px, base, pz, x, y, a, s, s * 1.1, s * 0.9));
+          boulderCol.push(new THREE.Color("#5b534b").multiplyScalar(0.85 + hash2(x, y + i) * 0.3));
+          const spikes = (big ? 3 : 2) + (i === 0 ? 2 : 0);
+          for (let j = 0; j < spikes; j++) {
+            const ca = a + j * 2.2 + 0.4, cr = s * (0.08 + 0.12 * hash2(j, i + x));
+            const cs = s * (1.5 + hash2(i + j, y) * 0.9);
+            crys.push(item(px + Math.cos(ca) * cr, base + s * 0.36, pz + Math.sin(ca) * cr, x, y, ca, cs, cs * (0.9 + hash2(x + j, y + i) * 0.6), cs, { tl: 0.18 + hash2(j, x + i) * 0.5 }));
+          }
+        } else if (i % 3 !== 2) {
+          slabs.push(item(px, base, pz, x, y, a, s * 0.95, s * 0.8, s * 0.95));
+          slabs.push(item(px + 0.02 * s, base + s * 0.25, pz - 0.02 * s, x, y, a + 0.45, s * 0.72, s * 0.65, s * 0.7));
+          for (let j = 0; j < 2; j++) slabCol.push(new THREE.Color("#e4e4e0").multiplyScalar(0.86 + hash2(i + j, x) * 0.24));
+          moss.push(item(px - 0.03 * s, base + s * 0.46, pz, x, y, a, s * 1.4, s, s * 1.2));
+        } else {
+          boulders.push(item(px, base, pz, x, y, a, s * 0.9, s, s * 0.85));
+          boulderCol.push(new THREE.Color("#d6d5d0").multiplyScalar(0.88 + hash2(x, i) * 0.2));
+        }
+      }
+      if (gold && !big) for (let j = 0; j < 2; j++) {
+        // loose nuggets on the ground make small seams readable from far away
+        const a = rot + 1.2 + j * 2.6, px = cx + Math.cos(a) * 0.3, pz = cz + Math.sin(a) * 0.3;
+        crys.push(item(px, h(px, pz) - 0.01, pz, x, y, a, 0.7 * amt, 0.6 * amt, 0.7 * amt, { tl: 0.5 }));
+      }
+    };
+
+    // --- rice patch: earthen bunds, wet floor and tufts that grow through 3 stages (1×1 or merged 2×2)
+    const ricePatch = (x: number, y: number, n: number, ratio: number) => {
+      const stage = ratio > 0.66 ? 2 : ratio > 0.33 ? 1 : 0;
+      const base = h(x + n / 2, y + n / 2);
+      paddy.push(item(x + n / 2, base + 0.005, y + n / 2, x, y, 0, n * 1.04, 1, n * 1.04));
+      for (let i = 0; i < n; i++) {
+        for (const edge of [0.05, n - 0.05]) {
+          bunds.push(item(x + i + 0.5, h(x + i + 0.5, y + edge) - 0.01, y + edge, x, y, 0, 1));
+          bunds.push(item(x + edge, h(x + edge, y + i + 0.5) - 0.01, y + i + 0.5, x, y, Math.PI / 2, 1));
+        }
+        const mid = n === 2 ? 1 : 0.5;
+        bunds.push(item(x + i + 0.5, h(x + i + 0.5, y + mid) - 0.015, y + mid, x, y, 0, 0.98, 0.8, 0.8));
+        if (n === 2) bunds.push(item(x + 1, h(x + 1, y + i + 0.5) - 0.015, y + i + 0.5, x, y, Math.PI / 2, 0.98, 0.8, 0.8));
+      }
+      const H = [0.13, 0.25, 0.38][stage];
+      for (let cy = 0; cy < n; cy++) for (let cx = 0; cx < n; cx++) {
+        const ox = x + cx, oy = y + cy;
+        for (let row = 0; row < 4; row++) for (let k = 0; k < 4; k++) {
+          const px = ox + 0.17 + k * 0.22 + (hash2(k, row + oy) - 0.5) * 0.04;
+          const pz = oy + 0.16 + row * 0.2 + (row >= 2 ? 0.08 : 0);
+          rice.push({ x: px, y: base + 0.015, z: pz, ry: hash2(ox + k, row) * TAU, sx: 1, sy: H * (0.85 + hash2(ox + k, oy + row) * 0.3), sz: 1, tx: ox, ty: oy, sway: k + row * 1.7 });
+          riceCol.push(RICE[stage].clone().multiplyScalar(0.9 + hash2(k + ox, row) * 0.2));
+        }
+      }
+    };
+
     for (let y = 0; y < MAP_N; y++) for (let x = 0; x < MAP_N; x++) {
       const c = grid[y][x];
-      if (!c.res || (fog[y]?.[x] ?? 0) === 0) continue;
-      const h = (wx: number, wz: number) => terrainHeight(wx, wz);
+      if (!c.res || !visible(x, y) || grouped.has(y * MAP_N + x)) continue;
       const amt = Math.max(0.55, Math.min(1, (c.resAmt || 200) / 260));
-      if (grouped.has(y * MAP_N + x)) continue;
-      const clusterable = c.res === "wood" || c.res === "gold" || c.res === "stone";
-      const clusterSeed = hash2(x + seed % 97, y + 17);
-      const large = clusterable && (c.resourceSize === 2 || clusterSeed > (c.res === "wood" ? 0.78 : 0.69)) &&
-        [[1, 0], [0, 1], [1, 1]].every(([dx, dy]) =>
-          grid[y + dy]?.[x + dx]?.res === c.res && (fog[y + dy]?.[x + dx] ?? 0) > 0 && !grouped.has((y + dy) * MAP_N + x + dx));
-      if (large) {
-        grouped.add(y * MAP_N + x + 1); grouped.add((y + 1) * MAP_N + x); grouped.add((y + 1) * MAP_N + x + 1);
-        const px = x + 1, pz = y + 1, base = h(px, pz);
-        const item = { x: px, y: base, z: pz, ry: clusterSeed * TAU, sx: 1, sy: 1, sz: 1, tx: x, ty: y, sway: 0 };
-        if (c.res === "wood") {
-          branches.push({ ...item, sx: 4.2, sy: 2.65, sz: 4.2 });
-          for (let i = 0; i < 8; i++) {
-            const a = i * 2.399;
-            const dx = Math.cos(a), dz = Math.sin(a);
-            crowns.push({ ...item, x: px + dx * 0.60, z: pz + dz * 0.60, y: base + 1.75 + i * 0.12, sx: 2.9, sy: 1.8, sz: 2.9 });
-            crownColors.push(new THREE.Color(i % 2 ? "#50723d" : "#315133"));
-            angular.push({ ...item, x: px + dx * 0.32, z: pz + dz * 0.32, y: base + 0.04, ry: -a, sx: 2.2, sy: 0.3, sz: 0.42 });
-            angularColors.push(new THREE.Color("#6d5438"));
-          }
-        } else {
-          const isGold = c.res === "gold";
-          for (let i = 0; i < 8; i++) {
-            const a = i * 2.399 + item.ry, radius = 0.37 + hash2(i, y) * 0.44;
-            const rx = px + Math.cos(a) * radius, rz = pz + Math.sin(a) * radius;
-            const value = 1.06 + hash2(x, i + y) * 1.34;
-            angular.push({ ...item, x: rx, y: h(rx, rz) + 0.11, z: rz, ry: a, sx: value, sy: value * 0.71, sz: value * 0.91 });
-            angularColors.push(new THREE.Color(isGold ? "#675748" : "#8e9394").multiplyScalar(0.83 + hash2(i, x) * 0.31));
-            if (isGold) for (let j = 0; j < 3; j++) crys.push({ ...item, x: rx + j * 0.12, y: h(rx, rz) + 0.19 + j * 0.056, z: rz - j * 0.05, ry: a + j, tl: 0.24 + j * 0.17, sx: 1.28, sy: 1.25 + j * 0.21, sz: 1.12 });
-            else moss.push({ ...item, x: rx - 0.07, y: h(rx, rz) + 0.26, z: rz, sx: 1.38, sy: 0.77, sz: 1.3 });
-          }
-        }
-        continue;
-      }
+      const variant: string | undefined = c.resVariant;
+      const footprint2 = (cell: any) => cell?.resFootprint === 2 || cell?.resourceSize === 2;
+      const legacyBig = variant === undefined && c.res !== "food" && hash2(x + seed % 97, y + 17) > (c.res === "wood" ? 0.78 : 0.69);
+      const wantsBig = footprint2(c) || legacyBig || c.res === "food";
+      const large = wantsBig && [[1, 0], [0, 1], [1, 1]].every(([dx, dy]) => {
+        const o = grid[y + dy]?.[x + dx];
+        return o?.res === c.res && visible(x + dx, y + dy) && !grouped.has((y + dy) * MAP_N + x + dx) && (!footprint2(c) || footprint2(o));
+      });
+      if (large) { grouped.add(y * MAP_N + x + 1); grouped.add((y + 1) * MAP_N + x); grouped.add((y + 1) * MAP_N + x + 1); }
       if (c.res === "wood") {
-        const treeSeed = hash2(x + 43 + seed % 101, y - 25);
-        if (treeSeed > 0.48) {
-          const seed = treeSeed;
-          const px = x + 0.5, pz = y + 0.5, base = h(px, pz);
-          const peach = seed > 0.86;
-          const grove = seed < 0.69;
-          const tree = { x: px, y: base, z: pz, ry: seed * TAU, sx: 1, sy: 1.4, sz: 1, tx: x, ty: y, sway: seed };
-          branches.push(tree);
-          if (grove) for (const side of [-1, 1]) {
-            branches.push({ ...tree, x: px + side * 0.28, z: pz - 0.11, sy: 0.82 });
-            crowns.push({ ...tree, x: px + side * 0.28, y: base + 0.68, z: pz - 0.11, sx: 1.2, sy: 0.92, sz: 1 });
-            crownColors.push(new THREE.Color("#50703f"));
-          }
-          for (let b = 0; b < 4; b++) {
-            const angle = b * 2.4;
-            const offset = peach ? 0.23 : 0.30 - b * 0.055;
-            crowns.push({ ...tree, x: px + offset * Math.cos(angle), y: base + 0.72 + 0.21 * b,
-              z: pz + offset * Math.sin(angle), sx: 1.65 - b * 0.17, sy: peach ? 1 : 0.63, sz: 1.4 - b * 0.12 });
-            crownColors.push(new THREE.Color(peach ? (b % 2 ? "#eba7b0" : "#bc6d89") : (b % 2 ? "#416b4c" : "#235344")));
-          }
-          continue;
-        }
-        // bamboo clump: 4–6 slender culms leaning slightly outward, layered leaf tufts near the crown
-        const n = 4 + Math.floor(hash2(x * 1.3, y * 2.9) * 3);
-        const rot = hash2(x, y) * TAU;
-        for (let k = 0; k < n; k++) {
-          const a = rot + (k / n) * TAU + (hash2(x + k, y) - 0.5) * 0.6;
-          const r = 0.06 + hash2(x + k * 3, y + 1) * 0.16;
-          const px = x + 0.5 + Math.cos(a) * r, pz = y + 0.5 + Math.sin(a) * r;
-          const ht = (1.25 + hash2(x * 2 + k, y * 3) * 0.75) * (0.7 + amt * 0.3);
-          const tl = 0.05 + hash2(x * 7 + k, y) * 0.13;
-          const ry = Math.PI / 2 - a; // leans along (cos a, sin a)
-          const base = h(px, pz);
-          const sway = k + hash2(x, y * 5) * 6;
-          stalks.push({ x: px, y: base, z: pz, ry, tl, sx: 1, sy: ht, sz: 1, tx: x, ty: y, sway });
-          for (const [f, s] of [[0.72, 1.05], [0.88, 0.95], [1.0, 0.75]]) {
-            if (f === 0.72 && k % 2) continue;
-            const L = ht * f, off = Math.sin(tl) * L;
-            leaves.push({ x: px + Math.cos(a) * off, y: base + Math.cos(tl) * L, z: pz + Math.sin(a) * off, ry: hash2(k, x + f) * TAU, sx: s, sy: s, sz: s, tx: x, ty: y, sway, lift: L });
-          }
+        if (large) ancientTree(x + 1, y + 1, x, y);
+        else if (variant === "single_tree") singleTree(x, y, amt);
+        else if (variant === "forest") forest(x, y, amt);
+        else if (variant === "bamboo") bambooClump(x, y, amt);
+        else {
+          const treeSeed = hash2(x + 43 + seed % 101, y - 25);
+          if (treeSeed <= 0.48) bambooClump(x, y, amt);
+          else if (treeSeed < 0.69) forest(x, y, amt);
+          else singleTree(x, y, amt);
         }
       } else if (c.res === "food") {
-        // terraced rice paddy: earthen bunds, wet floor and rice tufts that grow through 3 stages
         const ratio = clamp((c.resAmt || 0) / 240, 0, 1);
-        const stage = ratio > 0.66 ? 2 : ratio > 0.33 ? 1 : 0;
-        const base = h(x + 0.5, y + 0.5);
-        paddy.push({ x: x + 0.5, y: base + 0.005, z: y + 0.5, ry: 0, sx: 1, sy: 1, sz: 1, tx: x, ty: y, sway: 0 });
-        for (const [bx, bz, ry] of [[0.5, 0.05, 0], [0.5, 0.95, 0], [0.05, 0.5, Math.PI / 2], [0.95, 0.5, Math.PI / 2], [0.5, 0.5, 0]]) {
-          bunds.push({ x: x + bx, y: h(x + bx, y + bz) - 0.01, z: y + bz, ry, sx: ry ? 0.98 : 0.98, sy: 1, sz: 1, tx: x, ty: y, sway: 0 });
-        }
-        const H = [0.13, 0.25, 0.38][stage];
-        for (let row = 0; row < 4; row++) for (let k = 0; k < 4; k++) {
-          const px = x + 0.17 + k * 0.22 + (hash2(k, row + y) - 0.5) * 0.04;
-          const pz = y + 0.16 + row * 0.2 + (row >= 2 ? 0.08 : 0);
-          rice.push({ x: px, y: base + 0.015, z: pz, ry: hash2(x + k, row) * TAU, sx: 1, sy: H * (0.85 + hash2(x + k, y + row) * 0.3), sz: 1, tx: x, ty: y, sway: k + row * 1.7 });
-          riceCol.push(RICE[stage].clone().multiplyScalar(0.9 + hash2(k + x, row) * 0.2));
-        }
-      } else {
-        const gold = c.res === "gold";
-        for (let k = 0; k < 3; k++) {
-          const px = x + 0.3 + hash2(x + k, y * 2) * 0.4, pz = y + 0.3 + hash2(x * 2, y + k) * 0.4;
-          const s = (k === 0 ? 1.55 : 1) * (0.85 + hash2(x + k * 3, y) * 0.4) * amt;
-          const rockShape = hash2(x + k + seed % 57, y) > 0.48;
-          (rockShape ? angular : rocks).push({ x: px, y: h(px, pz) + 0.08 * s, z: pz, ry: hash2(k, x) * 6, sx: s, sy: s * 0.8, sz: s, tx: x, ty: y, sway: 0 });
-          (rockShape ? angularColors : rockCol).push(new THREE.Color(gold ? "#4d4740" : "#8d949c").multiplyScalar(0.85 + hash2(x, y + k) * 0.3));
-          if (!gold) {
-            // moss cushions on top of the boulder
-            moss.push({ x: px + 0.02, y: h(px, pz) + 0.08 * s + 0.13 * s, z: pz - 0.02, ry: 0, sx: s * 0.9, sy: s, sz: s * 0.9, tx: x, ty: y, sway: 0 });
-          }
-        }
-        if (gold) {
-          // bright metallic veins bursting out of the dark rock
-          for (let k = 0; k < 7; k++) {
-            const a = k * 0.9 + hash2(x, y) * 2, r = 0.08 + hash2(k, y) * 0.22;
-            const px = x + 0.5 + Math.cos(a) * r, pz = y + 0.5 + Math.sin(a) * r;
-            crys.push({ x: px, y: h(px, pz) + 0.12 + (k < 3 ? 0.1 : 0), z: pz, ry: a, tl: 0.25 + hash2(k, x) * 0.45, sx: amt, sy: amt * (0.7 + hash2(x + k, y) * 0.7), sz: amt, tx: x, ty: y, sway: 0 });
-          }
-        }
+        ricePatch(x, y, large ? 2 : 1, ratio);
+      } else if (c.res === "gold" || c.res === "stone") {
+        if (large) mine(x + 1, y + 1, x, y, c.res === "gold", true, 1);
+        else mine(x + 0.5, y + 0.5, x, y, c.res === "gold", false, amt);
       }
     }
-    this.crowns.set(crowns, crownColors);
-    this.branches.set(branches);
+    this.trunks.set(trunks);
+    this.canopies.set(canopies, canopyCol);
+    this.pines.set(pines, pineCol);
     this.stalks.set(stalks); this.leaves.set(leaves); this.rice.set(rice, riceCol); this.bunds.set(bunds); this.paddy.set(paddy);
-    this.angularRocks.set(angular, angularColors);
-    this.rocks.set(rocks, rockCol); this.crystals.set(crys); this.moss.set(moss);
+    this.boulders.set(boulders, boulderCol);
+    this.slabs.set(slabs, slabCol);
+    this.crystals.set(crys); this.moss.set(moss);
   }
 
   private resourceSignature(state: any): number {
@@ -848,7 +874,7 @@ export class Terrain3D {
     for (const g of this.koiGeos) g.dispose();
     this.koiGeos = []; this.koi = [];
     this.bridges.traverse(o => { if ((o as THREE.Mesh).geometry && o !== this.bridges) (o as THREE.Mesh).geometry.dispose(); });
-    for (const l of [this.stalks, this.leaves, this.rice, this.rocks, this.angularRocks, this.crystals, this.crowns, this.branches, this.grass, this.flowers, this.pebbles]) l.dispose(true);
+    for (const l of [this.stalks, this.leaves, this.rice, this.boulders, this.slabs, this.crystals, this.trunks, this.canopies, this.pines, this.grass, this.flowers, this.pebbles]) l.dispose(true);
     for (const l of [this.bunds, this.paddy, this.moss]) l.dispose(false); // cached materials
     this.footprint.geometry.dispose(); (this.footprint.material as THREE.Material).dispose();
     this.footEdges.geometry.dispose(); (this.footEdges.material as THREE.Material).dispose();
@@ -899,7 +925,7 @@ export class Terrain3D {
       if (shake) chopWind.value[shakeCount++].set(tile.tx + 0.5, tile.ty + 0.5, Math.abs(shake));
     }
     while (shakeCount < chopWind.value.length) chopWind.value[shakeCount++].set(0, 0, 0);
-    this.crystalMat.emissiveIntensity = 0.45 + Math.max(0, Math.sin(t * 1.7)) * 0.5;
+    this.crystalMat.emissiveIntensity = 0.32 + Math.max(0, Math.sin(t * 1.7)) * 0.38;
     const { weather, quality } = scene;
     this.waterSurface?.update(t, quality === "low" ? 1 : 2, weather.rain);
     if (this.pads) this.pads.animate(it => Math.sin(t * 1.3 + it.sway) * 0.03);
