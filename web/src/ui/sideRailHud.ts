@@ -6,7 +6,7 @@ const LEGACY_COLLAPSED = "pixel_dynasty_rails_collapsed";
 const LS_LEFT_HANDED = "dote_left_handed";
 const LEGACY_LEFT_HANDED = "pixel_dynasty_left_handed";
 
-type BuildTab = "eco" | "mil" | "def";
+type BuildTab = "eco" | "mil" | "special";
 
 interface GlobalBtnSpec {
   id: string;
@@ -54,23 +54,21 @@ function writePref(key: string, val: boolean): void {
   }
 }
 
-function classifyBuildTab(label: string): BuildTab {
-  const t = label.toLowerCase();
-  if (t.includes("chòi") || t.includes("tường") || t.includes("cổng") || t.includes("choi") || t.includes("tuong") || t.includes("cong thanh")) {
-    return "def";
-  }
-  if (
-    t.includes("trại lính") || t.includes("trại cung") || t.includes("lò rèn") ||
-    t.includes("chuồng") || t.includes("công xưởng") || t.includes("hoàng thành")
-  ) {
-    return "mil";
-  }
+const SPECIAL_BUILDINGS = new Set(["dock", "temple"]);
+const MILITARY_BUILDINGS = new Set([
+  "barracks", "archery_range", "watch_tower", "wall", "gate", "blacksmith",
+  "stable", "siege_workshop", "imperial_citadel",
+]);
+
+function classifyBuildTab(type: string): BuildTab {
+  if (SPECIAL_BUILDINGS.has(type)) return "special";
+  if (MILITARY_BUILDINGS.has(type)) return "mil";
   return "eco";
 }
 
 function detectContextMode(buttons: HTMLButtonElement[]): "build" | "train" | "army" {
   const labels = buttons.map((b) => (b.textContent || "").toLowerCase());
-  if (labels.some((l) => l.startsWith("xây ") || l.includes("nhà ở") || l.includes("ruộng") || l.includes("trại lính"))) {
+  if (buttons.some(button => button.dataset.buildType)) {
     return "build";
   }
   if (
@@ -196,7 +194,7 @@ export function initSideRailHud(): void {
   const tabDefs: { id: BuildTab; label: string; icon: SideRailIconKey }[] = [
     { id: "eco", label: "Kinh tế", icon: "tab_eco" },
     { id: "mil", label: "Quân sự", icon: "tab_mil" },
-    { id: "def", label: "Phòng thủ", icon: "tab_def" },
+    { id: "special", label: "Đặc biệt", icon: "temple" },
   ];
   const tabButtons: Record<BuildTab, HTMLButtonElement> = {} as Record<BuildTab, HTMLButtonElement>;
 
@@ -277,7 +275,7 @@ export function initSideRailHud(): void {
     drawerTabs.style.display = mode === "build" ? "flex" : "none";
     if (mode === "build") {
       drawerTitle.textContent = "Xây Dựng";
-      drawerBtn.innerHTML = `${getIconSvg(activeTab === "eco" ? "tab_eco" : activeTab === "mil" ? "tab_mil" : "tab_def", 24)}<span class="dote-btn-lbl">Xây</span>`;
+      drawerBtn.innerHTML = `${getIconSvg(tabDefs.find(tab => tab.id === activeTab)!.icon, 24)}<span class="dote-btn-lbl">Xây</span>`;
     } else if (mode === "train") {
       drawerTitle.textContent = "Huấn Luyện & Lên Đời";
       drawerBtn.innerHTML = `${getIconSvg("train", 24)}<span class="dote-btn-lbl">Luyện</span>`;
@@ -292,9 +290,8 @@ export function initSideRailHud(): void {
 
     for (const btn of btns) {
       if (mode === "build") {
-        const label = btn.dataset.doteLabel || btn.textContent || "";
-        const cat = classifyBuildTab(label);
-        btn.classList.toggle("dote-hidden-by-tab", cat !== activeTab);
+        const type = btn.dataset.buildType;
+        btn.classList.toggle("dote-hidden-by-tab", Boolean(type && classifyBuildTab(type) !== activeTab));
       } else {
         btn.classList.remove("dote-hidden-by-tab");
       }
