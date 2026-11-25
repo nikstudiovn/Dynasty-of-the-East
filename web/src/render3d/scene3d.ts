@@ -1,16 +1,18 @@
-// Pixel Dynasty 3D — WebGL2 renderer, golden-hour lighting and the 45° perspective RTS camera.
+// Pixel Dynasty 3D — WebGL2 renderer, cinematic lighting and the 45° perspective RTS camera.
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { setSurfaceDetail } from "./surfaces";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { MAP_N, isoToTile, tileToIso, clamp, rainWetness, updateLanternMaterials } from "./common";
+import { TerrainPbr } from "./terrainPbr";
 import { wind } from "./wind3d";
 import { Weather3D, type AtmosphereMode } from "./weather3d";
 
-const HAZE = 0xcbb998;
-const SUN_OFFSET = new THREE.Vector3(-15, 19, -3);
+const HAZE = 0x6e7d87;
+const SUN_OFFSET = new THREE.Vector3(-27, 14, -8);
 const SHADOW_R = 28;
 
 /** Gradient sky dome: warm pale horizon haze -> soft jade-blue zenith, with a golden glow toward the sun. */
@@ -68,6 +70,7 @@ export class Scene3D {
   readonly camera: THREE.PerspectiveCamera;
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
+  readonly terrainPbr = new TerrainPbr();
   readonly weather = new Weather3D();
   readonly sky: ReturnType<typeof makeSky>;
   private readonly environment: THREE.WebGLRenderTarget;
@@ -83,6 +86,9 @@ export class Scene3D {
   height = 1;
   private readonly ray = new THREE.Raycaster();
   private composer: EffectComposer | null = null;
+  private bloomComposer: EffectComposer | null = null;
+  private bloomMix: ShaderPass | null = null;
+  private readonly bloomOccluder = new THREE.MeshBasicMaterial({ color: 0, fog: false, toneMapped: false, side: THREE.DoubleSide });
   private bloomPass: UnrealBloomPass | null = null;
   private outputPass: OutputPass | null = null;
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -93,14 +99,14 @@ export class Scene3D {
   constructor(readonly canvas: HTMLCanvasElement) {
     const r = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.12;
+    r.toneMappingExposure = 0.98;
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.setClearColor(HAZE, 1);
     this.renderer = r;
 
-    // Golden misty haze: distant ridges dissolve into the sky instead of a black void.
+    // Distant ridges dissolve into the same haze as the sky horizon.
     this.scene.background = new THREE.Color(HAZE);
-    this.scene.fog = new THREE.FogExp2(HAZE, 0.0085);
+    this.scene.fog = new THREE.FogExp2(HAZE, 0.0105);
     this.sky = makeSky();
     this.scene.add(this.sky);
     const capture = new THREE.Scene();
@@ -120,11 +126,11 @@ export class Scene3D {
     this.camera = new THREE.PerspectiveCamera(36, 1, 0.3, 320);
     this.probe = new THREE.PerspectiveCamera(36, 1, 0.01, 50);
 
-    // Warm sky + lush ground bounce keeps shadowed faces rich and readable.
-    this.hemi = new THREE.HemisphereLight(0xffe8c2, 0x2e4a22, 0.95);
+    // Cool skylight and a muted ground bounce keep shadowed faces readable.
+    this.hemi = new THREE.HemisphereLight(0x9eafc7, 0x777269, 1.25);
     this.scene.add(this.hemi);
 
-    // Golden-hour sun from the top-left of the screen. On 48×48 the 2048² shadow frustum follows the
+    // Low key light casts long shadows. The shadow frustum follows the
     // camera target (snapped to a texel grid so shadows never shimmer while panning).
     const sun = new THREE.DirectionalLight(0xffc98a, 2.6);
     sun.position.copy(this.target).add(SUN_OFFSET);
@@ -162,7 +168,7 @@ export class Scene3D {
     this.quality = preset === "auto" ? autoQuality() : preset;
     setSurfaceDetail(this.quality === "high");
     const { shadow, particles } = QUALITY[this.quality];
-    const type = this.quality === "high" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    const type = THREE.PCFSoftShadowMap;
     if (this.renderer.shadowMap.type !== type || this.sun.shadow.mapSize.x !== shadow) {
       this.sun.shadow.map?.dispose();
       this.sun.shadow.map = null;
@@ -183,21 +189,33 @@ export class Scene3D {
       if (!this.composer) {
         const composer = new EffectComposer(this.renderer);
         composer.addPass(new RenderPass(this.scene, this.camera));
-        const bloom = new UnrealBloomPass(
-          new THREE.Vector2(this.width, this.height),
-          0.34,
-          0.36,
-          0.95,
-        );
-        composer.addPass(bloom);
+        const bloomComposer = new EffectComposer(this.renderer);
+        bloomComposer.renderToScreen = false;
+        bloomComposer.addPass(new RenderPass(this.scene, this.camera, undefined, new THREE.Color(0), 1));
+        const bloom = new UnrealBloomPass(new THREE.Vector2(this.width, this.height), 0.28, 0.36, 0.75);
+        bloomComposer.addPass(bloom);
+        const mix = new ShaderPass({
+          uniforms: { tDiffuse: { value: null }, bloomTexture: { value: null } },
+          vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+          fragmentShader: `varying vec2 vUv; uniform sampler2D tDiffuse, bloomTexture;
+            void main() {
+              vec4 base = texture2D(tDiffuse, vUv);
+              gl_FragColor = vec4(base.rgb + texture2D(bloomTexture, vUv).rgb, base.a);
+            }`
+        });
+        mix.uniforms.bloomTexture.value = bloom.renderTargetsHorizontal[0].texture;
+        composer.addPass(mix);
         this.outputPass = new OutputPass();
         composer.addPass(this.outputPass);
         this.composer = composer;
+        this.bloomComposer = bloomComposer;
+        this.bloomMix = mix;
         this.bloomPass = bloom;
       }
       this.composer.setPixelRatio(this.pixelRatio);
       this.composer.setSize(this.width, this.height);
-      this.bloomPass?.resolution.set(this.width, this.height);
+      this.bloomComposer?.setPixelRatio(1);
+      this.bloomComposer?.setSize(Math.ceil(this.width / 2), Math.ceil(this.height / 2));
     } else {
       this.disposeComposer();
     }
@@ -205,6 +223,10 @@ export class Scene3D {
 
   private disposeComposer(): void {
     this.bloomPass?.dispose();
+    this.bloomMix?.dispose();
+    this.bloomComposer?.dispose();
+    this.bloomMix = null;
+    this.bloomComposer = null;
     this.outputPass?.dispose();
     this.composer?.dispose();
     this.composer = null;
@@ -223,7 +245,8 @@ export class Scene3D {
     if (this.composer) {
       this.composer.setPixelRatio(this.pixelRatio);
       this.composer.setSize(this.width, this.height);
-      this.bloomPass?.resolution.set(this.width, this.height);
+      this.bloomComposer?.setPixelRatio(1);
+      this.bloomComposer?.setSize(Math.ceil(this.width / 2), Math.ceil(this.height / 2));
     }
   }
 
@@ -273,11 +296,7 @@ export class Scene3D {
     wind.uWindStrength.value = this.quality === "low" ? 0 : 0.085 + 0.11 * this.weather.rain;
     rainWetness.value = this.weather.rain;
     updateLanternMaterials(this.weather.lanternBoost);
-    const lb = clamp(this.weather.lanternBoost, 0, 1);
-    this.scene.environmentIntensity =
-      lb <= 0.65
-        ? THREE.MathUtils.lerp(1.0, 0.7, lb / 0.65)
-        : THREE.MathUtils.lerp(0.7, 0.32, (lb - 0.65) / 0.35);
+
   }
 
   private setNdc(clientX: number, clientY: number): void {
@@ -339,13 +358,53 @@ export class Scene3D {
     this.sun.shadow.dispose();
     this.scene.environment = null;
     this.environment.dispose();
+    this.terrainPbr.dispose();
     this.scene.clear();
     this.disposeComposer();
+    this.bloomOccluder.dispose();
     this.renderer.dispose();
   }
 
+  private renderBloom(): void {
+    if (!this.bloomComposer) return;
+    const masked = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    const hidden: THREE.Object3D[] = [];
+    const glowing = (material: THREE.Material) => {
+      const standard = material as THREE.MeshStandardMaterial;
+      return material.blending === THREE.AdditiveBlending ||
+        (standard.isMeshStandardMaterial && standard.emissiveIntensity > 0.95 && standard.emissive.getHex() !== 0);
+    };
+    const background = this.scene.background;
+    const shadowAutoUpdate = this.renderer.shadowMap.autoUpdate;
+    this.scene.background = null;
+    this.renderer.shadowMap.autoUpdate = false;
+    try {
+      this.scene.traverseVisible(object => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.material || mesh.userData.occludesBloom) return;
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        if (materials.some(glowing)) return;
+        if (!mesh.isMesh || materials.every(material => material.transparent)) {
+          object.visible = false;
+          hidden.push(object);
+        } else {
+          masked.set(mesh, mesh.material);
+          mesh.material = Array.isArray(mesh.material) ? materials.map(() => this.bloomOccluder) : this.bloomOccluder;
+        }
+      });
+      this.bloomComposer.render();
+    } finally {
+      this.scene.background = background;
+      this.renderer.shadowMap.autoUpdate = shadowAutoUpdate;
+      for (const object of hidden) object.visible = true;
+      for (const [mesh, material] of masked) mesh.material = material;
+    }
+  }
+
   render(): void {
-    if (this.composer) this.composer.render();
-    else this.renderer.render(this.scene, this.camera);
+    if (this.composer) {
+      this.renderBloom();
+      this.composer.render();
+    } else this.renderer.render(this.scene, this.camera);
   }
 }

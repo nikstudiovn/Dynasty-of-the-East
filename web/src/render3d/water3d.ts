@@ -1,105 +1,106 @@
 import * as THREE from "three";
 
+function waveNormals(): THREE.DataTexture {
+  const size = 128;
+  const pixels = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const u = x / size * Math.PI * 2, v = y / size * Math.PI * 2;
+    const wave = Math.cos(3 * u + 2 * v + Math.sin(v) * 0.8);
+    const crossing = Math.cos(-2 * u + 5 * v);
+    const dx = wave * 0.16 - crossing * 0.078, dy = wave * 0.12 + crossing * 0.14;
+    const k = 1 / Math.hypot(dx, dy, 1);
+    const i = (y * size + x) * 4;
+    pixels.set([(0.5 + dx * k * 0.5) * 255, (0.5 + dy * k * 0.5) * 255, (0.5 + k * 0.5) * 255, 255], i);
+  }
+  const texture = new THREE.DataTexture(pixels, size, size);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 export class WaterSurface {
+  private readonly normalMap = waveNormals();
   private readonly uniforms = {
-    ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
-    uTime: { value: 0 },
-    uDetail: { value: 1 },
-    uRain: { value: 0 },
-    uHorizon: { value: new THREE.Color() },
-    uZenith: { value: new THREE.Color() },
-    uSunColor: { value: new THREE.Color() },
-    uSunDir: { value: new THREE.Vector3() }
+    pdWaves: { value: this.normalMap },
+    pdWaterTime: { value: 0 },
+    pdWaterLayers: { value: 1 },
+    pdWaterRain: { value: 0 },
+    pdDeep: { value: new THREE.Color("#101e24") },
+    pdBank: { value: new THREE.Color("#1c3138") }
   };
 
-  readonly material = new THREE.ShaderMaterial({
-    uniforms: this.uniforms,
-    fog: true, transparent: true, depthWrite: false,
-    vertexShader: `
-      attribute float aDepth;
-      attribute float aPier;
-      attribute float aShallow;
-      varying vec3 vWorld;
-      varying vec3 vBed;
-      #include <fog_pars_vertex>
-      void main() {
-        vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
-        vBed = vec3(aDepth, aPier, aShallow);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
-      }
-    `,
-    fragmentShader: `
-      uniform float uTime, uDetail, uRain;
-      uniform vec3 uHorizon, uZenith, uSunColor, uSunDir;
-      varying vec3 vWorld;
-      varying vec3 vBed;
-      #include <fog_pars_fragment>
-
-      float hash(vec2 p) {
-        p = fract(p * vec2(123.34, 456.21));
-        p += dot(p, p + 45.32);
-        return fract(p.x * p.y);
-      }
-      float noise(vec2 p) {
-        vec2 cell = floor(p), f = fract(p);
-        f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(cell), hash(cell + vec2(1, 0)), f.x),
-                   mix(hash(cell + vec2(0, 1)), hash(cell + vec2(1, 1)), f.x), f.y);
-      }
-
-      void main() {
-        vec2 p = vWorld.xz;
-        if (vBed.x < -0.012) discard;
-        float depth = max(0.0, vBed.x);
-        float shallow = smoothstep(0.05, 0.72, vBed.z);
-        float coarse = dot(p, vec2(2.7, 1.3)) - uTime * 1.35;
-        float fine = dot(p, vec2(-2.9, 5.1)) - uTime * 2.15;
-        float wash = noise(p * 1.15 + vec2(uTime * 0.12, -uTime * 0.08));
-        if (uDetail > 1.5) wash = 0.65 * wash + 0.35 * noise(p * 2.6 - vec2(uTime * 0.23, 0));
-        vec2 slope = vec2(0.12, 0.065) * cos(coarse) + vec2(-0.04, 0.08) * cos(fine + wash * uDetail);
-        float ripple = 0.0;
-        if (uRain > 0.02 && uDetail > 0.5) {
-          vec2 cell = floor(p * 1.55);
-          vec2 center = vec2(hash(cell), hash(cell + 3.21)) * 0.52 + 0.24;
-          vec2 offset = fract(p * 1.55) - center;
-          float age = fract(uTime * 1.35 + hash(cell + 28.7));
-          ripple = (1.0 - smoothstep(0.009, 0.034, abs(length(offset) - age * 0.23))) * (1.0 - age) * uRain;
-          slope += offset * ripple * 0.65;
-        }
-        vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
-        vec3 viewDir = normalize(cameraPosition - vWorld);
-        vec3 reflected = reflect(-viewDir, n);
-        float fresnel = 0.08 + 0.92 * pow(1.0 - max(dot(n, viewDir), 0.0), 4.0);
-        vec3 sky = mix(uHorizon, uZenith, smoothstep(0.0, 0.76, reflected.y));
-        float deep = smoothstep(0.04, 0.44, depth) * (1.0 - shallow);
-        vec3 water = mix(vec3(0.11, 0.28, 0.17), vec3(0.014, 0.089, 0.122), deep);
-        water = mix(water, vec3(0.22, 0.255, 0.13), shallow);
-        water *= mix(0.28, 1.08, clamp(length(uSunColor), 0.0, 1.0));
-        float foamLine = (1.0 - smoothstep(0.018, 0.105, depth + (wash - 0.5) * 0.08)) * smoothstep(0.43, 0.74, wash);
-        float pierFoam = (1.0 - smoothstep(0.035, 0.17, vBed.y)) * smoothstep(0.12, 0.85, wash);
-        float glint = pow(max(dot(normalize(uSunDir + viewDir), n), 0.0), mix(108.0, 30.0, uRain));
-        float reflectivity = fresnel * (uDetail > 1.5 ? 1.38 : 1.0) * (1.0 - shallow * 0.40);
-        float sparkle = uDetail > 1.5 ? pow(max(wash, 0.0), 5.0) * glint * 1.42 : 0.0;
-        vec3 rgb = mix(water, sky, min(0.88, reflectivity)) + uSunColor * (glint * (0.52 + wash * 0.45) + sparkle);
-        rgb += (vec3(0.7, 0.78, 0.7) * (foamLine * (0.36 - shallow * 0.27) + pierFoam * 0.44) + ripple * 0.14) * length(uSunColor);
-        gl_FragColor = vec4(rgb, clamp(mix(mix(0.42, 0.30, shallow), 0.92, deep) + fresnel * 0.33 + foamLine * 0.19, 0.0, 1.0));
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-        #include <fog_fragment>
-      }
-    `
+  // Standard lighting supplies direct sun specular and the scene's PMREM sky reflection.
+  readonly material = new THREE.MeshPhysicalMaterial({
+    transparent: true, depthWrite: false, roughness: 0.19, ior: 1.33,
+    specularIntensity: 1.0, envMapIntensity: 1.2
   });
 
-  update(time: number, detail: number, rain: number, horizon: THREE.Color, zenith: THREE.Color, sun: THREE.DirectionalLight): void {
-    const u = this.uniforms;
-    u.uTime.value = time;
-    u.uDetail.value = detail;
-    u.uRain.value = rain;
-    u.uHorizon.value.copy(horizon);
-    u.uZenith.value.copy(zenith);
-    u.uSunColor.value.copy(sun.color).multiplyScalar(sun.intensity * 0.7);
-    u.uSunDir.value.copy(sun.position).sub(sun.target.position).normalize();
+  constructor() {
+    this.material.customProgramCacheKey = () => "pd-water-pbr";
+    this.material.onBeforeCompile = shader => {
+      Object.assign(shader.uniforms, this.uniforms);
+      shader.vertexShader = `attribute float aDepth, aPier, aShallow;
+        varying vec3 vWaterBed;
+        varying vec2 vWaterUV;
+      ` + shader.vertexShader.replace("#include <begin_vertex>",
+        "#include <begin_vertex>\nvWaterBed = vec3(aDepth, aPier, aShallow); vWaterUV = position.xz;");
+      shader.fragmentShader = `
+        varying vec3 vWaterBed;
+        varying vec2 vWaterUV;
+        uniform sampler2D pdWaves;
+        uniform float pdWaterTime, pdWaterLayers, pdWaterRain;
+        uniform vec3 pdDeep, pdBank;
+        float pdWaterHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      ` + shader.fragmentShader
+        .replace("#include <color_fragment>", `
+          #include <color_fragment>
+          if (vWaterBed.x < -0.008) discard;
+          float shallow = smoothstep(0.1, 0.66, vWaterBed.z);
+          float deep = smoothstep(0.03, 0.40, vWaterBed.x);
+          vec2 wuv = vWaterUV * 0.48 + vec2(0.046, -0.03) * pdWaterTime;
+          vec2 slopeWater = (texture2D(pdWaves, wuv).rg * 2.0 - 1.0) * 0.58;
+          if (pdWaterLayers > 1.5) {
+            vec2 uv2 = vec2(vWaterUV.y, -vWaterUV.x) * 0.71 + vec2(-0.032, 0.042) * pdWaterTime;
+            vec2 wave2 = texture2D(pdWaves, uv2).rg * 2.0 - 1.0;
+            slopeWater += vec2(-wave2.y, wave2.x) * 0.38;
+          }
+          float wash = 0.65 + 1.9 * slopeWater.x;
+          float foam = (1.0 - smoothstep(0.013, 0.078, vWaterBed.x)) *
+            smoothstep(0.63, 0.95, wash) * (1.0 - shallow);
+          foam += (1.0 - smoothstep(0.045, 0.16, vWaterBed.y)) * smoothstep(0.55, 0.95, wash);
+          if (pdWaterLayers > 1.5 && pdWaterRain > 0.02) {
+            vec2 cells = vWaterUV * 1.45;
+            vec2 cell = floor(cells);
+            float age = fract(pdWaterTime * 1.4 + pdWaterHash(cell));
+            vec2 offset = fract(cells) - vec2(0.25 + 0.5 * pdWaterHash(cell + 17.0), 0.5);
+            float ring = (1.0 - smoothstep(0.009, 0.032, abs(length(offset) - age * 0.25))) * (1.0 - age);
+            slopeWater += offset * ring * pdWaterRain * 0.55;
+          }
+          diffuseColor.rgb = mix(mix(pdBank, pdDeep, deep), vec3(0.30, 0.35, 0.31), min(0.2, foam * 0.24));
+          float edgeWater = smoothstep(-0.008, 0.045, vWaterBed.x);
+          float viewFacing = max(dot(normalize(vViewPosition), mat3(viewMatrix) * vec3(0.0, 1.0, 0.0)), 0.0);
+          float grazing = pow(1.0 - viewFacing, 4.0);
+          diffuseColor.a *= edgeWater * mix(0.76 + deep * 0.24, 0.27 + grazing * 0.36 + foam * 0.12, shallow);
+        `)
+        .replace("#include <roughnessmap_fragment>", `
+          #include <roughnessmap_fragment>
+          roughnessFactor = mix(0.19, 0.31, shallow) + pdWaterRain * 0.10;`)
+        .replace("#include <normal_fragment_maps>", `
+          normal = normalize(mat3(viewMatrix) * vec3(slopeWater.x, 1.0, slopeWater.y));`);
+    };
+  }
+
+  update(time: number, layers: number, rain: number): void {
+    this.uniforms.pdWaterTime.value = time;
+    this.uniforms.pdWaterLayers.value = layers;
+    this.uniforms.pdWaterRain.value = rain;
+  }
+
+  dispose(): void {
+    this.normalMap.dispose();
+    this.material.dispose();
   }
 }

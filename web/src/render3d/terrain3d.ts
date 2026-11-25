@@ -6,11 +6,10 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { FX3D } from "./fx3d";
 import { WaterSurface } from "./water3d";
 import { applyWind, chopWind, grassUnits } from "./wind3d";
-import { bindSurface } from "./surfaces";
 import { shakeX } from "../graphics/villagerActions";
 import type { Scene3D } from "./scene3d";
 import {
-  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, shallowAt, rockiness, setWaterGrid, setFoundations, archLift, mat, Env3D, applyWetness
+  MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, shallowAt, rockiness, setWaterGrid, setFoundations, archLift, mat, Env3D, rainWetness, groundPadWeight
 } from "./common";
 
 /** Terrain quad density: 3 per tile, 2 per tile on 96×96 to keep vertex count mobile-friendly. */
@@ -265,6 +264,7 @@ export class Terrain3D {
   private flowers: InstLayer;
   private pebbles: InstLayer;
   private occupied = new Set<number>();
+  private pbrQuality: Scene3D["quality"] | null = null;
   private foundationKey: string | null = null;
   private decorationQuality = "";
   private readonly previousUnits = new Map<number, { x: number; y: number; force: number }>();
@@ -430,21 +430,20 @@ export class Terrain3D {
     const pos = g.getAttribute("position");
     const col = new Float32Array(pos.count * 3);
     const segs = this.pathSegments(state);
-    const cMeadow = new THREE.Color("#7c974c"), cMoss = new THREE.Color("#485e35"), cSun = new THREE.Color("#abb76b");
-    const cSand = new THREE.Color("#cdb27a"), cBed = new THREE.Color("#2c4a3c"), cDirt = new THREE.Color("#8a6a45"), cCobble = new THREE.Color("#a5927a");
-    const cForest = new THREE.Color("#3b5035"), cGravel = new THREE.Color("#7a7468"), cMud = new THREE.Color("#756044");
-    const cRock = new THREE.Color("#6d6a66"), cRockDark = new THREE.Color("#4a4743"), cSnow = new THREE.Color("#e7ecee");
+    const pathTint = new THREE.Color("#e3c6a8");
+    const forestTint = new THREE.Color("#a8b097");
+    const stoneTint = new THREE.Color("#e2ddd8");
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const h = terrainHeight(x, z);
       pos.setY(i, h);
       const n = fbm(x * 0.35, z * 0.35);
-      c.copy(cMoss).lerp(cMeadow, smoothstep(0.25, 0.7, n)).lerp(cSun, smoothstep(0.05, 0.3, h) * 0.55);
+      c.setScalar(0.70 + n * 0.55);
       const cell = grid[Math.floor(z)]?.[Math.floor(x)];
-      if (cell?.res === "wood") c.lerp(cForest, 0.24);
-      else if (cell?.res === "gold" || cell?.res === "stone") c.lerp(cGravel, 0.24);
-      else if (cell?.res === "food") c.lerp(cMud, 0.18);
+      if (cell?.res === "wood") c.lerp(forestTint, 0.25);
+      else if (cell?.res === "gold" || cell?.res === "stone") c.lerp(stoneTint, 0.24);
+      else if (cell?.res === "food") c.lerp(pathTint, 0.18);
       let d = 9;
       for (const s of segs) {
         if (Math.abs(s[0] - x) > 2 && Math.abs(s[2] - x) > 2) continue;
@@ -454,31 +453,34 @@ export class Terrain3D {
         d = Math.min(d, ex * ex + ez * ez);
       }
       const path = 1 - smoothstep(0.06, 0.16, d);
-      if (path > 0) c.lerp(cDirt, path * 0.73).lerp(cCobble, path * n * 0.22);
-      const rk = rockiness(x, z);
-      if (rk > 0) {
-        c.lerp(cGravel, Math.min(1, rk * 1.4) * 0.6);
-        c.lerp(fbm(x * 0.9, z * 0.9) > 0.5 ? cRock : cRockDark, rk * 0.9);
-        if (h > 1.35) c.lerp(cSnow, smoothstep(1.35, 1.8, h) * 0.8);
-      }
-      const w = wetness(x, z);
-      if (w > 0) c.lerp(cSand, smoothstep(0, 0.35, w) * 0.9).lerp(cMud, smoothstep(0.25, 0.6, w) * 0.7).lerp(cBed, smoothstep(0.45, 0.9, w));
-      c.lerp(cMud, shallowAt(x, z) * 0.65);
+      if (path > 0) c.lerp(pathTint, path * 0.65);
       const out = Math.max(0, -x, -z, x - MAP_N, z - MAP_N);
-      if (out > 0) c.lerp(cMoss, Math.min(1, out * 0.3)).multiplyScalar(Math.max(0.55, 1 - out * 0.12));
+      if (out > 0) c.multiplyScalar(Math.max(0.62, 1 - out * 0.1));
       col.set([c.r, c.g, c.b], i * 3);
     }
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
     g.computeVertexNormals();
-    const uv = g.getAttribute("uv");
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) * 0.7, pos.getZ(i) * 0.7);
-    const ground = new THREE.MeshStandardMaterial({ vertexColors: true, bumpScale: 0.016, roughness: 0.92 });
-    bindSurface(ground, "plaster");
-    applyWetness(ground, 0.32);
+    this.updateGroundBlend(g);
+    const ground = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 });
+    this.pbrQuality = null;
     const me = new THREE.Mesh(g, ground);
     me.receiveShadow = true;
     me.name = "terrain";
     return me;
+  }
+
+  private updateGroundBlend(geometry: THREE.BufferGeometry): void {
+    const pos = geometry.getAttribute("position"), normals = geometry.getAttribute("normal");
+    const blend = geometry.getAttribute("aGroundBlend") ?? new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), z = pos.getZ(i), h = pos.getY(i);
+      const slope = smoothstep(0.045, 0.28, 1 - normals.getY(i));
+      const slate = Math.max(rockiness(x, z) * 0.76, slope * smoothstep(0.18, 0.83, h));
+      const mud = Math.max(smoothstep(0.015, 0.40, wetness(x, z)), shallowAt(x, z));
+      blend.setXYZ(i, slate, mud, groundPadWeight(x, z));
+    }
+    if (!geometry.hasAttribute("aGroundBlend")) geometry.setAttribute("aGroundBlend", blend);
+    blend.needsUpdate = true;
   }
 
   // -------------------------------------------------------------------------
@@ -518,6 +520,7 @@ export class Terrain3D {
     g.setAttribute("aPier", new THREE.Float32BufferAttribute(piers, 1));
     g.setAttribute("aShallow", new THREE.Float32BufferAttribute(shallows, 1));
     g.setIndex(idx);
+    g.computeVertexNormals();
     this.waterSurface = new WaterSurface();
     const me = new THREE.Mesh(g, this.waterSurface.material);
     me.renderOrder = 2;
@@ -526,7 +529,7 @@ export class Terrain3D {
 
   private buildLake(grid: any[][]): void {
     this.group.remove(this.lake);
-    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; this.waterSurface = null; }
+    if (this.water) { this.water.geometry.dispose(); this.waterSurface?.dispose(); this.water = null; this.waterSurface = null; }
     if (this.pads) { this.pads.dispose(); this.pads = null; }
     if (this.blooms) { this.blooms.dispose(); this.blooms = null; }
     for (const g of this.koiGeos) g.dispose();
@@ -840,7 +843,7 @@ export class Terrain3D {
   /** Frees every GPU resource this terrain owns (called when the map size / type changes). */
   dispose(): void {
     if (this.terrain) { this.group.remove(this.terrain); this.terrain.geometry.dispose(); (this.terrain.material as THREE.Material).dispose(); this.terrain = null; }
-    if (this.water) { this.water.geometry.dispose(); (this.water.material as THREE.Material).dispose(); this.water = null; this.waterSurface = null; }
+    if (this.water) { this.water.geometry.dispose(); this.waterSurface?.dispose(); this.water = null; this.waterSurface = null; }
     this.pads?.dispose(); this.blooms?.dispose(); this.pads = null; this.blooms = null;
     for (const g of this.koiGeos) g.dispose();
     this.koiGeos = []; this.koi = [];
@@ -867,8 +870,13 @@ export class Terrain3D {
       for (let i = 0; i < vertices.count; i++) vertices.setY(i, terrainHeight(vertices.getX(i), vertices.getZ(i)));
       vertices.needsUpdate = true;
       geometry.computeVertexNormals();
+      this.updateGroundBlend(geometry);
       this.resSig = -1;
       terrainChanged = true;
+    }
+    if (this.terrain && this.pbrQuality !== scene.quality) {
+      scene.terrainPbr.bind(this.terrain.material as THREE.MeshStandardMaterial, scene.quality, rainWetness);
+      this.pbrQuality = scene.quality;
     }
     if (terrainChanged || scene.quality !== this.decorationQuality) {
       this.decorate(state, scene.quality);
@@ -892,8 +900,8 @@ export class Terrain3D {
     }
     while (shakeCount < chopWind.value.length) chopWind.value[shakeCount++].set(0, 0, 0);
     this.crystalMat.emissiveIntensity = 0.45 + Math.max(0, Math.sin(t * 1.7)) * 0.5;
-    const { weather, quality, sun } = scene;
-    this.waterSurface?.update(t, quality === "high" ? 2 : quality === "medium" ? 1 : 0, weather.rain, weather.horizon, weather.zenith, sun);
+    const { weather, quality } = scene;
+    this.waterSurface?.update(t, quality === "low" ? 1 : 2, weather.rain);
     if (this.pads) this.pads.animate(it => Math.sin(t * 1.3 + it.sway) * 0.03);
     if (this.blooms) {
       for (const it of this.blooms.items) it.y = WATER_LEVEL + 0.03 + Math.sin(t * 1.4 + it.sway) * 0.012;

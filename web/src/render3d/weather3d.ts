@@ -15,32 +15,32 @@ interface LightPreset {
 }
 
 const DAY_PRESET: LightPreset = {
-  sunColor: new THREE.Color(0xfff1d2),
-  sunIntensity: 1.75,
-  hemiSky: new THREE.Color(0xf6eedb),
-  hemiGround: new THREE.Color(0x7b7561),
-  hemiIntensity: 1.0,
-  fogColor: new THREE.Color(0xcbb998),
+  sunColor: new THREE.Color(0xffd5a0),
+  sunIntensity: 2.15,
+  hemiSky: new THREE.Color(0x9eafc7),
+  hemiGround: new THREE.Color(0x777269),
+  hemiIntensity: 1.25,
+  fogColor: new THREE.Color(0x6e7d87),
   lanternBoost: 0.0,
 };
 
 const GOLDEN_PRESET: LightPreset = {
-  sunColor: new THREE.Color(0xff9c52),
-  sunIntensity: 1.35,
-  hemiSky: new THREE.Color(0xffcea0),
-  hemiGround: new THREE.Color(0x6c5144),
+  sunColor: new THREE.Color(0xffae73),
+  sunIntensity: 1.78,
+  hemiSky: new THREE.Color(0x8999bf),
+  hemiGround: new THREE.Color(0x685a56),
   hemiIntensity: 0.85,
-  fogColor: new THREE.Color(0xd69a68),
+  fogColor: new THREE.Color(0x836f74),
   lanternBoost: 0.65,
 };
 
 const NIGHT_PRESET: LightPreset = {
-  sunColor: new THREE.Color(0x7c97cc),
-  sunIntensity: 0.45,
-  hemiSky: new THREE.Color(0x36496e),
+  sunColor: new THREE.Color(0x94b5ee),
+  sunIntensity: 0.75,
+  hemiSky: new THREE.Color(0x647ca6),
   hemiGround: new THREE.Color(0x1b2233),
-  hemiIntensity: 0.58,
-  fogColor: new THREE.Color(0x1c253b),
+  hemiIntensity: 0.76,
+  fogColor: new THREE.Color(0x283852),
   lanternBoost: 1.0,
 };
 
@@ -58,15 +58,17 @@ export class Weather3D {
   private rainGeo: THREE.BufferGeometry | null = null;
   private rainMat: THREE.LineBasicMaterial | null = null;
   private rainSeeds: Float32Array;
+  private readonly rainGray = new THREE.Color("#748695");
+  private readonly stormFog = new THREE.Color("#56636e");
   private tmpColor = new THREE.Color();
   lanternBoost = 0;
   rain = 0;
   particleFraction = 1;
   readonly horizon = new THREE.Color();
   readonly zenith = new THREE.Color();
-  private readonly daySky = new THREE.Color("#88b5cf");
-  private readonly duskSky = new THREE.Color("#7985aa");
-  private readonly nightSky = new THREE.Color("#131e3b");
+  private readonly daySky = new THREE.Color("#597387");
+  private readonly duskSky = new THREE.Color("#4b5c80");
+  private readonly nightSky = new THREE.Color("#171f37");
 
   constructor() {
     this.rainSeeds = new Float32Array(RAIN_COUNT * 3);
@@ -170,10 +172,14 @@ export class Weather3D {
     const lanternBoost = a.lanternBoost + (b.lanternBoost - a.lanternBoost) * t;
     const { mistWeight, rainWeight } = this.sampleWeather();
 
+    const night = Math.max(0, (lanternBoost - 0.65) / 0.35);
+    sunLight.color.lerp(this.rainGray, rainWeight * 0.4);
+    sunLight.intensity *= 1 - rainWeight * 0.39;
+    hemiLight.color.lerp(this.rainGray, rainWeight * 0.27);
+    this.tmpColor.copy(a.fogColor).lerp(b.fogColor, t).lerp(this.stormFog, rainWeight * (0.56 - night * 0.32));
     if (scene.fog instanceof THREE.FogExp2) {
-      this.tmpColor.copy(a.fogColor).lerp(b.fogColor, t);
       scene.fog.color.copy(this.tmpColor);
-      scene.fog.density = 0.0085 + mistWeight * 0.009 + rainWeight * 0.003;
+      scene.fog.density = 0.0105 + mistWeight * 0.005 + rainWeight * 0.004 + night * 0.001;
     }
 
     this.lanternBoost += (lanternBoost - this.lanternBoost) * (1 - Math.exp(-safeDt * 2));
@@ -181,7 +187,7 @@ export class Weather3D {
     this.horizon.copy(this.tmpColor);
     this.zenith.copy(this.daySky).lerp(this.duskSky, Math.min(1, this.lanternBoost / 0.65))
       .lerp(this.nightSky, Math.max(0, (this.lanternBoost - 0.65) / 0.35));
-    scene.environmentIntensity = 0.58 - this.lanternBoost * 0.37 - mistWeight * 0.10;
+    scene.environmentIntensity = 0.70 - this.lanternBoost * 0.38 - mistWeight * 0.09 + rainWeight * 0.07;
 
     this.ensureRain(scene);
     if (this.rainLines && this.rainGeo && this.rainMat) {

@@ -161,6 +161,17 @@ export function setFoundations(buildings: readonly { tx: number; ty: number; siz
   }
 }
 
+export function groundPadWeight(x: number, z: number): number {
+  const pads = foundationTiles.get(Math.floor(z) * (MAP_N + 4) + Math.floor(x));
+  let weight = 0;
+  for (const pad of pads ?? []) {
+    const dx = Math.max(0, pad.x - x, x - pad.x - pad.size);
+    const dz = Math.max(0, pad.z - z, z - pad.z - pad.size);
+    weight = Math.max(weight, 1 - smoothstep(0.02, 0.8, Math.hypot(dx, dz)));
+  }
+  return weight;
+}
+
 export function terrainHeight(x: number, z: number): number {
   const natural = naturalHeight(x, z);
   const pads = foundationTiles.get(Math.floor(z) * (MAP_N + 4) + Math.floor(x));
@@ -240,7 +251,7 @@ export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial 
     if (o.surface) {
       bindSurface(m, o.surface);
       m.bumpScale = o.surface === "thatch" ? 0.024 : o.surface === "scale" ? 0.021 : 0.015;
-      if (o.surface !== "lattice" && o.surface !== "silk") applyWetness(m, 0.26);
+      if (o.surface !== "lattice" && o.surface !== "silk") applyWetness(m, o.surface === "tile" || o.surface === "glaze" || o.surface === "thatch" ? 0.44 : 0.26);
     }
     if (o.rim) {
       const tint = new THREE.Color(o.rim);
