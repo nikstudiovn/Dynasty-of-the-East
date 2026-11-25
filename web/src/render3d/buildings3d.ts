@@ -264,6 +264,23 @@ export function buildBuilding(type: string, team: string, age: number, size: num
     return { group: g, parts };
   }
   switch (type) {
+    case "dock": {
+      const wood = pbrTint("mat_wood", "#674a34");
+      g.add(mesh(box(S * 0.93, 0.12, S * 0.9), wood, 0, 0.07, 0));
+      for (const x of [-0.33, 0.33]) for (const z of [-0.32, 0.32]) {
+        g.add(mesh(cyl(0.045, 0.055, 0.60, 7), wood, S * x, 0.26, S * z));
+      }
+      roof(g, S * 0.92, S * 0.68, 0.22, 0.55, shade(team, -0.2), TIMBER, false, 0.06);
+      parts.top = 0.8;
+      break;
+    }
+    case "temple": {
+      const top = hall(g, parts, S * 0.73, S * 0.61, 0.42, ageStyle);
+      roof(g, S * 0.42, S * 0.39, 0.26, top - 0.02, ageStyle.roof, GOLD, true, 0.11);
+      g.add(mesh(box(S * 0.55, 0.055, S * 0.24), mat_stone, 0, 0.04, S * 0.34));
+      parts.top = top + 0.24;
+      break;
+    }
     case "town_center": {
       const top = hall(g, parts, S * 0.82, S * 0.62, 0.54, ageStyle);
       if (age >= 4) {

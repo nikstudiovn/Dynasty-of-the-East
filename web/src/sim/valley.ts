@@ -1,3 +1,4 @@
+import { stockFish } from "./naval";
 // Map generator for 48 / 64 / 96 tile maps and 4 map types. Pure data, no rendering.
 //   river_valley     winding river + central lotus lake crossed by 3 / 4 / 5 arched wooden bridges
 //   open_plains      no river barrier, wide open ground (fast cavalry flanking)
@@ -6,11 +7,11 @@
 // Seed 0 reproduces the original 48x48 lotus valley layout with stable NW player spawn.
 
 export type MapSize = 48 | 64 | 96;
-export type Biome = "river_valley" | "open_plains" | "highland_passes";
+export type Biome = "river_delta" | "river_valley" | "open_plains" | "highland_passes";
 export type MapType = Biome | "random";
 
 export const MAP_SIZES: MapSize[] = [48, 64, 96];
-export const MAP_TYPES: MapType[] = ["river_valley", "open_plains", "highland_passes", "random"];
+export const MAP_TYPES: MapType[] = ["river_valley", "river_delta", "open_plains", "highland_passes", "random"];
 
 export type ResourceVariant =
   | "single_tree"
@@ -161,14 +162,17 @@ export function generateValley(
     return false;
   };
 
-  if (biome === "river_valley") {
+  if (biome === "river_valley" || biome === "river_delta") {
+    const delta = biome === "river_delta";
     for (let tx = 0; tx < n; tx++) {
       const riverY =
         n / 2 +
         Math.sin(tx * 0.22 / s + p0 * 0.1) * (2.6 * s) +
         Math.cos(tx * 0.09 / s + p1 * 0.1) * (1.2 * s);
       for (let ty = 0; ty < n; ty++) {
-        if (Math.abs(ty - riverY) < 1.85 * Math.min(1.5, s)) {
+        const branch = riverY + Math.sin(tx / n * Math.PI) * n * 0.15;
+        if (Math.abs(ty - riverY) < (delta ? 3.2 : 1.85) * Math.min(1.6, s) ||
+          (delta && Math.abs(ty - branch) < 2.3 * Math.min(1.6, s))) {
           grid[ty][tx].terrain = "water";
           grid[ty][tx].waterDepth = "deep";
           grid[ty][tx].elev = 0;
@@ -186,7 +190,7 @@ export function generateValley(
         }
       }
     }
-    const bridgeXs =
+    const bridgeXs = delta ? [0.22, 0.5, 0.78].map(f => Math.round(f * n)) :
       n >= 96
         ? [14, 32, 48, 64, 82]
         : n >= 64
@@ -194,12 +198,12 @@ export function generateValley(
           : [9, 24, 39];
     for (const bx of bridgeXs) {
       const bx2 = Math.max(4, Math.min(n - 5, Math.round(bx + (seed === 0 ? 0 : (r() - 0.5) * 3))));
-      for (let dx = -1; dx <= 1; dx++) {
+      for (let dx = delta ? 0 : -1; dx <= (delta ? 0 : 1); dx++) {
         const x = bx2 + dx;
         for (let ty = 0; ty < n; ty++) {
           if (grid[ty][x].terrain === "water") {
-            grid[ty][x].terrain = "dirt";
-            grid[ty][x].bridge = dx === 0 ? "center" : "edge";
+            grid[ty][x].terrain = delta ? "bridge" : "dirt";
+            grid[ty][x].bridge = delta ? "v" : dx === 0 ? "center" : "edge";
             grid[ty][x].waterDepth = undefined;
             grid[ty][x].elev = 0;
           }
@@ -334,7 +338,7 @@ export function generateValley(
       for (let dx = 0; dx < 2; dx++) {
         const c = grid[ty + dy][tx + dx];
         c.res = res;
-        c.resAmt = resAmt;
+        c.resAmt = Math.round(resAmt * 1.52);
         c.resVariant = resVariant;
         c.resFootprint = 2;
         if (treasureGuarded) c.treasureGuarded = true;
@@ -359,7 +363,7 @@ export function generateValley(
       if (canPlace1x1(tx, ty)) {
         const c = grid[ty][tx];
         c.res = res;
-        c.resAmt = amt;
+        c.resAmt = Math.round(amt * 1.52);
         c.resVariant = variant;
         c.resFootprint = 1;
       }
@@ -456,6 +460,10 @@ export function generateValley(
   void pBase;
   void aBases;
 
+  if (biome === "open_plains") for (const row of grid) for (const cell of row) {
+    if (cell.terrain === "water") { cell.terrain = "grass"; cell.waterDepth = "shallow"; }
+  }
+  stockFish(grid, biome === "river_delta");
   return { grid, size: n, biome, seed };
 }
  

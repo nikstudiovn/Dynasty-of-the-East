@@ -5,7 +5,7 @@ export type SideRailIconKey =
   | "wall" | "gate" | "market" | "blacksmith" | "stable" | "siege_workshop" | "imperial_citadel"
   | "villager" | "sword" | "spear" | "archer" | "crossbow" | "cavalry" | "elephant"
   | "horse_archer" | "siege" | "unique" | "upgrade_atk" | "upgrade_def" | "trade" | "rally"
-  | "collapse" | "expand" | "left_hand" | "default_cmd";
+  | "temple" | "healer" | "dock" | "fishing_boat" | "galley" | "fire_ship" | "collapse" | "expand" | "left_hand" | "default_cmd";
 
 const K = {
   gold: "#E5B454", goldLight: "#FCE5A6", crimson: "#B8352D", crimsonDark: "#6E1D18",
@@ -17,6 +17,12 @@ const badge = (num: string): string =>
   `<text x="12" y="16.5" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="12" font-weight="800" fill="${K.goldLight}">${num}</text>`;
 
 const ICON_BODY: Record<SideRailIconKey, string> = {
+  dock: `<path d="M3 9l8-6 8 6H3zm2 3h12v7H5z" fill="${K.gold}" /><path d="M2 21q4-3 8 0t8 0h4" fill="none" stroke="${K.jade}" stroke-width="2"/>`,
+  fishing_boat: `<path d="M3 16h18l-4 5H7zM12 3v11H5z" fill="${K.gold}" stroke="${K.goldLight}"/>`,
+  galley: `<path d="M2 15h20l-4 6H6zM12 2v11H4zm2 4 5 7h-5z" fill="${K.jade}" stroke="${K.goldLight}"/>`,
+  fire_ship: `<path d="M3 17h18l-4 4H7zM12 3c4 4 0 5 5 6 1 5-1 6-5 6-5 0-6-4-2-7 1 2 3 0 2-5z" fill="${K.crimsonDark}" stroke="${K.goldLight}"/>`,
+  temple: `<path d="M3 11l9-7 9 7H3z" fill="${K.jade}" stroke="${K.gold}"/><path d="M6 12v8m12-8v8M4 20h16" stroke="${K.goldLight}" stroke-width="2"/>`,
+  healer: `<circle cx="12" cy="12" r="9" fill="${K.jade}"/><path d="M8 12h8m-4-4v8" stroke="${K.goldLight}" stroke-width="2.5"/>`,
   grp_1: badge("1"),
   grp_2: badge("2"),
   grp_3: badge("3"),
@@ -72,6 +78,12 @@ export function getIconSvg(key: SideRailIconKey, size: 16 | 24 = 24): string {
 
 export function resolveCommandIconKey(label: string): SideRailIconKey {
   const text = label.trim().toLowerCase();
+  if (text.endsWith("từ đường")) return "temple";
+  if (text === "y sư" || text === "thảo dược") return "healer";
+  if (text.endsWith("bến thuyền")) return "dock";
+  if (text === "thuyền chài") return "fishing_boat";
+  if (text === "chiến thuyền cung") return "galley";
+  if (text === "hỏa thuyền") return "fire_ship";
   if (text.includes("nhà ở") || text.includes("nha o")) return "house";
   if (text.includes("kho tài") || text.includes("kho tai")) return "depot";
   if (text.includes("ruộng") || text.includes("ruong")) return "farm";

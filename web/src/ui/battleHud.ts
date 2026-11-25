@@ -42,7 +42,6 @@ function drawViewport(
   for (let i = 0; i < 4; i++) {
     const x = i === 1 || i === 2 ? width : 0;
     const y = i >= 2 ? height : 0;
-    // Project the four screen corners. Rotation and perspective skew the footprint in map space.
     const point = renderer ? renderer.anchorAt(x, y) : isoToTile(
       cam.x + (x - width / 2) / cam.zoom,
       cam.y + (y - height / 2) / cam.zoom
@@ -51,13 +50,13 @@ function drawViewport(
     else ctx.lineTo(point.x * scaleX, point.z * scaleY);
   }
   ctx.closePath();
-  ctx.fillStyle = "rgba(255, 224, 150, 0.10)";
+  ctx.fillStyle = "rgba(255, 224, 150, 0.12)";
   ctx.fill();
   ctx.strokeStyle = "#69461f";
-  ctx.lineWidth = 3;
+  ctx.lineWidth = ctx.canvas.width > 180 ? 3.5 : 2.5;
   ctx.stroke();
   ctx.strokeStyle = "#fffcdf";
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = ctx.canvas.width > 180 ? 1.8 : 1.3;
   ctx.stroke();
 }
 
@@ -67,6 +66,7 @@ export function initBattleHud() {
   const top = wrap.querySelector<HTMLElement>(".top-hud")!;
   const dock = wrap.querySelector<HTMLElement>(".cmd-dock")!;
   const minimap = wrap.querySelector<HTMLCanvasElement>("#minimapCanvas")!;
+  const minimapBox = minimap.closest<HTMLElement>(".minimap-box");
   const ctx = minimap.getContext("2d")!;
   const modal = wrap.querySelector<HTMLElement>("#modal")!;
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -103,6 +103,49 @@ export function initBattleHud() {
   }
   minimap.before(compass);
 
+  if (minimapBox) {
+    minimapBox.setAttribute("role", "button");
+    minimapBox.setAttribute("tabindex", "0");
+    minimapBox.setAttribute("aria-label", "Mở rộng bản đồ nhỏ");
+    minimapBox.setAttribute("aria-expanded", "false");
+  }
+
+  const mmBackdrop = document.createElement("div");
+  mmBackdrop.className = "dote-minimap-backdrop";
+  mmBackdrop.hidden = true;
+  mmBackdrop.setAttribute("role", "dialog");
+  mmBackdrop.setAttribute("aria-modal", "true");
+  mmBackdrop.setAttribute("aria-label", "Bản đồ chiến trường mở rộng");
+
+  const mmDialog = document.createElement("div");
+  mmDialog.className = "dote-minimap-modal";
+
+  const mmHeader = document.createElement("div");
+  mmHeader.className = "dote-minimap-header";
+  const mmTitle = document.createElement("span");
+  mmTitle.textContent = "Bản đồ chiến trường";
+  const mmCloseBtn = document.createElement("button");
+  mmCloseBtn.type = "button";
+  mmCloseBtn.className = "dote-minimap-close";
+  mmCloseBtn.setAttribute("aria-label", "Đóng bản đồ mở rộng");
+  mmCloseBtn.textContent = "✕";
+  mmHeader.append(mmTitle, mmCloseBtn);
+
+  const largeCanvas = document.createElement("canvas");
+  largeCanvas.className = "dote-minimap-large";
+  largeCanvas.width = 330;
+  largeCanvas.height = 220;
+  largeCanvas.setAttribute("aria-label", "Chạm hoặc kéo một ngón để lia camera trên bản đồ");
+  const largeCtx = largeCanvas.getContext("2d")!;
+
+  const mmHint = document.createElement("div");
+  mmHint.className = "dote-minimap-hint";
+  mmHint.textContent = "Chạm để nhảy camera · Kéo 1 ngón để lia · Chạm ngoài để đóng";
+
+  mmDialog.append(mmHeader, largeCanvas, mmHint);
+  mmBackdrop.append(mmDialog);
+  wrap.append(mmBackdrop);
+
   const feed = document.createElement("div");
   feed.className = "battle-alerts";
   feed.setAttribute("role", "log");
@@ -113,12 +156,146 @@ export function initBattleHud() {
   const buildings = new Map<number, { building: Building; hp: number; alertAfter: number }>();
   const aiAges = new Map<number, number>();
   let match: Match | undefined;
+  let latestCam: Cam | undefined;
   let active = false;
   let seconds = 0;
+  let expanded = false;
+  let draggingLarge = false;
+  let closingBackdrop = false;
   let jump: { cam: Cam; from: Cam; to: { x: number; y: number }; start: number; x: number; y: number } | undefined;
 
+  function setExpanded(next: boolean): void {
+    expanded = next && active;
+    mmBackdrop.hidden = !expanded;
+    if (minimapBox) {
+      minimapBox.setAttribute("aria-expanded", String(expanded));
+    }
+    if (!expanded) {
+      draggingLarge = false;
+      closingBackdrop = false;
+    }
+  }
+
+  function panCameraFromLargeEvent(e: PointerEvent): void {
+    if (!match || !latestCam) return;
+    const r = largeCanvas.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return;
+    const tx = Math.max(0, Math.min(match.mapSize, ((e.clientX - r.left) / r.width) * match.mapSize));
+    const ty = Math.max(0, Math.min(match.mapSize, ((e.clientY - r.top) / r.height) * match.mapSize));
+    const iso = tileToIso(tx, ty);
+    jump = undefined;
+    latestCam.x = iso.x;
+    latestCam.y = iso.y;
+  }
+
+  const openTarget = minimapBox ?? minimap;
+  let openingSmall = false;
+  openTarget.addEventListener("pointerdown", (e) => {
+    if (!active || !e.isPrimary) return;
+    e.preventDefault();
+    e.stopPropagation();
+    jump = undefined;
+    openingSmall = true;
+  });
+  openTarget.addEventListener("pointerup", (e) => {
+    if (!openingSmall) return;
+    openingSmall = false;
+    e.preventDefault();
+    e.stopPropagation();
+    setExpanded(true);
+  });
+  openTarget.addEventListener("pointercancel", () => { openingSmall = false; });
+  openTarget.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  openTarget.addEventListener("keydown", (e) => {
+    if (!active) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setExpanded(!expanded);
+    }
+  });
+
+  largeCanvas.addEventListener("pointerdown", (e) => {
+    if (!expanded || !e.isPrimary) return;
+    e.preventDefault();
+    e.stopPropagation();
+    draggingLarge = true;
+    try { largeCanvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    panCameraFromLargeEvent(e);
+  });
+  largeCanvas.addEventListener("pointermove", (e) => {
+    if (!expanded || !draggingLarge || !e.isPrimary) return;
+    e.preventDefault();
+    e.stopPropagation();
+    panCameraFromLargeEvent(e);
+  });
+  const endLargeDrag = (e: PointerEvent): void => {
+    if (!draggingLarge) return;
+    e.preventDefault();
+    e.stopPropagation();
+    draggingLarge = false;
+    try {
+      if (largeCanvas.hasPointerCapture(e.pointerId)) {
+        largeCanvas.releasePointerCapture(e.pointerId);
+      }
+    } catch { /* ignore */ }
+  };
+  largeCanvas.addEventListener("pointerup", endLargeDrag);
+  largeCanvas.addEventListener("pointercancel", endLargeDrag);
+
+  mmCloseBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  mmCloseBtn.addEventListener("pointerup", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpanded(false);
+  });
+  mmCloseBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpanded(false);
+  });
+
+  mmBackdrop.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.target === mmBackdrop) {
+      closingBackdrop = true;
+    }
+  });
+  mmBackdrop.addEventListener("pointerup", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (closingBackdrop && e.target === mmBackdrop) {
+      closingBackdrop = false;
+      setExpanded(false);
+    } else {
+      closingBackdrop = false;
+    }
+  });
+  mmBackdrop.addEventListener("pointercancel", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closingBackdrop = false;
+  });
+  mmBackdrop.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && expanded) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setExpanded(false);
+    }
+  }, { capture: true });
+
   canvas.addEventListener("pointerdown", () => { jump = undefined; });
-  minimap.addEventListener("pointerdown", () => { jump = undefined; });
   canvas.addEventListener("wheel", () => { jump = undefined; }, { passive: true });
 
   function focusBuilding(building: Building, cam: Cam) {
@@ -151,8 +328,6 @@ export function initBattleHud() {
   }
 
   function trackEvents(state: Match, cam: Cam, now: number) {
-    // In the game loop, destroyed buildings are filtered out after their HP is reduced to zero.
-    // Keep their original object so a final hit can still be observed on the frame they disappear.
     for (const building of state.buildings) {
       if (building.team === "player" && CRITICAL_BUILDINGS.has(building.type) && !buildings.has(building.id)) {
         buildings.set(building.id, { building, hp: building.hp, alertAfter: 0 });
@@ -169,7 +344,7 @@ export function initBattleHud() {
     }
     for (const ai of state.aiStates) {
       if (ai.age > (aiAges.get(ai.idx) ?? ai.age)) {
-        const base = state.buildings.find(b => b.team === "enemy" && b.type === "town_center" && b.aiIndex === ai.idx - 1);
+        const base = state.buildings.find(b => b.team === "enemy" && b.type === "town_center" && b.aiIndex === ai.idx);
         if (base) alertAt(`Phe AI ${ai.idx} lên Đời ${ai.age}!`, base, cam);
       }
       aiAges.set(ai.idx, ai.age);
@@ -183,9 +358,11 @@ export function initBattleHud() {
     definitions: Readonly<Record<string, { name: string }>>,
     selectBuilding: (state: Match, buildingId: number) => boolean
   ) => {
+    latestCam = cam;
     const inBattle = state.running && !state.gameOver && modal.classList.contains("hidden");
     if (inBattle !== active || state !== match) {
       active = inBattle;
+      if (!active && expanded) setExpanded(false);
       if (state !== match) setCollapsed(false);
       match = state;
       wrap.classList.toggle("battle-hud-active", active);
@@ -204,6 +381,16 @@ export function initBattleHud() {
 
     const now = performance.now();
     shortcuts.update(now);
+
+    if (expanded && active) {
+      try {
+        largeCtx.imageSmoothingEnabled = false;
+        largeCtx.clearRect(0, 0, largeCanvas.width, largeCanvas.height);
+        largeCtx.drawImage(minimap, 0, 0, largeCanvas.width, largeCanvas.height);
+        drawViewport(largeCtx, canvas, state.mapSize, cam, renderer);
+      } catch { /* guard render loop */ }
+    }
+
     drawViewport(ctx, canvas, state.mapSize, cam, renderer);
     if (!active) return;
 
@@ -216,7 +403,6 @@ export function initBattleHud() {
     }
 
     trackEvents(state, cam, now);
-    // The game has drawn this frame. Update the target for the next frame, unless a game control moved it.
     if (!jump) return;
     if (jump.cam.x !== jump.x || jump.cam.y !== jump.y) {
       jump = undefined;

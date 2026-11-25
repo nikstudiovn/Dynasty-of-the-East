@@ -463,7 +463,7 @@
   <!-- BOTTOM HUD -->
   <div class="bottom-hud">
     <div class="minimap-box">
-      <canvas id="minimapCanvas" width="132" height="88"></canvas>
+      <span id="relic-countdown" hidden style="position:absolute;z-index:1;color:#ffe19a;background:#211610;padding:3px;white-space:nowrap"></span><canvas id="minimapCanvas" width="132" height="88"></canvas>
     </div>
 
     <div class="cmd-dock">
@@ -482,6 +482,7 @@
   </div>
 
   <!-- SETUP / RESULT MODAL -->
+  <button type="button" id="btn-dote-cancel" class="dote-cancel-btn" aria-label="Hủy" hidden>✕ Hủy</button>
   <div id="modal">
     <div class="modal-card">
       <h1 id="modal-title">DYNASTY OF THE EAST</h1>
@@ -528,6 +529,7 @@
           <span class="setup-label">5. Địa hình</span>
           <div class="opt-row" id="opt-map-type">
             <button class="opt-btn active" data-val="river_valley">Thung Lũng Sông Sen<small>Sông uốn, cầu gỗ</small></button>
+            <button class="opt-btn" data-val="river_delta">Cửa Sông<small>Sông phân nhánh · bãi cá</small></button>
             <button class="opt-btn" data-val="open_plains">Đồng Bằng Mở<small>Không sông · kỵ binh bọc sườn</small></button>
             <button class="opt-btn" data-val="highland_passes">Núi Cao &amp; Eo Hẹp<small>Dãy đá, 3 eo núi</small></button>
             <button class="opt-btn" data-val="random">Ngẫu Nhiên<small>Mỗi ván một thế trận</small></button>
@@ -549,6 +551,8 @@
   
 <script type="module">
 import "./src/ui/hudTheme.css";
+import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
+import { NAVAL_TYPES, isWaterway, coastalWater, findWaterPath } from "./src/sim/naval";
 import { initBattleHud } from "./src/ui/battleHud";
 
 const updateBattleHud = initBattleHud();
@@ -603,11 +607,20 @@ const updateBattleHud = initBattleHud();
   const AGES = [
     { age: 1, name: "Đời 1 · Khai Hoang", cost: { food: 0, wood: 0, gold: 0, stone: 0 } },
     { age: 2, name: "Đời 2 · Phong Kiến", cost: { food: 250, wood: 0, gold: 0, stone: 0 } },
-    { age: 3, name: "Đời 3 · Vương Triều", cost: { food: 400, wood: 0, gold: 200, stone: 0 } },
-    { age: 4, name: "Đời 4 · Đế Quốc", cost: { food: 600, wood: 0, gold: 400, stone: 200 } }
+    { age: 3, name: "Đời 3 · Vương Triều", cost: { food: 560, wood: 0, gold: 280, stone: 0 } },
+    { age: 4, name: "Đời 4 · Đế Quốc", cost: { food: 840, wood: 0, gold: 560, stone: 280 } }
   ];
 
+  const ABILITIES = {
+    war_elephant: { name: "Xung Phong", duration: 4 },
+    chuko_nu: { name: "Mưa Tên", duration: 5 },
+    horse_archer: { name: "Phi Mã", duration: 6 }
+  };
   const UNIT_DEFS = {
+    fishing_boat: { name: "Thuyền Chài", hp: 75, atk: 0, range: 0, vision: 6, speed: 2, cost: { food: 0, wood: 55, gold: 0, stone: 0 }, age: 1, role: "eco" },
+    galley: { name: "Chiến Thuyền Cung", hp: 120, atk: 10, range: 6.5, vision: 8, speed: 2.2, cost: { food: 0, wood: 90, gold: 45, stone: 0 }, age: 2, role: "naval", proj: "arrow" },
+    fire_ship: { name: "Hỏa Thuyền", hp: 105, atk: 15, range: 2.1, vision: 7, speed: 3.0, cost: { food: 0, wood: 100, gold: 65, stone: 0 }, age: 3, role: "naval" },
+    healer: { name: "Y Sư", hp: 58, atk: 0, range: 0, vision: 6, speed: 1.9, cost: { food: 55, wood: 0, gold: 45, stone: 0 }, age: 2, role: "support" },
     villager: { name: "Dân Làng", hp: 40, atk: 4, range: 1.1, vision: 5, speed: 2.1, cost: { food: 50, wood: 0, gold: 0, stone: 0 }, age: 1, role: "eco" },
     swordsman: { name: "Đao Binh", hp: 75, atk: 9, range: 1.15, vision: 5, speed: 2.0, cost: { food: 50, wood: 0, gold: 15, stone: 0 }, age: 1, role: "infantry" },
     spearman: { name: "Trường Thương", hp: 70, atk: 8, range: 1.25, vision: 5, speed: 2.1, cost: { food: 35, wood: 25, gold: 0, stone: 0 }, age: 2, role: "infantry", bonusElephant: 1.6, bonusCav: 1.5 },
@@ -619,23 +632,25 @@ const updateBattleHud = initBattleHud();
     catapult: { name: "Pháo Thạch", hp: 130, atk: 38, range: 7.8, vision: 8, speed: 1.2, cost: { food: 0, wood: 140, gold: 110, stone: 0 }, age: 3, role: "siege", proj: "boulder", splash: 2.1, bonusBuilding: 2.5 }
   };
 
-  const TRAIN_TIMES = { villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
+  const TRAIN_TIMES = { fishing_boat: 8, galley: 11, fire_ship: 12, healer: 9, villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
 
   const BLDG_DEFS = {
-    town_center: { name: "Đình Làng", size: 2, hp: 1400, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
+    dock: { name: "Bến Thuyền", size: 1, hp: 550, vision: 6, cost: { food: 0, wood: 100, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    temple: { name: "Từ Đường", size: 2, hp: 780, vision: 6, cost: { food: 0, wood: 135, gold: 35, stone: 60 }, pop: 0, age: 2 },
+    town_center: { name: "Đình Làng", size: 2, hp: 1960, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
     house: { name: "Nhà Ngói", size: 1, hp: 400, vision: 4, cost: { food: 0, wood: 35, gold: 0, stone: 0 }, pop: 10, age: 1 },
     depot: { name: "Kho Lẫm", size: 1, hp: 450, vision: 4, cost: { food: 0, wood: 65, gold: 0, stone: 0 }, pop: 0, age: 1 },
-    farm: { name: "Ruộng Lúa", size: 1, hp: 300, vision: 3, cost: { food: 0, wood: 45, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    farm: { name: "Ruộng Lúa", size: 2, hp: 300, vision: 3, cost: { food: 0, wood: 45, gold: 0, stone: 0 }, pop: 0, age: 1 },
     barracks: { name: "Doanh Trại", size: 2, hp: 850, vision: 5, cost: { food: 0, wood: 120, gold: 0, stone: 0 }, pop: 0, age: 1 },
     archery_range: { name: "Trường Bắn", size: 2, hp: 800, vision: 5, cost: { food: 0, wood: 130, gold: 0, stone: 0 }, pop: 0, age: 2 },
-    watch_tower: { name: "Vọng Lâu", size: 1, hp: 750, vision: 9, atk: 10, range: 7, burst: 1, cost: { food: 0, wood: 40, gold: 0, stone: 90 }, pop: 0, age: 2 },
+    watch_tower: { name: "Vọng Lâu", size: 1, hp: 1050, vision: 9, atk: 10, range: 7, burst: 1, cost: { food: 0, wood: 40, gold: 0, stone: 90 }, pop: 0, age: 2 },
     blacksmith: { name: "Lò Rèn Cổ", size: 2, hp: 900, vision: 5, cost: { food: 0, wood: 110, gold: 0, stone: 0 }, pop: 0, age: 2 },
     stable: { name: "Trại Ngựa/Voi", size: 2, hp: 950, vision: 5, cost: { food: 0, wood: 150, gold: 0, stone: 0 }, pop: 0, age: 3 },
     siege_workshop: { name: "Xưởng Khí Giới", size: 2, hp: 1000, vision: 5, cost: { food: 0, wood: 180, gold: 0, stone: 0 }, pop: 0, age: 3 },
-    wall: { name: "Tường Thành", size: 1, hp: 650, vision: 2, cost: { food: 0, wood: 0, gold: 0, stone: 20 }, pop: 0, age: 2 },
-    gate: { name: "Cổng Thành", size: 1, hp: 850, vision: 3, cost: { food: 0, wood: 30, gold: 0, stone: 20 }, pop: 0, age: 2 },
+    wall: { name: "Tường Thành", size: 1, hp: 910, vision: 2, cost: { food: 0, wood: 0, gold: 0, stone: 20 }, pop: 0, age: 2 },
+    gate: { name: "Cổng Thành", size: 1, hp: 1190, vision: 3, cost: { food: 0, wood: 30, gold: 0, stone: 20 }, pop: 0, age: 2 },
     market: { name: "Nhà Chợ", size: 2, hp: 850, vision: 5, cost: { food: 0, wood: 120, gold: 0, stone: 0 }, pop: 0, age: 2 },
-    imperial_citadel: { name: "Hoàng Thành", size: 2, hp: 3200, vision: 11, atk: 16, range: 8.5, burst: 3, cost: { food: 0, wood: 0, gold: 0, stone: 450 }, pop: 10, age: 4 }
+    imperial_citadel: { name: "Hoàng Thành", size: 2, hp: 4480, vision: 11, atk: 16, range: 8.5, burst: 3, cost: { food: 0, wood: 0, gold: 0, stone: 450 }, pop: 10, age: 4 }
   };
 
   const setup = { faction: "dai_viet", aiCount: 1, difficulty: "normal", mapSize: 48, mapType: "river_valley" };
@@ -813,6 +828,15 @@ const updateBattleHud = initBattleHud();
     state.attackMove = false;
     state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(grid, setup.mapSize, mapSeed, [pb].concat(aiCorners.slice(0, setup.aiCount)), () => nextId++) : [];
 
+    state.hasDeepWater = state.grid.some(row => row.some(cell => cell.terrain === "water" && isWaterway(cell)));
+    state.shrines = placeShrines(state.mapSize, state.grid);
+    state.relic = null;
+    for (const shrine of state.shrines) {
+      const candidates = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      const spot = candidates.find(([dx, dy]) => !isTileBlocked(Math.floor(shrine.x + dx), Math.floor(shrine.y + dy)));
+      if (spot && window.DOTEWild) state.animals.push(window.DOTEWild.mkAnimal(nextId++, "lion",
+        shrine.x + spot[0], shrine.y + spot[1], shrine.x, shrine.y));
+    }
     state.selectedBuildingId = ptc.id;
     cam.x = (pb.tx - pb.ty) * (TILE_W / 2);
     cam.y = (pb.tx + pb.ty + 5) * (TILE_H / 2);
@@ -827,6 +851,7 @@ const updateBattleHud = initBattleHud();
   function spawnBuilding(team, type, tx, ty, aiIndex = 0, underConstruction = false) {
     const def = BLDG_DEFS[type];
     const b = { id: nextId++, team, aiIndex, type, tx, ty, size: def.size, hp: underConstruction ? Math.max(10, Math.round(def.hp * 0.1)) : def.hp, maxHp: def.hp, atkCooldown: 0, progress: underConstruction ? 0 : 1, trainQueue: [] };
+    if (type === "farm") { b.cropAmount = FARM_CAPACITY; b.maxFood = FARM_CAPACITY; }
     state.buildings.push(b);
     for (let dy = 0; dy < def.size; dy++) {
       for (let dx = 0; dx < def.size; dx++) {
@@ -902,7 +927,7 @@ const updateBattleHud = initBattleHud();
 
   function getPopStats(team) {
     const pop = state.units.filter(u => u.team === team).length;
-    const cap = Math.min(70, state.buildings.filter(b => b.team === team).reduce((s, b) => s + (BLDG_DEFS[b.type].pop || 0), 0));
+    const cap = Math.min(POPULATION_LIMIT, state.buildings.filter(b => b.team === team).reduce((s, b) => s + (BLDG_DEFS[b.type].pop || 0), 0));
     return { pop, cap };
   }
 
@@ -955,9 +980,10 @@ const updateBattleHud = initBattleHud();
 
   // Team whose unit is being simulated right now (so findPath knows which gates are walkable); player outside the unit loop.
   let curTeam = null;
-  const blockedByTeam = { player: (x, y) => isTileBlocked(x, y, "player"), enemy: (x, y) => isTileBlocked(x, y, "enemy") };
+  const blockedByTeam = { water: (x, y) => !isWaterway(state.grid[y]?.[x]), player: (x, y) => isTileBlocked(x, y, "player"), enemy: (x, y) => isTileBlocked(x, y, "enemy") };
   function findPath(sx, sy, gx, gy, team, strict = false) {
     team = team || curTeam || "player";
+    if (team === "water") return findWaterPath(state.grid, sx, sy, gx, gy);
     const blocked = (x, y) => isTileBlocked(x, y, team);
     const raw = window.DOTEPath.findPathRaw(state.mapSize, sx, sy, gx, gy, isTileBlocked, team, strict || team === "enemy");
     return window.DOTESim ? window.DOTESim.smoothPath(sx, sy, raw, blocked) : raw;
@@ -1019,23 +1045,27 @@ const updateBattleHud = initBattleHud();
 
   function applyDamage(attacker, target, isBldg, baseDmg) {
     const def = attacker && UNIT_DEFS[attacker.type] ? UNIT_DEFS[attacker.type] : null;
-    let dmg = baseDmg;
-    if (def) {
-      if (isBldg && def.bonusBuilding) dmg = Math.round(dmg * def.bonusBuilding);
-      if (!isBldg) {
-        const tRole = UNIT_DEFS[target.type].role;
-        if (tRole === "elephant" && def.bonusElephant) dmg = Math.round(dmg * def.bonusElephant);
-        if (tRole === "cavalry" && def.bonusCav) dmg = Math.round(dmg * def.bonusCav);
-        if (tRole === "infantry" && def.bonusInf) dmg = Math.round(dmg * def.bonusInf);
-        if (tRole === "ranged" && def.bonusRanged) dmg = Math.round(dmg * def.bonusRanged);
-        if (tRole === "siege" && def.bonusSiege) dmg = Math.round(dmg * def.bonusSiege);
-      }
-    }
+    const shore = attacker?.type === "fire_ship" && isBldg && coastalWater(state.grid, target.tx, target.ty, target.size).length > 0;
+    const navalBonus = attacker?.type === "fire_ship" && (NAVAL_TYPES.has(target.type) || target.type === "dock" || shore) ? 2 : 1;
+    let dmg = Math.round(baseDmg * navalBonus * counterMultiplier(attacker?.type, target.type, isBldg, def?.bonusBuilding));
     // Blacksmith Armor mitigation for player units
     if (!isBldg && target.team === "player") {
       dmg = Math.max(2, dmg - state.upgrades.armor * 2);
     }
 
+    if (!isBldg && target.type === "horse_archer" && target.abilityTime > 0 &&
+      (def?.proj === "arrow" || def?.proj === "bolt" || attacker?.type === "watch_tower" || attacker?.type === "imperial_citadel") &&
+      Math.random() < 0.15) return;
+    if (attacker?.type === "war_elephant" && attacker.abilityTime > 0 && attacker.chargeReady) {
+      attacker.chargeReady = false;
+      const x = isBldg ? target.tx + target.size / 2 : target.x;
+      const y = isBldg ? target.ty + target.size / 2 : target.y;
+      for (const nearby of state.units) {
+        if (nearby.team === attacker.team || nearby.hp <= 0 || nearby.garrisoned || Math.hypot(nearby.x - x, nearby.y - y) > 1.5) continue;
+        nearby.slowTime = Math.max(nearby.slowTime ?? 0, 1.2);
+        if (nearby !== target) nearby.hp -= Math.max(1, Math.round(dmg * 0.35));
+      }
+    }
     target.hp -= dmg;
     const tx = isBldg ? target.tx + target.size / 2 : target.x;
     const ty = isBldg ? target.ty + target.size / 2 : target.y;
@@ -1130,12 +1160,12 @@ const updateBattleHud = initBattleHud();
     if (b.trainQueue?.length > 0) {
       b.trainQueue[0].remaining -= dt;
       if (b.trainQueue[0].remaining <= 0) {
-        const exit = b.team === "enemy" ? aiSpawnPoint(b) : { x: b.tx + b.size * 0.5, y: b.ty + b.size + 0.35 };
+        const exit = b.type === "dock" ? coastalWater(state.grid, b.tx, b.ty, b.size)[0] : b.team === "enemy" ? aiSpawnPoint(b) : { x: b.tx + b.size * 0.5, y: b.ty + b.size + 0.35 };
         if (!exit) { b.trainQueue[0].remaining = 2; continue; }
         const item = b.trainQueue.shift();
         const nu = spawnUnit(b.team, item.type, exit.x, exit.y, b.aiIndex || 0);
         if (state.stats && b.team === "player") state.stats.unitsTrained++;
-        if (b.rallyPoint && window.DOTETactics) window.DOTETactics.applyRally(nu, b, (uu, gx, gy) => findPath(uu.x, uu.y, gx, gy, b.team));
+        if (b.rallyPoint && window.DOTETactics) window.DOTETactics.applyRally(nu, b, (uu, gx, gy) => findPath(uu.x, uu.y, gx, gy, NAVAL_TYPES.has(uu.type) ? "water" : b.team));
         if (b.team === "player") { sfxTrain(); showToast(`Đã chiêu mộ ${UNIT_DEFS[item.type].name}`); updateHud(); }
         if (state.selectedBuildingId === b.id) renderCommandDock();
       }
@@ -1198,15 +1228,34 @@ const updateBattleHud = initBattleHud();
 
     // Units
     const combatTargets = new Map([...state.units, ...state.buildings].filter(e => e.hp > 0).map(e => [e.id, e]));
-    if (window.DOTESim) window.DOTESim.relaxIdle(state.units, dt, isTileBlocked);
+    if (window.DOTESim) window.DOTESim.relaxIdle(state.units.filter(u => !NAVAL_TYPES.has(u.type)), dt, isTileBlocked);
     for (const u of state.units) {
       if (u.hp <= 0 || u.garrisoned) continue;
       const def = UNIT_DEFS[u.type];
+      if (u.abilityTime > 0) u.abilityTime = Math.max(0, u.abilityTime - dt);
+      if (u.abilityCooldown > 0) u.abilityCooldown = Math.max(0, u.abilityCooldown - dt);
+      if (u.slowTime > 0) u.slowTime = Math.max(0, u.slowTime - dt);
+      if (u.type === "healer") {
+        let patient = null, nearest = 4.5;
+        for (const ally of state.units) {
+          if (ally === u || ally.team !== u.team || (u.team === "enemy" && ally.aiIndex !== u.aiIndex) ||
+              ally.hp <= 0 || ally.hp >= ally.maxHp || ally.garrisoned) continue;
+          const distance = Math.hypot(ally.x - u.x, ally.y - u.y);
+          if (distance <= nearest) { patient = ally; nearest = distance; }
+        }
+        if (patient) {
+          patient.hp = Math.min(patient.maxHp, patient.hp + dt * (u.team === "player" && state.herbalMedicine ? 13 : 10));
+          u.healPulse = (u.healPulse ?? 0) - dt;
+          if (u.healPulse <= 0) { u.healPulse = 0.35; visualFx("heal", { x: patient.x, y: patient.y }); }
+        }
+        if (u.task === "attack") { u.task = "idle"; u.targetEntityId = null; u.path = []; }
+      }
       if (u.repathCd > 0) u.repathCd -= dt;
       if (u.atkCooldown > 0) u.atkCooldown -= dt;
 
-      curTeam = u.team;
-      if (u.type !== "villager" && !u.targetEntityId && (u.path.length === 0 || u.task === "attack_move") && window.DOTETactics) {
+      const naval = NAVAL_TYPES.has(u.type);
+      curTeam = naval ? "water" : u.team;
+      if (def.atk > 0 && u.type !== "villager" && !u.targetEntityId && (u.path.length === 0 || u.task === "attack_move") && window.DOTETactics) {
         const near = window.DOTETactics.autoAcquire(state, u, def);
         if (near) { u.task = "attack"; u.targetEntityId = near.id; u.manualAtk = false; if (u.path.length) u.path = []; }
       }
@@ -1219,7 +1268,7 @@ const updateBattleHud = initBattleHud();
           if (Math.hypot(tx - u.x, ty - u.y) <= def.range + (target.size ? target.size * 0.55 : 0.35)) u.path = [];
         } else u.path = [];
       }
-      if (u.path.length > 0 && u.team === "enemy" && window.DOTETactics && (u.task === "attack" || u.task === "attack_move")) {
+      if (!naval && u.path.length > 0 && u.team === "enemy" && window.DOTETactics && (u.task === "attack" || u.task === "attack_move")) {
         const wb = window.DOTETactics.breakThrough(state, u, dt); // walled in: chop through the nearest wall / gate
         if (wb && (wb.type === "wall" || wb.type === "gate")) { u.task = "attack"; u.targetEntityId = wb.id; u.path = []; }
       }
@@ -1229,12 +1278,15 @@ const updateBattleHud = initBattleHud();
         let mult = 1.0;
         if (u.team === "player" && u.type === "villager") mult = state.faction.vilSpeedMult;
         if (u.team === "player" && def.role === "cavalry") mult = state.faction.cavSpeedMult;
+        if (u.abilityTime > 0) mult *= u.type === "war_elephant" ? 1.45 : u.type === "horse_archer" ? 1.4 : 1;
+        if (u.slowTime > 0) mult *= 0.55;
         const step = def.speed * mult * dt;
-        if (window.DOTESim) { window.DOTESim.moveUnit(u, dt, def.speed * mult, state.units, blockedByTeam[u.team] || isTileBlocked); }
+        if (window.DOTESim) { window.DOTESim.moveUnit(u, dt, def.speed * mult, state.units, blockedByTeam[curTeam] || isTileBlocked); }
         else if (dist <= step) { u.x = next.x; u.y = next.y; u.path.shift(); }
         else { u.x += (dx / dist) * step; u.y += (dy / dist) * step; }
         continue;
       }
+      if (u.type === "fishing_boat" && stepFishing(u, dt)) continue;
       if (u.task === "attack_move" || (u.task === "move" && u.team === "enemy")) { u.task = "idle"; u.amDest = null; }
 
       if (u.type === "villager" && u.task === "build" && u.buildTargetId) {
@@ -1255,11 +1307,11 @@ const updateBattleHud = initBattleHud();
     if (u.type === "villager" && u.task === "gather" && u.targetTile) {
         const { tx, ty } = u.targetTile;
         const cell = state.grid[ty]?.[tx];
-        const farmBldg = state.buildings.find(b => b.type === "farm" && b.tx === tx && b.ty === ty &&
+        const farmBldg = state.buildings.find(b => b.type === "farm" && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size &&
           b.team === u.team && b.hp > 0 && (b.progress ?? 1) >= 1 &&
           (u.team !== "enemy" || b.aiIndex === u.aiIndex));
         const resType = farmBldg ? "food" : cell?.res;
-        const hasRes = farmBldg || (cell && cell.resAmt > 0);
+        const hasRes = farmBldg ? (farmBldg.cropAmount ?? FARM_CAPACITY) > 0 : (cell && cell.resAmt > 0);
         if (!hasRes) {
           if (u.team === "enemy") {
             const drop = u.carryAmt > 0 && findDropoff(u.team, u.x, u.y, u.aiIndex);
@@ -1282,7 +1334,12 @@ const updateBattleHud = initBattleHud();
           if (u.gatherTick >= 0.78) {
             u.gatherTick = 0;
             u.carryType = resType;
-            u.carryAmt += 5;
+            const amount = farmBldg ? Math.min(5, farmBldg.cropAmount ?? FARM_CAPACITY) : 5;
+            u.carryAmt += amount;
+            if (farmBldg) {
+              farmBldg.cropAmount = (farmBldg.cropAmount ?? FARM_CAPACITY) - amount;
+              farmBldg.depleted = farmBldg.cropAmount <= 0;
+            }
             if (!farmBldg && cell) {
               cell.resAmt -= 5;
               if (cell.resAmt <= 0) { cell.res = null; cell.resAmt = 0; }
@@ -1342,17 +1399,20 @@ const updateBattleHud = initBattleHud();
         if (Math.hypot(tx - u.x, ty - u.y) > reach) {
           if (u.team === "player" && u.stance === "stand_ground" && !u.manualAtk) { u.task = "idle"; u.targetEntityId = null; continue; }
           if (!(u.repathCd > 0)) {
-            u.path = findPath(u.x, u.y, tx, ty);
+            if (naval && !isWaterway(state.grid[Math.floor(ty)]?.[Math.floor(tx)])) {
+              const near = nearestWater(tx, ty, def.range + (tBldg ? tBldg.size * 0.55 : 0.35), u);
+              u.path = near?.path ?? [];
+            } else u.path = findPath(u.x, u.y, tx, ty);
             if (u.path.length === 0) {
               u.repathCd = 1.0; // no route (walled in): retarget the nearest hostile wall / gate that blocks the way
-              if (window.DOTETactics && !(tBldg && (tBldg.type === "wall" || tBldg.type === "gate"))) {
+              if (!naval && window.DOTETactics && !(tBldg && (tBldg.type === "wall" || tBldg.type === "gate"))) {
                 const w = window.DOTETactics.nearestBarrier(state, u, tx, ty);
                 if (w) { u.targetEntityId = w.id; u.repathCd = 0; }
               }
             } else u.repathCd = u.team === "enemy" ? 0.45 : 0;
           }
         } else if (u.atkCooldown <= 0) {
-          u.atkCooldown = def.proj === "boulder" ? 2.1 : 1.0;
+          u.atkCooldown = def.proj === "boulder" ? 2.1 : u.type === "chuko_nu" && u.abilityTime > 0 ? 0.5 : 1;
           const forgeAtk = u.team === "player" ? state.upgrades.attack * 2 : 0;
           const dmg = def.atk + forgeAtk + (u.team === "player" ? (state.age - 1) : 0);
           if (def.proj) {
@@ -1381,11 +1441,14 @@ const updateBattleHud = initBattleHud();
     for (let i = 0; i < state.units.length; i++) {
       for (let j = i + 1; j < state.units.length; j++) {
         const a = state.units[i], b = state.units[j];
+        const naval = NAVAL_TYPES.has(a.type);
+        if (naval !== NAVAL_TYPES.has(b.type)) continue;
         const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
         if (d > 0.001 && d < 0.45) {
           const push = (0.45 - d) * 0.24;
-          a.x -= (dx / d) * push; a.y -= (dy / d) * push;
-          b.x += (dx / d) * push; b.y += (dy / d) * push;
+          const px = dx / d * push, py = dy / d * push;
+          if (!naval || isWaterway(state.grid[Math.floor(a.y - py)]?.[Math.floor(a.x - px)])) { a.x -= px; a.y -= py; }
+          if (!naval || isWaterway(state.grid[Math.floor(b.y + py)]?.[Math.floor(b.x + px)])) { b.x += px; b.y += py; }
         }
       }
     }
@@ -1399,15 +1462,150 @@ const updateBattleHud = initBattleHud();
     if (enemyTcs.length === 0) endGame(true);
     else if (!playerTc) endGame(false);
 
-    if (!state.gameOver) window.DOTEAI.step(state, aiRules);
+    if (!state.gameOver) {
+      const owner = stepShrines(state.shrines ??= placeShrines(state.mapSize, state.grid), state.units, dt, faction => {
+        if (faction === "player") state.resources.gold += 12;
+        else window.DOTEAI.budget(state, Number(faction.slice(3))).gold += 12;
+      });
+      if (!owner) state.relic = null;
+      else {
+        if (state.relic?.owner !== owner) state.relic = { owner, remaining: 300 };
+        state.relic.remaining -= dt;
+        if (state.relic.remaining <= 0) endGame(owner === "player", true);
+      }
+      if (!state.gameOver) { window.DOTEAI.step(state, aiRules); stepNavalAI(dt); }
+    }
   }
 
-  function endGame(victory) {
+  function nearestWater(x, y, radius, boat) {
+    const grid = state.grid, candidates = [];
+    for (let ty = Math.floor(y - radius); ty <= Math.ceil(y + radius); ty++) {
+      for (let tx = Math.floor(x - radius); tx <= Math.ceil(x + radius); tx++) {
+        if (Math.hypot(tx + 0.5 - x, ty + 0.5 - y) > radius || !isWaterway(grid[ty]?.[tx])) continue;
+        candidates.push({ x: tx + 0.5, y: ty + 0.5 });
+      }
+    }
+    candidates.sort((a, b) => Math.hypot(a.x - boat.x, a.y - boat.y) - Math.hypot(b.x - boat.x, b.y - boat.y));
+    for (const point of candidates.slice(0, 8)) {
+      const path = findWaterPath(grid, boat.x, boat.y, point.x, point.y);
+      if (path.length) return { ...point, path };
+    }
+    return null;
+  }
+
+  function stepFishing(boat, dt) {
+    if (boat.task !== "fish" && boat.task !== "return_fish") return false;
+    const tile = boat.targetTile;
+    const cell = tile && state.grid[tile.ty]?.[tile.tx];
+    if (boat.task === "fish" && cell?.fish > 0 && Math.hypot(boat.x - tile.tx - 0.5, boat.y - tile.ty - 0.5) < 1) {
+      const amount = Math.min(cell.fish, dt * 4, 20 - (boat.carryAmt || 0));
+      cell.fish -= amount;
+      boat.carryAmt = (boat.carryAmt || 0) + amount;
+      if (boat.carryAmt < 20 && cell.fish > 0) return true;
+      boat.task = "return_fish";
+    }
+    if (boat.task === "fish" && cell?.fish > 0) {
+      boat.path = findWaterPath(state.grid, boat.x, boat.y, tile.tx + 0.5, tile.ty + 0.5);
+      if (!boat.path.length) boat.task = boat.carryAmt > 0 ? "return_fish" : "idle";
+      return true;
+    }
+    for (const dock of state.buildings) {
+      if (dock.type !== "dock" || dock.team !== boat.team || dock.aiIndex !== boat.aiIndex || (dock.progress ?? 1) < 1 || dock.hp <= 0) continue;
+      for (const p of coastalWater(state.grid, dock.tx, dock.ty, dock.size)) {
+        if (Math.hypot(boat.x - p.x, boat.y - p.y) < 0.9) {
+          const amount = Math.floor(boat.carryAmt || 0);
+          if (boat.team === "player") {
+            state.resources.food += amount;
+            if (state.stats) state.stats.resourcesGathered += amount;
+            visualFx("deposit", { x: boat.x, y: boat.y, amount, res: "food" });
+            updateHud();
+          } else window.DOTEAI.budget(state, boat.aiIndex ?? 0).food += amount;
+          boat.carryAmt = 0;
+          boat.task = cell?.fish > 0 ? "fish" : "idle";
+          return true;
+        }
+        const route = findWaterPath(state.grid, boat.x, boat.y, p.x, p.y);
+        if (route.length) { boat.path = route; boat.task = "return_fish"; return true; }
+      }
+    }
+    boat.task = "idle";
+    return true;
+  }
+
+  function stepNavalAI(dt) {
+    if (!(state.hasDeepWater ??= state.grid.some(row => row.some(cell => cell.terrain === "water" && isWaterway(cell))))) return;
+    state.navalTimer = (state.navalTimer ?? 0) + dt;
+    if (state.navalTimer < 5) return;
+    state.navalTimer = 0;
+    const pay = (bank, cost) => {
+      if (Object.entries(cost).some(([k, v]) => bank[k] < v)) return false;
+      for (const [k, v] of Object.entries(cost)) bank[k] -= v;
+      return true;
+    };
+    for (const base of state.buildings.filter(b => b.type === "town_center" && b.team === "enemy")) {
+      const index = base.aiIndex ?? 0;
+      const own = e => e.team === "enemy" && e.aiIndex === index && e.hp > 0;
+      const bank = window.DOTEAI.budget(state, index);
+      const age = state.aiStates.find(a => a.idx === index + 1)?.age ?? 1;
+      const dock = state.buildings.find(b => b.type === "dock" && own(b));
+      const boats = state.units.filter(u => own(u) && NAVAL_TYPES.has(u.type));
+      if (!dock) {
+        const builder = state.units.find(u => own(u) && u.type === "villager" && u.task !== "build");
+        if (!builder || bank.wood < 145) continue;
+        let sites = [];
+        for (let y = 1; y < state.mapSize - 1; y++) for (let x = 1; x < state.mapSize - 1; x++) {
+          if (!isSiteOccupied(x, y) && isDockLand(state.grid[y][x]) && coastalWater(state.grid, x, y).length) {
+            sites.push({ x, y });
+          }
+        }
+        sites.sort((a, b) => Math.hypot(a.x - base.tx, a.y - base.ty) - Math.hypot(b.x - base.tx, b.y - base.ty));
+        for (const site of sites.slice(0, 5)) {
+          const access = [[site.x - 1, site.y], [site.x + 1, site.y], [site.x, site.y - 1], [site.x, site.y + 1]]
+            .filter(([x, y]) => !isTileBlocked(x, y, "enemy"))
+            .map(([x, y]) => findPath(builder.x, builder.y, x + 0.5, y + 0.5, "enemy", true))
+            .filter(path => path.length).sort((a, b) => a.length - b.length)[0];
+          if (!access || !pay(bank, BLDG_DEFS.dock.cost)) continue;
+          const foundation = spawnBuilding("enemy", "dock", site.x, site.y, index, true);
+          ejectUnits(foundation);
+          builder.task = "build"; builder.buildTargetId = foundation.id; builder.buildQueue = []; builder.path = access;
+          break;
+        }
+        continue;
+      }
+      const ownedBuildings = state.buildings.filter(own);
+      const cap = Math.min(POPULATION_LIMIT, ownedBuildings.reduce((sum, b) => sum + ((b.progress ?? 1) >= 1 ? BLDG_DEFS[b.type].pop : 0), 0));
+      const pop = state.units.filter(own).length + ownedBuildings.reduce((n, b) => n + (b.trainQueue?.length ?? 0), 0);
+      if ((dock.progress ?? 1) >= 1 && !dock.trainQueue.length && boats.length < 5 && pop < cap) {
+        const type = boats.some(u => u.type === "fishing_boat") && age >= 2 ? age >= 3 && boats.some(u => u.type === "galley") ? "fire_ship" : "galley" : "fishing_boat";
+        if (pay(bank, UNIT_DEFS[type].cost)) dock.trainQueue.push({ type, remaining: TRAIN_TIMES[type], total: TRAIN_TIMES[type] });
+      }
+      for (const boat of boats.filter(u => !u.path.length && (u.task === "idle" || u.task === "move"))) {
+        if (boat.type !== "fishing_boat") {
+          const patrol = nearestWater(state.mapSize / 2, state.mapSize / 2, 10, boat);
+          if (patrol) { boat.task = "attack_move"; boat.path = patrol.path; }
+          continue;
+        }
+        const fish = [];
+        for (let y = 0; y < state.mapSize; y++) for (let x = 0; x < state.mapSize; x++) {
+          if (state.grid[y][x].fish > 0) fish.push({ x, y });
+        }
+        fish.sort((a, b) => Math.hypot(a.x - boat.x, a.y - boat.y) - Math.hypot(b.x - boat.x, b.y - boat.y));
+        for (const tile of fish.slice(0, 6)) {
+          const route = findWaterPath(state.grid, boat.x, boat.y, tile.x, tile.y);
+          if (route.length || Math.hypot(boat.x - tile.x - 0.5, boat.y - tile.y - 0.5) < 1) {
+            boat.task = "fish"; boat.targetTile = { tx: tile.x, ty: tile.y }; boat.path = route; break;
+          }
+        }
+      }
+    }
+  }
+
+  function endGame(victory, relic = false) {
     state.gameOver = true;
     const modal = document.getElementById("modal");
     document.getElementById("setup-panel").style.display = "none";
     document.getElementById("modal-title").textContent = victory ? "THỐNG NHẤT THIÊN HẠ!" : "ĐÌNH LÀNG THẤT THỦ";
-    document.getElementById("modal-sub").textContent = victory
+    document.getElementById("modal-sub").textContent = relic ? (victory ? "Bạn đã giữ toàn bộ Cổ Tự đủ 5 phút!" : "Địch đã giữ toàn bộ Cổ Tự đủ 5 phút.") : victory
       ? `Phe ${state.faction.name} đã đánh bại toàn bộ ${state.aiCount} phe AI!`
       : "Đình Làng đã bị hạ. Hãy dựng Vọng Lâu và nâng cấp Lò Rèn sớm!";
     const stats = state.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }; const score = stats.enemiesKilled * 120 + stats.buildingsBuilt * 80 + stats.resourcesGathered + state.age * 500; const mins = String(Math.floor(stats.elapsedSec / 60)).padStart(2, "0"); const secs = String(Math.floor(stats.elapsedSec % 60)).padStart(2, "0"); document.getElementById("modal-tips").innerHTML = `<strong>Tổng kết trận đấu · ${AGES[state.age - 1].name}</strong><table style="width:100%;margin-top:6px;border-collapse:collapse;font-size:12px;"><tr><td style="padding:2px 0;opacity:0.85;">Điểm tổng kết</td><td style="text-align:right;font-weight:700;color:#FBBF24;">${score.toLocaleString()}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Thời gian</td><td style="text-align:right;font-weight:600;">${mins}:${secs}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Quân địch tiêu diệt</td><td style="text-align:right;font-weight:600;">${stats.enemiesKilled}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Quân đã chiêu mộ</td><td style="text-align:right;font-weight:600;">${stats.unitsTrained}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Công trình đã xây</td><td style="text-align:right;font-weight:600;">${stats.buildingsBuilt}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Tổng tài nguyên khai thác</td><td style="text-align:right;font-weight:600;">${stats.resourcesGathered}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Cấp Lò Rèn</td><td style="text-align:right;font-weight:600;">Công +${state.upgrades.attack * 2} · Giáp +${state.upgrades.armor * 2}</td></tr></table>`; /*
@@ -1653,6 +1851,14 @@ const updateBattleHud = initBattleHud();
       mctx.fillStyle = u.team === "player" ? "#FACC15" : "#93C5FD";
       mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2.5, 2.5);
     }
+    const relic = document.getElementById("relic-countdown");
+    const remaining = Math.max(0, Math.ceil(state.relic?.remaining ?? 0));
+    relic.hidden = !state.relic;
+    if (state.relic) relic.textContent = `Thánh Tích · ${state.relic.owner === "player" ? "Ta" : "AI"} · ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
+    for (const shrine of state.shrines ?? []) {
+      mctx.fillStyle = shrine.owner === "player" ? "#9de19b" : shrine.owner ? "#f28b7c" : "#f9db94";
+      mctx.fillRect(shrine.x * sx - 2, shrine.y * sy - 2, 4, 4);
+    }
     updateBattleHud(state, cam, R3D, BLDG_DEFS, selectBuildingFromHud);
   }
 
@@ -1703,7 +1909,8 @@ const updateBattleHud = initBattleHud();
   }
 
   function drawSelectionPortrait(selBldg, selUnit) { const cvs = document.getElementById("sel-portrait"); if (!cvs) return; const p = cvs.getContext("2d"); const dpr = Math.min(window.devicePixelRatio || 1, 2); cvs.width = 48 * dpr; cvs.height = 48 * dpr; p.setTransform(dpr, 0, 0, dpr, 0, 0); p.clearRect(0, 0, 48, 48); p.fillStyle = "#1A0F0A"; p.fillRect(0, 0, 48, 48); p.strokeStyle = "rgba(250, 204, 21, 0.28)"; p.strokeRect(1.5, 1.5, 45, 45); p.save(); p.imageSmoothingEnabled = true; p.translate(3, 3); p.scale(42 / 36, 42 / 36); const tc = (selBldg && selBldg.team !== "player") || (selUnit && selUnit.team !== "player") ? "#3B82F6" : "#DC2626"; if (selBldg) { const t = selBldg.type; p.fillStyle = "#1A120E"; if (t === "town_center" || t === "imperial_citadel") { p.fillRect(6, 16, 24, 15); p.fillRect(3, 12, 30, 7); p.fillRect(7, 8, 22, 6); p.fillRect(15, 3, 6, 7); } else if (t === "watch_tower") { p.fillRect(10, 9, 16, 22); p.fillRect(8, 6, 20, 6); } else if (t === "farm") { p.fillRect(4, 17, 28, 14); p.fillRect(6, 13, 7, 14); p.fillRect(14, 11, 8, 16); p.fillRect(23, 14, 7, 13); } else if (t === "blacksmith") { p.fillRect(6, 14, 24, 17); p.fillRect(14, 8, 8, 8); } else { p.fillRect(6, 16, 24, 15); p.fillRect(4, 11, 28, 8); } p.fillStyle = "#4A2C1D"; p.fillRect(7, 17, 22, 13); p.fillStyle = "#8B5E3C"; p.fillRect(9, 19, 18, 9); if (t === "town_center" || t === "imperial_citadel") { p.fillStyle = tc; p.fillRect(4, 13, 28, 5); p.fillRect(8, 9, 20, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 4, 4, 5); p.fillRect(14, 22, 8, 8); } else if (t === "watch_tower") { p.fillStyle = "#64748B"; p.fillRect(11, 10, 14, 20); p.fillStyle = tc; p.fillRect(9, 7, 18, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 13, 4, 5); } else if (t === "farm") { p.fillStyle = "#78350F"; p.fillRect(5, 18, 26, 12); p.fillStyle = "#EAB308"; p.fillRect(7, 14, 5, 12); p.fillRect(15, 12, 6, 14); p.fillRect(24, 15, 5, 11); } else if (t === "blacksmith") { p.fillStyle = "#475569"; p.fillRect(7, 15, 22, 15); p.fillStyle = "#F97316"; p.fillRect(13, 21, 10, 7); p.fillStyle = "#FACC15"; p.fillRect(15, 9, 6, 6); } else { p.fillStyle = tc; p.fillRect(5, 12, 26, 6); p.fillStyle = "#FACC15"; p.fillRect(15, 21, 6, 9); } } else if (selUnit) { const u = selUnit.type; p.fillStyle = "#1A120E"; p.fillRect(12, 8, 12, 11); p.fillRect(9, 17, 18, 14); if (u === "villager") { p.fillRect(8, 5, 20, 6); p.fillRect(12, 3, 12, 4); } else if (u === "war_elephant") { p.fillRect(6, 12, 24, 18); p.fillRect(4, 21, 7, 6); p.fillRect(25, 21, 7, 6); p.fillRect(11, 7, 14, 7); } else if (u === "catapult") { p.fillRect(5, 21, 26, 8); p.fillRect(14, 8, 7, 16); p.fillRect(12, 5, 10, 7); } else if (u === "cavalry" || u === "horse_archer") { p.fillRect(7, 17, 22, 14); p.fillRect(11, 7, 14, 12); p.fillRect(13, 4, 10, 5); } else if (u === "archer" || u === "chuko_nu") { p.fillRect(25, 9, 5, 18); p.fillRect(11, 5, 14, 6); } else { p.fillRect(8, 4, 16, 7); p.fillRect(9, 8, 18, 20); p.fillRect(25, 7, 5, 18); } p.fillStyle = "#FDE68A"; p.fillRect(13, 9, 10, 9); p.fillStyle = tc; p.fillRect(10, 18, 16, 12); if (u === "villager") { p.fillStyle = "#EAB308"; p.fillRect(9, 6, 18, 4); p.fillRect(13, 4, 10, 2); } else if (u === "war_elephant") { p.fillStyle = "#64748B"; p.fillRect(7, 13, 22, 16); p.fillStyle = "#E2E8F0"; p.fillRect(5, 22, 5, 4); p.fillRect(26, 22, 5, 4); p.fillStyle = "#FACC15"; p.fillRect(12, 8, 12, 5); } else if (u === "catapult") { p.fillStyle = "#78350F"; p.fillRect(6, 22, 24, 6); p.fillRect(15, 9, 5, 14); p.fillStyle = "#94A3B8"; p.fillRect(13, 6, 8, 5); } else if (u === "cavalry" || u === "horse_archer") { p.fillStyle = "#92400E"; p.fillRect(8, 18, 20, 12); p.fillStyle = tc; p.fillRect(12, 8, 12, 10); p.fillStyle = "#FACC15"; p.fillRect(14, 5, 8, 3); } else if (u === "archer" || u === "chuko_nu") { p.fillStyle = "#15803D"; p.fillRect(10, 18, 16, 12); p.fillStyle = "#FACC15"; p.fillRect(26, 10, 3, 16); p.fillStyle = tc; p.fillRect(12, 6, 12, 4); } else { p.fillStyle = tc; p.fillRect(11, 5, 14, 5); p.fillStyle = "#FACC15"; p.fillRect(9, 9, 18, 2); p.fillRect(26, 8, 3, 16); } } else { p.fillStyle = tc; p.fillRect(10, 9, 16, 18); p.fillStyle = "#FACC15"; p.fillRect(14, 13, 8, 10); } p.restore(); } function renderCommandDock() { try { updateTacticBtns(); } catch (e) {}
-    const wrap = document.getElementById("cmd-buttons");
+  updateDoteCancelBtn();
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    const wrap = document.getElementById("cmd-buttons");
     const title = document.getElementById("sel-title");
     wrap.innerHTML = "";
 
@@ -1765,6 +1972,20 @@ const updateBattleHud = initBattleHud();
         const uKey = state.faction.uniqueUnit;
         const uDef = UNIT_DEFS[uKey];
         addBtn(uDef.name, formatCost(uDef.cost), pop < cap && canAfford(uDef.cost), false, () => trainFrom(selBldg, uKey));
+      } else if (selBldg.type === "dock") {
+        for (const key of NAVAL_TYPES) {
+          const def = UNIT_DEFS[key];
+          addBtn(def.name, state.age < def.age ? `Cần Đời ${def.age}` : formatCost(def.cost),
+            state.age >= def.age && pop < cap && canAfford(def.cost), false, () => trainFrom(selBldg, key));
+        }
+      } else if (selBldg.type === "temple") {
+        const def = UNIT_DEFS.healer;
+        addBtn(def.name, formatCost(def.cost), pop < cap && canAfford(def.cost), false, () => trainFrom(selBldg, "healer"));
+        const herbs = { wood: 85, gold: 90 };
+        addBtn("Thảo Dược", state.herbalMedicine ? "Đã nghiên cứu" : formatCost(herbs), !state.herbalMedicine && canAfford(herbs), false, () => {
+          if (state.herbalMedicine || !canAfford(herbs)) return;
+          spend(herbs); state.herbalMedicine = true; updateHud(); renderCommandDock();
+        });
       } else if (selBldg.type === "market" && window.DOTETactics) {
         for (const o of window.DOTETactics.TRADE_OFFERS) {
           addBtn(o.label, "Tức thì", window.DOTETactics.canTrade(state, o), false, () => {
@@ -1780,36 +2001,31 @@ const updateBattleHud = initBattleHud();
     }
 
     if (selUnits.length > 0) {
+      const abilityUnit = selUnits.find(u => ABILITIES[u.type] && UNIT_DEFS[u.type].factionOnly === state.factionId);
+      if (abilityUnit) {
+        const ability = ABILITIES[abilityUnit.type];
+        const button = document.createElement("button");
+        button.id = "btn-faction-ability";
+        button.type = "button";
+        button.className = "act-btn";
+        button.dataset.unitId = String(abilityUnit.id);
+        button.addEventListener("click", () => {
+          if (abilityUnit.hp <= 0 || abilityUnit.garrisoned || abilityUnit.abilityCooldown > 0 || !state.selectedIds.includes(abilityUnit.id)) return;
+          abilityUnit.abilityTime = ability.duration;
+          abilityUnit.abilityCooldown = 35;
+          abilityUnit.chargeReady = abilityUnit.type === "war_elephant";
+          sfxClick();
+        });
+        wrap.append(button);
+        updateAbilityButton();
+      }
+
       const hasVil = selUnits.some(u => u.type === "villager");
       title.textContent = `Đang chọn ${selUnits.length} đơn vị${hasVil ? " (chạm tài nguyên hoặc xây nhà)" : " (chạm địch đánh / kéo khung chọn cụm)"}`;
-        const addCancelBtn = (id, label, sub, onClick) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.id = id;
-      btn.className = "act-btn act-btn--cancel";
-      btn.innerHTML = `<span>${label}</span><span class="act-cost">${sub}</span>`;
-      btn.addEventListener("click", () => { ensureAudio(); sfxClick(); onClick(); });
-      wrap.appendChild(btn);
-    };
-    addCancelBtn("btn-cancel-select", "✕ Hủy chọn", "Bỏ chọn quân", () => {
-      state.selectedIds = [];
-      state.selectedBuildingId = null;
-      state.buildMode = null;
-      state.attackMove = false;
-      canvas.classList.remove("build-mode");
-      setBoxSelectMode(false);
-      updateTacticBtns();
-      renderCommandDock();
-    });
-    if (state.buildMode) {
-      addCancelBtn("btn-cancel-build", "✕ Hủy đặt nhà", "Giữ chọn dân", () => {
-        state.buildMode = null;
-        canvas.classList.remove("build-mode");
-        renderCommandDock();
-      });
-    } 
+
  if (hasVil) {
-        for (const key of ["house", "depot", "farm", "barracks", "archery_range", "watch_tower", "wall", "gate", "market", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
+        for (const key of ["house", "depot", "farm", "dock", "temple", "barracks", "archery_range", "watch_tower", "wall", "gate", "market", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
+          if (key === "dock" && !(state.hasDeepWater ??= state.grid.some(row => row.some(cell => cell.terrain === "water" && isWaterway(cell))))) continue;
           const d = BLDG_DEFS[key];
           const okAge = state.age >= d.age;
           addBtn(
@@ -1831,7 +2047,21 @@ const updateBattleHud = initBattleHud();
     title.textContent = "Chạm Đình Làng, Dân Làng hoặc bật Kéo chọn để quét cụm quân";
   }
 
-  function selectedArmy() { return state ? state.units.filter(u => state.selectedIds.includes(u.id) && u.type !== "villager") : []; }
+  function updateAbilityButton() {
+    const button = document.getElementById("btn-faction-ability");
+    if (!button || !state) return;
+    const unit = state.units.find(u => u.id === Number(button.dataset.unitId));
+    if (!unit) { button.remove(); return; }
+    const remaining = Math.ceil(unit.abilityCooldown || 0);
+    const label = ABILITIES[unit.type].name + (remaining ? ` · ${remaining}s` : "");
+    if (button.textContent !== label) button.textContent = label;
+    button.disabled = remaining > 0;
+  }
+
+  function selectedArmy() { return state ? state.units.filter(u => state.selectedIds.includes(u.id) && UNIT_DEFS[u.type].atk > 0) : []; }
+    function updateDoteCancelBtn() { const btn = document.getElementById("btn-dote-cancel"); if (!btn) return; const show = Boolean(state && state.running && !state.gameOver && (state.buildMode || state.selectedIds.length > 0)); btn.hidden = !show; if (show) btn.setAttribute("aria-label", state.buildMode ? "Hủy đặt công trình" : "Hủy chọn đơn vị"); }
+ const doteCancelBtn = document.getElementById("btn-dote-cancel");
+ if (doteCancelBtn) { doteCancelBtn.addEventListener("pointerdown", e => { e.stopPropagation(); }); doteCancelBtn.addEventListener("click", e => { e.stopPropagation(); if (!state || !canControlBattle()) return; ensureAudio(); sfxClick(); if (state.buildMode) { state.buildMode = null; canvas.classList.remove("build-mode"); renderCommandDock(); } else if (state.selectedIds.length > 0) { state.selectedIds = []; state.attackMove = false; setBoxSelectMode(false); updateTacticBtns(); renderCommandDock(); } }); }
   function updateTacticBtns() {
     const am = document.getElementById("btn-attack-move"), st = document.getElementById("btn-stance");
     if (am) am.classList.toggle("active", Boolean(state && state.attackMove));
@@ -1847,7 +2077,8 @@ const updateBattleHud = initBattleHud();
   if ((bldg.progress ?? 1) < 1) { showToast("Công trình đang xây!"); return; }
     const def = UNIT_DEFS[unitType];
     const { pop, cap } = getPopStats("player");
-    if (pop >= cap) { showToast("Đầy dân số — hãy xây thêm Nhà Ngói!"); return; }
+    const queued = state.buildings.reduce((count, b) => count + (b.team === "player" ? b.trainQueue?.length ?? 0 : 0), 0);
+    if (pop + queued >= cap) { showToast("Đầy dân số — hãy xây thêm Nhà Ngói!"); return; }
     if (!canAfford(def.cost)) { showToast("Chưa đủ tài nguyên!"); return; }
     spend(def.cost);
     const trainSec = TRAIN_TIMES[unitType] || 7;
@@ -1872,11 +2103,20 @@ const updateBattleHud = initBattleHud();
     renderCommandDock();
   }
 
+  function isDockLand(cell) { return cell && !cell.bridge && ["grass", "dirt"].includes(cell.terrain); }
+  function isSiteOccupied(x, y) {
+    return isTileBlocked(x, y) || state.buildings.some(b => b.type === "farm" &&
+      x >= b.tx && x < b.tx + b.size && y >= b.ty && y < b.ty + b.size) ||
+      (state.shrines ?? []).some(s => Math.floor(s.x) === x && Math.floor(s.y) === y);
+  }
+
   function canPlaceBuilding(tx, ty, size) {
+    if (state.buildMode === "dock" && !coastalWater(state.grid, tx, ty, size).length) return false;
     for (let dy = 0; dy < size; dy++) {
       for (let dx = 0; dx < size; dx++) {
-        if (isTileBlocked(tx + dx, ty + dy)) return false;
-        if (state.grid[ty + dy][tx + dx].terrain === "bridge") return false;
+        if (isSiteOccupied(tx + dx, ty + dy)) return false;
+        const cell = state.grid[ty + dy][tx + dx];
+        if (isWaterway(cell) || (state.buildMode === "dock" && !isDockLand(cell))) return false;
         if ((state.fog[ty + dy]?.[tx + dx] ?? 0) === 0) return false;
       }
     }
@@ -2048,18 +2288,34 @@ const updateBattleHud = initBattleHud();
     const tappedEnemyUnit = tappedUnit?.team === "enemy" ? tappedUnit : null;
     const tappedEnemyBldg = !tappedUnit && state.buildings.find(b => b.team === "enemy" && b.hp > 0 && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
     const enemyTarget = tappedEnemyUnit || tappedEnemyBldg;
+    const boats = state.units.filter(u => NAVAL_TYPES.has(u.type) && state.selectedIds.includes(u.id));
+    if (!enemyTarget && boats.length && isWaterway(state.grid[ty]?.[tx])) {
+      const fishing = (state.grid[ty][tx].fish ?? 0) > 0;
+      for (const boat of boats) {
+        boat.path = findWaterPath(state.grid, boat.x, boat.y, tx + 0.5, ty + 0.5);
+        boat.targetEntityId = null;
+        const attackMove = state.attackMove && boat.type !== "fishing_boat";
+        boat.amDest = attackMove ? { x: tx + 0.5, y: ty + 0.5 } : null;
+        boat.manualAtk = false;
+        boat.task = attackMove ? "attack_move" : boat.type === "fishing_boat" && fishing ? "fish" : "move";
+        if (boat.task === "fish") boat.targetTile = { tx, ty };
+      }
+      visualFx("command", { x: tx + 0.5, y: ty + 0.5, kind: state.attackMove ? "attack" : "move" });
+      state.attackMove = false; updateTacticBtns();
+      sfxClick(); return;
+    }
 
     if (enemyTarget && state.selectedIds.length > 0) {
-      for (const u of state.units.filter(x => state.selectedIds.includes(x.id))) {
+      for (const u of state.units.filter(x => state.selectedIds.includes(x.id) && x.type !== "healer" && x.type !== "fishing_boat")) {
         u.task = "attack"; u.targetEntityId = enemyTarget.id; u.manualAtk = true; u.amDest = null;
-        u.path = findPath(u.x, u.y, tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + 1, tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + 1);
+        u.path = NAVAL_TYPES.has(u.type) ? [] : findPath(u.x, u.y, tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + 1, tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + 1);
       }
       visualFx("command", { x: tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + tappedEnemyBldg.size / 2, y: tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + tappedEnemyBldg.size / 2, kind: "attack" });
       sfxClick(); showToast("Đã ra lệnh tấn công!"); return;
     }
 
     if (state.attackMove) {
-      const army = selectedArmy();
+      const army = selectedArmy().filter(u => !NAVAL_TYPES.has(u.type));
       state.attackMove = false; updateTacticBtns();
       if (army.length > 0 && tx >= 0 && ty >= 0 && tx < state.mapSize && ty < state.mapSize) {
         const slots = window.DOTESim ? window.DOTESim.formationSlots(army, tx + 0.5, ty + 0.5, isTileBlocked) : null;
@@ -2121,7 +2377,7 @@ const updateBattleHud = initBattleHud();
         for (const v of selVils) { v.huntId = null; v.task = "gather"; v.targetTile = { tx, ty }; v.path = findPath(v.x, v.y, tx, ty); }
         sfxClick(); showToast("Nông dân đang đi khai thác...");
       } else if (!isTileBlocked(tx, ty)) {
-        const movers = state.units.filter(x => state.selectedIds.includes(x.id));
+        const movers = state.units.filter(x => state.selectedIds.includes(x.id) && !NAVAL_TYPES.has(x.type));
         const slots = window.DOTESim ? window.DOTESim.formationSlots(movers, tx + 0.5, ty + 0.5, isTileBlocked) : null;
         for (const u of movers) {
           const slot = slots && slots.get(u.id);
@@ -2230,13 +2486,7 @@ const updateBattleHud = initBattleHud();
   window.addEventListener("blur", cancelCanvasGesture);
   document.addEventListener("visibilitychange", () => { if (document.hidden) cancelCanvasGesture(); });
 
-  miniCanvas.addEventListener("pointerdown", e => {
-    if (!canControlBattle() || !e.isPrimary || e.button !== 0) return;
-    const r = miniCanvas.getBoundingClientRect();
-    const tx = Math.max(0, Math.min(state.mapSize, ((e.clientX - r.left) / r.width) * state.mapSize));
-    const ty = Math.max(0, Math.min(state.mapSize, ((e.clientY - r.top) / r.height) * state.mapSize));
-    cam.x = (tx - ty) * (TILE_W / 2); cam.y = (tx + ty) * (TILE_H / 2);
-  });
+
 
   document.getElementById("btn-box-select").addEventListener("click", () => {
     ensureAudio();
@@ -2310,7 +2560,7 @@ const updateBattleHud = initBattleHud();
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
-function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, herbalMedicine: state.herbalMedicine, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], herbalMedicine: !!d.herbalMedicine, shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
  nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id), ...state.animals.map(a => a.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
@@ -2382,6 +2632,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
           gfx.villager.update(dt, state);
           gfx.atmosphere.update(dt, canvas.width, canvas.height);
         }
+        updateAbilityButton();
         render();
       }
       frameFailed = false;
