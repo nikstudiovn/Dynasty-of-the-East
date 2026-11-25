@@ -1,4 +1,4 @@
-// "Số chiến đấu: Bật/Tắt" — one preference shared by the HUD (#btn-combat-text), the pause menu
+// "Số nổi: Bật/Tắt" — one preference shared by the HUD (#btn-combat-text), the pause menu
 // (#btn-pause-combat-text) and the lobby settings page (#btn-settings-combat-text).
 import { isFloatingTextEnabled, onFloatingTextChange, setFloatingTextEnabled } from "../render3d/floatingText";
 
@@ -9,9 +9,9 @@ function paint(btn: HTMLButtonElement): void {
   const on = isFloatingTextEnabled();
   const value = on ? "Bật" : "Tắt";
   if (btn.classList.contains("dote-btn")) {
-    btn.innerHTML = `<span>Số chiến đấu</span><span style="color:var(--dote-gold-light)">${value}</span>`;
+    btn.innerHTML = `<span>Số nổi</span><span style="color:var(--dote-gold-light)">${value}</span>`;
   } else {
-    btn.textContent = `Số chiến đấu: ${value}`;
+    btn.textContent = `Số nổi: ${value}`;
   }
   btn.setAttribute("aria-pressed", String(on));
 }

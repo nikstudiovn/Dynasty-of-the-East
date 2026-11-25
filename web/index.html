@@ -58,7 +58,7 @@
   body.r3d #overlayCanvas { z-index: 1; }
   .rot-btn { display: none; }
   body.r3d .rot-btn { display: inline-block; }
-  #gameCanvas.build-mode, #gameCanvas.select-mode { cursor: crosshair; }
+  #gameCanvas.build-mode, #gameCanvas.select-mode, #gameCanvas.dote-retreat-mode { cursor: crosshair; }
 
   /* Top HUD */
   .top-hud {
@@ -447,7 +447,7 @@
         <button class="icon-btn" id="btn-quality" title="Chuyển mức chất lượng đồ họa 3D">Đồ họa: Tự động</button>
         <button class="icon-btn" id="btn-music" title="Bật/Tắt nhạc nền Á Đông">Nhạc: Bật</button>
         <button class="icon-btn" id="btn-sound" title="Bật/Tắt âm thanh">Âm: Bật</button>
-        <button class="icon-btn" id="btn-combat-text" title="Bật/Tắt số sát thương và tài nguyên nổi">Số chiến đấu: Bật</button>
+        <button class="icon-btn" id="btn-combat-text" title="Bật/Tắt số sát thương và tài nguyên nổi">Số nổi: Bật</button>
         <button class="icon-btn" id="btn-save" title="Lưu ván đấu vào bộ nhớ máy">Lưu</button>
         <button class="icon-btn" id="btn-restart" title="Cài đặt &amp; Chơi lại">Chơi lại</button>
       </div>
@@ -547,12 +547,13 @@
     </div>
   </div>
 </div>
-  <div id="pause-modal" style="display:none"><div class="dote-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="dote-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="dote-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số chiến đấu: Bật</button></div></div></div>
+  <div id="pause-modal" style="display:none"><div class="dote-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="dote-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="dote-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số nổi: Bật</button></div></div></div>
   
 <script type="module">
 import { bindAudioButtons } from "./src/audio/settings";
 import { battleAudio, cue, endAudioMatch, resetAudioMatch, setAudioAtmosphere, unlockAudio, updateGameAudio } from "./src/audio/gameAudio";
 import "./src/ui/hudTheme.css";
+import { issueRetreatFromHud } from "./src/ui/retreatCommand";
 import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
 import { NAVAL_TYPES, isWaterway, coastalWater, findWaterPath } from "./src/sim/naval";
 import { fw, fh, fcx, fcy, fmax, inFoot, ringTiles, edgeTiles, footprintOf, footDist } from "./src/sim/footprint";
@@ -683,6 +684,7 @@ const updateBattleHud = initBattleHud();
   const mctx = miniCanvas.getContext("2d");
 
   let state = null;
+  let retreatTarget = null;
   let nextId = 1;
   let rafId = null;
   let lastTime = 0;
@@ -1937,6 +1939,7 @@ const updateBattleHud = initBattleHud();
       btn.innerHTML = `<span>${label}</span><span class="act-cost">${costTxt}</span>`;
       btn.addEventListener("click", () => { ensureAudio(); onClick(); });
       wrap.appendChild(btn);
+      return btn;
     };
 
     const selBldg = state.buildings.find(b => b.id === state.selectedBuildingId);
@@ -2021,6 +2024,25 @@ const updateBattleHud = initBattleHud();
     }
 
     if (selUnits.length > 0) {
+      if (retreatUnits().length) {
+        const aiming = Boolean(retreatTarget);
+        const button = addBtn("Rút lui", aiming ? "Chạm điểm đích" : "", true, aiming, () => {
+          if (!canControlBattle()) return;
+          if (retreatTarget) clearRetreatTarget();
+          else {
+            state.attackMove = false;
+            state.buildMode = null;
+            canvas.classList.remove("build-mode");
+            setBoxSelectMode(false);
+            retreatTarget = { match: state, ids: new Set(retreatUnits().map(unit => unit.id)) };
+            canvas.classList.add("dote-retreat-mode");
+            showToast("Rút lui: chạm điểm đích trên bản đồ hoặc bấm ✕ Hủy.");
+          }
+          renderCommandDock();
+        });
+        button.id = "btn-retreat";
+        button.setAttribute("aria-pressed", String(aiming));
+      }
       const abilityUnit = selUnits.find(u => ABILITIES[u.type] && UNIT_DEFS[u.type].factionOnly === state.factionId);
       if (abilityUnit) {
         const ability = ABILITIES[abilityUnit.type];
@@ -2044,22 +2066,24 @@ const updateBattleHud = initBattleHud();
       title.textContent = `Đang chọn ${selUnits.length} đơn vị${hasVil ? " (chạm tài nguyên hoặc xây nhà)" : " (chạm địch đánh / kéo khung chọn cụm)"}`;
 
  if (hasVil) {
-        for (const key of ["house", "depot", "farm", "dock", "temple", "barracks", "archery_range", "watch_tower", "wall", "gate", "market", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
+        for (const key of ["house", "farm", "depot", "market", "barracks", "watch_tower", "wall", "gate", "archery_range", "blacksmith", "stable", "siege_workshop", "imperial_citadel", "dock", "temple"]) {
           if (key === "dock" && !(state.hasDeepWater ??= state.grid.some(row => row.some(cell => cell.terrain === "water" && isWaterway(cell))))) continue;
           const d = BLDG_DEFS[key];
           const okAge = state.age >= d.age;
-          addBtn(
+          const buildButton = addBtn(
             `Xây ${d.name}`,
             okAge ? formatCost(d.cost) : `Cần Đời ${d.age}`,
             okAge && canAfford(d.cost),
             state.buildMode === key,
             () => {
+              clearRetreatTarget();
               state.buildMode = state.buildMode === key ? null : key;
               canvas.classList.toggle("build-mode", Boolean(state.buildMode));
               if (state.buildMode) { setBoxSelectMode(false); showToast(`Chạm ô cỏ đã mở tầm nhìn để đặt ${d.name}`); }
               renderCommandDock();
             }
           );
+          buildButton.dataset.buildType = key;
         }
       }
       return;
@@ -2079,9 +2103,60 @@ const updateBattleHud = initBattleHud();
   }
 
   function selectedArmy() { return state ? state.units.filter(u => state.selectedIds.includes(u.id) && UNIT_DEFS[u.type].atk > 0) : []; }
-    function updateDoteCancelBtn() { const btn = document.getElementById("btn-dote-cancel"); if (!btn) return; const show = Boolean(state && state.running && !state.gameOver && (state.buildMode || state.selectedIds.length > 0)); btn.hidden = !show; if (show) btn.setAttribute("aria-label", state.buildMode ? "Hủy đặt công trình" : "Hủy chọn đơn vị"); }
- const doteCancelBtn = document.getElementById("btn-dote-cancel");
- if (doteCancelBtn) { doteCancelBtn.addEventListener("pointerdown", e => { e.stopPropagation(); }); doteCancelBtn.addEventListener("click", e => { e.stopPropagation(); if (!state || !canControlBattle()) return; ensureAudio(); sfxClick(); if (state.buildMode) { state.buildMode = null; canvas.classList.remove("build-mode"); renderCommandDock(); } else if (state.selectedIds.length > 0) { state.selectedIds = []; state.attackMove = false; setBoxSelectMode(false); updateTacticBtns(); renderCommandDock(); } }); }
+  function retreatUnits() {
+    return selectedArmy().filter(u => u.team === "player" && u.type !== "villager" && u.hp > 0 && !u.garrisoned);
+  }
+
+  function clearRetreatTarget() {
+    retreatTarget = null;
+    canvas.classList.remove("dote-retreat-mode");
+  }
+
+  function updateDoteCancelBtn() {
+    if (retreatTarget && (retreatTarget.match !== state || !retreatUnits().some(u => retreatTarget.ids.has(u.id)))) {
+      clearRetreatTarget();
+    }
+    const button = document.getElementById("btn-dote-cancel");
+    if (!button) return;
+    const show = Boolean(state && state.running && !state.gameOver && (retreatTarget || state.buildMode || state.selectedIds.length));
+    button.hidden = !show;
+    if (show) button.setAttribute("aria-label", retreatTarget ? "Hủy lệnh rút lui" :
+      state.buildMode ? "Hủy đặt công trình" : "Hủy chọn đơn vị");
+  }
+
+  const doteCancelBtn = document.getElementById("btn-dote-cancel");
+  doteCancelBtn?.addEventListener("pointerdown", e => e.stopPropagation());
+  doteCancelBtn?.addEventListener("click", e => {
+    e.stopPropagation();
+    if (!canControlBattle()) return;
+    ensureAudio(); sfxClick();
+    if (retreatTarget) clearRetreatTarget();
+    else if (state.buildMode) {
+      state.buildMode = null;
+      canvas.classList.remove("build-mode");
+    } else if (state.selectedIds.length) {
+      state.selectedIds = [];
+      state.attackMove = false;
+      setBoxSelectMode(false);
+    }
+    renderCommandDock();
+  });
+
+  function moveRetreatUnits(units, order) {
+    const tx = Math.floor(order.x), ty = Math.floor(order.y);
+    const water = isWaterway(state.grid[ty]?.[tx]);
+    let moved = false;
+    for (const unit of units) {
+      const naval = NAVAL_TYPES.has(unit.type);
+      if ((naval && !water) || (!naval && isTileBlocked(tx, ty, "player"))) continue;
+      const path = findPath(unit.x, unit.y, order.x, order.y, naval ? "water" : "player", true);
+      if (!path.length) continue;
+      Object.assign(unit, { task: order.type, path, manualAtk: false, targetEntityId: null, amDest: null });
+      moved = true;
+    }
+    return moved;
+  }
+
   function updateTacticBtns() {
     const am = document.getElementById("btn-attack-move"), st = document.getElementById("btn-stance");
     if (am) am.classList.toggle("active", Boolean(state && state.attackMove));
@@ -2281,6 +2356,22 @@ const updateBattleHud = initBattleHud();
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left, y = clientY - rect.top;
     const { tx, ty } = screenToTile(x, y);
+    if (retreatTarget?.match === state) {
+      if (tx < 0 || ty < 0 || tx >= state.mapSize || ty >= state.mapSize) {
+        showToast("Chọn điểm rút lui trong bản đồ.");
+        return;
+      }
+      const units = retreatUnits().filter(unit => retreatTarget.ids.has(unit.id));
+      const bridge = window.DOTEGameplay;
+      const engine = typeof bridge?.issueRetreatCommand === "function" ? order => bridge.issueRetreatCommand(order) : undefined;
+      const destination = { x: tx + 0.5, y: ty + 0.5 };
+      if (issueRetreatFromHud(units, destination, engine, moveRetreatUnits)) {
+        clearRetreatTarget();
+        visualFx("command", { ...destination, kind: "move" });
+        renderCommandDock();
+      } else showToast("Không tìm được đường rút lui tới điểm này.");
+      return;
+    }
     const prevTap = state._lastTapUnit;
     const prevTapTime = state._lastTapUnitTime;
     clearUnitTap();
@@ -2632,6 +2723,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     ensureAudio(); sfxClick();
     if (!state || !state.running) return;
     if (!state.attackMove && selectedArmy().length === 0) { showToast("Hãy chọn quân trước khi Đánh tiến."); return; }
+    if (retreatTarget) { clearRetreatTarget(); renderCommandDock(); }
     state.attackMove = !state.attackMove;
     if (state.attackMove) { state.buildMode = null; canvas.classList.remove("build-mode"); setBoxSelectMode(false); showToast("Đánh tiến: chạm ô đất để quân tiến lên."); }
     updateTacticBtns();
@@ -2654,7 +2746,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
   document.getElementById("btn-town-bell").addEventListener("click", () => { if (!state) return; const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0); if (!tc) return; if (state.bellActive || state.garrisonedCount > 0) { state.bellActive = false; for (const u of state.units) { if (u.team === "player" && u.garrisoned) { u.garrisoned = false; u.task = "idle"; u.x = tc.tx + 1.5; u.y = tc.ty + 2.5; } } state.garrisonedCount = 0; document.getElementById("btn-town-bell").textContent = "Chuông Báo"; addFloat(tc.tx + 1, tc.ty, "Xuất kích", "#34D399"); updateHud(); } else { state.bellActive = true; sfxGong(); for (const u of state.units) { if (u.team === "player" && u.type === "villager" && !u.garrisoned && u.hp > 0) { u.task = "garrison"; u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } } document.getElementById("btn-town-bell").textContent = "Thả Dân"; showToast("Chuông báo động! Nông dân đang chạy vào Đình Làng!"); } });
 
   function resize() { const wrap = document.getElementById("game-wrap"); const w = wrap ? wrap.clientWidth : (window.visualViewport?.width || window.innerWidth); const h = wrap ? wrap.clientHeight : (window.visualViewport?.height || window.innerHeight); canvas.width = Math.round(w) || window.innerWidth; canvas.height = Math.round(h) || window.innerHeight; if (R3D) R3D.resize(canvas.width, canvas.height); }
-    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
+    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; if (e.key === "Escape" && retreatTarget) { e.preventDefault(); clearRetreatTarget(); renderCommandDock(); return; } e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
   
   let frameFailed = false;
   function loop(ts) {
@@ -2662,6 +2754,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     lastTime = ts;
     frameDt = dt;
     try {
+      if (retreatTarget && (retreatTarget.match !== state || state.gameOver)) clearRetreatTarget();
       resetAudioMatch(state);
       if (state) {
         if (!paused || isOnlineMode()) stepSimulation(dt);

@@ -816,7 +816,9 @@ body.dote-menu-open .minimap-box {
 }
 
 .dote-pause-card {
-  width: min(560px, 92vw);
+  width: min(560px, 100%);
+  max-width: 100%;
+  box-sizing: border-box;
   max-height: calc(100dvh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
   padding: 16px 18px;
   border-radius: 6px;
@@ -847,19 +849,52 @@ body.dote-menu-open .minimap-box {
 
 .dote-pause-body {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
 }
 
 .dote-pause-actions,
 .dote-pause-quick-settings {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  gap: clamp(4px, 1vw, 8px);
   margin: 0 !important;
   padding: 0 !important;
   border: none !important;
+}
+
+.dote-pause-actions {
+  flex-direction: row;
+  flex-wrap: nowrap;
+}
+
+#pause-modal .dote-pause-actions > button {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px clamp(4px, 1.1vw, 12px);
+  margin: 0;
+  font-size: clamp(11px, 2.55vw, 14px);
+  white-space: normal;
+  overflow-wrap: break-word;
+  text-align: center;
+}
+
+.dote-pause-quick-settings {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.dote-pause-quick-settings .dote-pause-col-label {
+  flex-basis: 100%;
+}
+
+#pause-modal .dote-pause-quick-settings > button {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  padding: 5px 8px;
+  font-size: clamp(11px, 2.4vw, 13px);
+  white-space: normal;
 }
 
 .dote-pause-quick-settings {

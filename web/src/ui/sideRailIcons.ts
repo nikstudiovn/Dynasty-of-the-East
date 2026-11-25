@@ -78,6 +78,9 @@ export function getIconSvg(key: SideRailIconKey, size: 16 | 24 = 24): string {
 
 export function resolveCommandIconKey(label: string): SideRailIconKey {
   const text = label.trim().toLowerCase();
+  if (text === "rút lui") return "focus_tc";
+  if (text.endsWith("doanh trại")) return "barracks";
+  if (text.endsWith("vọng lâu")) return "watch_tower";
   if (text.endsWith("từ đường")) return "temple";
   if (text === "y sư" || text === "thảo dược") return "healer";
   if (text.endsWith("bến thuyền")) return "dock";
