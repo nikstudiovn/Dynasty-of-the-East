@@ -263,6 +263,8 @@ export function initSideRailHud(): void {
   if (selPortrait) selPill.appendChild(selPortrait);
   if (selTitle) selPill.appendChild(selTitle);
 
+  const commandTimers = document.getElementById("dote-command-timers");
+  if (commandTimers) drawerBody.appendChild(commandTimers);
   const cmdButtons = document.getElementById("cmd-buttons");
   if (cmdButtons) {
     drawerBody.appendChild(cmdButtons);
@@ -278,6 +280,7 @@ export function initSideRailHud(): void {
   };
   const scrollResize = new ResizeObserver(refreshScrollHints);
   if (cmdButtons) scrollResize.observe(cmdButtons);
+  if (commandTimers) scrollResize.observe(commandTimers);
   for (const region of scrollRegions) {
     scrollResize.observe(region);
     region.addEventListener("scroll", () => { hideTooltip(); refreshScrollHints(); }, { passive: true });
