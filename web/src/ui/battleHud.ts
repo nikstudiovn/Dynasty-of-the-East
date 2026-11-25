@@ -1,3 +1,4 @@
+import { getIconSvg } from "./sideRailIcons";
 import { isoToTile, tileToIso } from "../render3d/common";
 import type { Renderer3D } from "../render3d";
 import type { Cam } from "../render3d/scene3d";
@@ -129,7 +130,7 @@ export function initBattleHud() {
   mmCloseBtn.type = "button";
   mmCloseBtn.className = "dote-minimap-close";
   mmCloseBtn.setAttribute("aria-label", "Đóng bản đồ mở rộng");
-  mmCloseBtn.textContent = "✕";
+  mmCloseBtn.innerHTML = getIconSvg("close", 16);
   mmHeader.append(mmTitle, mmCloseBtn);
 
   const largeCanvas = document.createElement("canvas");

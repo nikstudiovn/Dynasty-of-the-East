@@ -32,7 +32,6 @@
     background: var(--bg);
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    touch-action: none;
   }
 
   #game-wrap {
@@ -48,6 +47,7 @@
     height: 100%;
     image-rendering: pixelated;
     cursor: grab;
+    touch-action: none;
   }
 
   #gameCanvas.dragging { cursor: grabbing; }
@@ -352,8 +352,6 @@
     .opt-row { grid-template-columns: 1fr; }
   }
 .hud-pill::-webkit-scrollbar, .quick-bar::-webkit-scrollbar { display: none; } @media (max-width: 430px) { .hud-pill { gap: 5px; font-size: 11.5px; padding: 4px 8px; } .hud-pill > * { white-space: nowrap; flex-shrink: 0; } .faction-pill, .age-badge { padding: 2px 5px; letter-spacing: 0; margin: 0; } .res-item { gap: 2px; } .res-icon { width: 15px; height: 15px; } #res-pop { white-space: nowrap; } } @media (max-height: 520px) { .top-hud { flex-wrap: nowrap; gap: 4px; top: 4px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; } .hud-pill { padding: 3px 7px; font-size: 11px; gap: 5px; } .icon-btn { padding: 3px 6px; font-size: 11px; white-space: nowrap; } .bottom-hud { bottom: 4px; gap: 6px; } .cmd-dock { padding: 4px 6px; gap: 3px; } .quick-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; } #sel-portrait { width: 28px; height: 28px; } .mini-btn { padding: 2px 5px; font-size: 10.5px; } .act-btn { padding: 3px 6px; min-width: 76px; font-size: 11px; } #minimapCanvas { width: 84px; height: 56px; } }
-  #btn-settings { display: none; }
-  #hud-settings { display: contents; }
   #btn-quality:disabled { opacity: 0.5; }
 
   @media (orientation: landscape) and (max-height: 520px) {
@@ -382,24 +380,6 @@
       text-overflow: ellipsis;
     }
     #game-wrap .quick-bar { grid-column: 1 / -1; }
-    #btn-settings { display: inline-block; }
-    #hud-settings {
-      display: none;
-      position: absolute;
-      top: calc(100% + 5px);
-      right: 0;
-      z-index: 1;
-      max-width: 100%;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 4px;
-      padding: 5px;
-      background: #28150e;
-      border: 1px solid #b6894e;
-      border-radius: 6px;
-      pointer-events: auto;
-    }
-    #btn-settings[aria-expanded="true"] + #hud-settings { display: grid; }
-    #hud-settings .icon-btn { white-space: normal; }
   }
   #rotate-hint {
     position: fixed;
@@ -428,21 +408,22 @@
     <div class="hud-pill">
       <span class="faction-pill" id="hud-faction">Đại Việt</span>
       <span class="age-badge" id="hud-age">Đời 1 · Khai Hoang</span>
-      <span class="res-item" title="Thực (Lúa)"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="7" y="1" width="4" height="2" fill="#1A120E"/><rect x="4" y="3" width="10" height="8" fill="#1A120E"/><rect x="6" y="11" width="6" height="6" fill="#1A120E"/><rect x="8" y="2" width="2" height="3" fill="#FEF08A"/><rect x="5" y="4" width="2" height="3" fill="#FEF08A"/><rect x="11" y="4" width="2" height="3" fill="#FACC15"/><rect x="8" y="5" width="2" height="6" fill="#FACC15"/><rect x="6" y="7" width="2" height="3" fill="#CA8A04"/><rect x="10" y="7" width="2" height="3" fill="#CA8A04"/><rect x="6" y="10" width="6" height="2" fill="#B91C1C"/><rect x="7" y="12" width="1" height="4" fill="#CA8A04"/><rect x="9" y="12" width="2" height="4" fill="#FACC15"/></svg><span id="res-food">200</span></span>
-      <span class="res-item" title="Gỗ (Tre)"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="6" y="1" width="6" height="16" fill="#1A120E"/><rect x="12" y="2" width="4" height="4" fill="#1A120E"/><rect x="2" y="7" width="4" height="4" fill="#1A120E"/><rect x="7" y="2" width="4" height="14" fill="#15803D"/><rect x="8" y="2" width="2" height="14" fill="#22C55E"/><rect x="7" y="5" width="4" height="1" fill="#1A120E"/><rect x="7" y="10" width="4" height="1" fill="#1A120E"/><rect x="8" y="2" width="1" height="14" fill="#86EFAC"/><rect x="12" y="3" width="3" height="2" fill="#4ADE80"/><rect x="3" y="8" width="3" height="2" fill="#4ADE80"/></svg><span id="res-wood">200</span></span>
-      <span class="res-item" title="Vàng"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="2" y="6" width="14" height="5" fill="#1A120E"/><rect x="5" y="4" width="8" height="2" fill="#1A120E"/><rect x="4" y="11" width="10" height="4" fill="#1A120E"/><rect x="3" y="7" width="12" height="3" fill="#F59E0B"/><rect x="6" y="5" width="6" height="2" fill="#FEF08A"/><rect x="5" y="10" width="8" height="4" fill="#B45309"/><rect x="6" y="9" width="6" height="3" fill="#F59E0B"/><rect x="7" y="6" width="4" height="2" fill="#FEF08A"/><rect x="13" y="2" width="1" height="3" fill="#FEF08A"/><rect x="12" y="3" width="3" height="1" fill="#FEF08A"/></svg><span id="res-gold">50</span></span>
-      <span class="res-item" title="Đá"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="5" y="3" width="8" height="2" fill="#1A120E"/><rect x="2" y="5" width="14" height="7" fill="#1A120E"/><rect x="3" y="12" width="12" height="3" fill="#1A120E"/><rect x="6" y="4" width="6" height="2" fill="#CBD5E1"/><rect x="3" y="6" width="12" height="6" fill="#94A3B8"/><rect x="4" y="12" width="10" height="2" fill="#475569"/><rect x="5" y="6" width="4" height="3" fill="#E2E8F0"/><rect x="10" y="9" width="4" height="3" fill="#475569"/><rect x="3" y="6" width="3" height="2" fill="#15803D"/><rect x="4" y="5" width="2" height="2" fill="#4ADE80"/><rect x="11" y="11" width="3" height="2" fill="#15803D"/></svg><span id="res-stone">50</span></span>
-      <span class="res-item" title="Dân số"><svg class="res-icon" width="18" height="18" viewBox="0 0 18 18" shape-rendering="crispEdges"><rect x="7" y="1" width="4" height="4" fill="#1A120E"/><rect x="4" y="5" width="10" height="4" fill="#1A120E"/><rect x="2" y="9" width="14" height="3" fill="#1A120E"/><rect x="4" y="12" width="10" height="5" fill="#1A120E"/><rect x="8" y="2" width="2" height="3" fill="#DC2626"/><rect x="9" y="2" width="1" height="2" fill="#F87171"/><rect x="5" y="6" width="8" height="3" fill="#78716C"/><rect x="6" y="6" width="4" height="2" fill="#D6D3D1"/><rect x="3" y="10" width="12" height="2" fill="#FACC15"/><rect x="5" y="12" width="8" height="4" fill="#FDE68A"/><rect x="6" y="13" width="2" height="1" fill="#1A120E"/><rect x="10" y="13" width="2" height="1" fill="#1A120E"/></svg><span id="res-pop">5/10</span></span>
+      <span class="res-item" title="Thực (Lúa)"><span data-battle-icon="res_food" aria-hidden="true"></span><span id="res-food">200</span></span>
+      <span class="res-item" title="Gỗ (Tre)"><span data-battle-icon="res_wood" aria-hidden="true"></span><span id="res-wood">200</span></span>
+      <span class="res-item" title="Vàng"><span data-battle-icon="res_gold" aria-hidden="true"></span><span id="res-gold">50</span></span>
+      <span class="res-item" title="Đá"><span data-battle-icon="res_stone" aria-hidden="true"></span><span id="res-stone">50</span></span>
+      <span class="res-item" title="Dân số"><span data-battle-icon="res_pop" aria-hidden="true"></span><span id="res-pop">5/10</span></span>
+      <span id="relic-countdown" hidden></span>
+      <span id="dote-herbal-badge" title="Thảo Dược" hidden><span data-battle-icon="healer" aria-hidden="true"></span>Thảo Dược</span>
     </div>
     <div class="top-right">
-      <button class="icon-btn" id="btn-box-select" title="Kéo khung chọn nhiều quân (hoặc giữ Shift + kéo)">Kéo chọn: Tắt</button>
-      <button class="icon-btn" id="btn-zoom-out" title="Thu nhỏ">−</button>
-      <button class="icon-btn" id="btn-zoom-in" title="Phóng to">+</button>
-      <button class="icon-btn rot-btn" id="btn-rot-left" title="Xoay camera (Q)">↺</button>
-      <button class="icon-btn rot-btn" id="btn-rot-right" title="Xoay camera (E)">↻</button>
-      <button class="icon-btn" id="btn-pause" title="Tạm dừng">⏸</button>
-      <button type="button" class="icon-btn" id="btn-settings" aria-label="Cài đặt trận đấu" aria-expanded="false" aria-controls="hud-settings">⚙️</button>
-      <div id="hud-settings" role="group" aria-label="Cài đặt trận đấu">
+      <button class="icon-btn" id="btn-box-select" aria-pressed="false" title="Kéo khung chọn nhiều quân (hoặc giữ Shift + kéo)" aria-label="Kéo chọn"><span data-battle-icon="box_select" aria-hidden="true"></span></button>
+      <button class="icon-btn" id="btn-zoom-out" title="Thu nhỏ" aria-label="Thu nhỏ"><span data-battle-icon="zoom_out" aria-hidden="true"></span></button>
+      <button class="icon-btn" id="btn-zoom-in" title="Phóng to" aria-label="Phóng to"><span data-battle-icon="zoom_in" aria-hidden="true"></span></button>
+      <button class="icon-btn rot-btn" id="btn-rot-left" title="Xoay camera (Q)" aria-label="Xoay trái"><span data-battle-icon="rotate_left" aria-hidden="true"></span></button>
+      <button class="icon-btn rot-btn" id="btn-rot-right" title="Xoay camera (E)" aria-label="Xoay phải"><span data-battle-icon="rotate_right" aria-hidden="true"></span></button>
+      <button class="icon-btn" id="btn-pause" title="Tạm dừng" aria-label="Tạm dừng"><span data-battle-icon="pause" aria-hidden="true"></span></button>
+      <div id="hud-settings" hidden>
         <button class="icon-btn" id="btn-atmosphere" title="Chuyển chu kỳ Ngày-Đêm &amp; Thời tiết">Trời: Tự động</button>
         <button class="icon-btn" id="btn-quality" title="Chuyển mức chất lượng đồ họa 3D">Đồ họa: Tự động</button>
         <button class="icon-btn" id="btn-music" title="Bật/Tắt nhạc nền Á Đông">Nhạc: Bật</button>
@@ -463,12 +444,12 @@
   <!-- BOTTOM HUD -->
   <div class="bottom-hud">
     <div class="minimap-box">
-      <span id="relic-countdown" hidden style="position:absolute;z-index:1;color:#ffe19a;background:#211610;padding:3px;white-space:nowrap"></span><canvas id="minimapCanvas" width="132" height="88"></canvas>
+      <canvas id="minimapCanvas" width="132" height="88"></canvas>
     </div>
 
     <div class="cmd-dock">
       <div class="cmd-header">
-        <canvas id="sel-portrait" width="48" height="48"></canvas><span class="cmd-title" id="sel-title">Đình Làng · Đại Việt</span>
+        <span id="sel-portrait" aria-hidden="true"></span><span class="cmd-title" id="sel-title">Đình Làng · Đại Việt</span>
         <div class="quick-bar">
           <button class="mini-btn" id="btn-grp-1">Đạo 1</button> <button class="mini-btn" id="btn-grp-2">Đạo 2</button> <button class="mini-btn" id="btn-grp-3">Đạo 3</button> <button class="mini-btn" id="btn-grp-assign">Gán đạo</button> <button class="mini-btn" id="btn-town-bell">Chuông Báo</button> <button class="mini-btn" id="btn-idle-vil">Dân rảnh</button>
           <button class="mini-btn" id="btn-all-army">Toàn quân</button>
@@ -482,7 +463,7 @@
   </div>
 
   <!-- SETUP / RESULT MODAL -->
-  <button type="button" id="btn-dote-cancel" class="dote-cancel-btn" aria-label="Hủy" hidden>✕ Hủy</button>
+  <button type="button" id="btn-dote-cancel" class="dote-cancel-btn" aria-label="Hủy" hidden><span data-battle-icon="close" aria-hidden="true"></span>Hủy</button>
   <div id="modal">
     <div class="modal-card">
       <h1 id="modal-title">DYNASTY OF THE EAST</h1>
@@ -547,12 +528,14 @@
     </div>
   </div>
 </div>
-  <div id="pause-modal" style="display:none"><div class="dote-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="dote-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="dote-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số nổi: Bật</button></div></div></div>
+  <div id="pause-modal" style="display:none"><div class="dote-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="dote-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Menu chính</button><button type="button" class="icon-btn" id="btn-settings" aria-expanded="false" aria-controls="dote-pause-settings">Cài đặt</button></div><div class="dote-pause-quick-settings" id="dote-pause-settings" hidden><button type="button" class="icon-btn" id="btn-pause-music" hidden>Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound" hidden>Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số nổi: Bật</button></div></div></div>
   
 <script type="module">
-import { bindAudioButtons } from "./src/audio/settings";
+import { audioSettingsControls, bindAudioButtons } from "./src/audio/settings";
 import { battleAudio, cue, endAudioMatch, resetAudioMatch, setAudioAtmosphere, unlockAudio, updateGameAudio } from "./src/audio/gameAudio";
 import "./src/ui/hudTheme.css";
+import "./src/ui/battleLacquer.css";
+import { getIconSvg, portraitIcon } from "./src/ui/sideRailIcons";
 import { issueRetreatFromHud } from "./src/ui/retreatCommand";
 import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
 import { NAVAL_TYPES, isWaterway, coastalWater, findWaterPath } from "./src/sim/naval";
@@ -730,7 +713,7 @@ const updateBattleHud = initBattleHud();
   function setBoxSelectMode(enabled) {
     boxSelectMode = enabled;
     const btn = document.getElementById("btn-box-select");
-    btn.textContent = enabled ? "Kéo chọn: Bật" : "Kéo chọn: Tắt";
+    btn.setAttribute("aria-pressed", String(enabled));
     btn.classList.toggle("active", enabled);
     canvas.classList.toggle("select-mode", enabled);
   }
@@ -1906,8 +1889,9 @@ const updateBattleHud = initBattleHud();
     document.getElementById("res-wood").textContent = state.resources.wood;
     document.getElementById("res-gold").textContent = state.resources.gold;
     document.getElementById("res-stone").textContent = state.resources.stone;
+    document.getElementById("dote-herbal-badge").hidden = !state.herbalMedicine;
     const { pop, cap } = getPopStats("player");
-    document.getElementById("res-pop").textContent = `${pop}/${cap}`; for (const n of [1, 2, 3]) { const alive = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = alive; const b = document.getElementById(`btn-grp-${n}`); if (b) b.textContent = `Đạo ${n} (${alive.length})`; }
+    document.getElementById("res-pop").textContent = `${pop}/${cap}`; for (const n of [1, 2, 3]) { const alive = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = alive; const b = document.getElementById(`btn-grp-${n}`); if (b) { const label = b.querySelector(".dote-btn-lbl"); (label || b).textContent = `Đạo ${n} (${alive.length})`; } }
   }
 
   function researchUpgrade(kind) {
@@ -1926,7 +1910,15 @@ const updateBattleHud = initBattleHud();
     renderCommandDock();
   }
 
-  function drawSelectionPortrait(selBldg, selUnit) { const cvs = document.getElementById("sel-portrait"); if (!cvs) return; const p = cvs.getContext("2d"); const dpr = Math.min(window.devicePixelRatio || 1, 2); cvs.width = 48 * dpr; cvs.height = 48 * dpr; p.setTransform(dpr, 0, 0, dpr, 0, 0); p.clearRect(0, 0, 48, 48); p.fillStyle = "#1A0F0A"; p.fillRect(0, 0, 48, 48); p.strokeStyle = "rgba(250, 204, 21, 0.28)"; p.strokeRect(1.5, 1.5, 45, 45); p.save(); p.imageSmoothingEnabled = true; p.translate(3, 3); p.scale(42 / 36, 42 / 36); const tc = (selBldg && selBldg.team !== "player") || (selUnit && selUnit.team !== "player") ? "#3B82F6" : "#DC2626"; if (selBldg) { const t = selBldg.type; p.fillStyle = "#1A120E"; if (t === "town_center" || t === "imperial_citadel") { p.fillRect(6, 16, 24, 15); p.fillRect(3, 12, 30, 7); p.fillRect(7, 8, 22, 6); p.fillRect(15, 3, 6, 7); } else if (t === "watch_tower") { p.fillRect(10, 9, 16, 22); p.fillRect(8, 6, 20, 6); } else if (t === "farm") { p.fillRect(4, 17, 28, 14); p.fillRect(6, 13, 7, 14); p.fillRect(14, 11, 8, 16); p.fillRect(23, 14, 7, 13); } else if (t === "blacksmith") { p.fillRect(6, 14, 24, 17); p.fillRect(14, 8, 8, 8); } else { p.fillRect(6, 16, 24, 15); p.fillRect(4, 11, 28, 8); } p.fillStyle = "#4A2C1D"; p.fillRect(7, 17, 22, 13); p.fillStyle = "#8B5E3C"; p.fillRect(9, 19, 18, 9); if (t === "town_center" || t === "imperial_citadel") { p.fillStyle = tc; p.fillRect(4, 13, 28, 5); p.fillRect(8, 9, 20, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 4, 4, 5); p.fillRect(14, 22, 8, 8); } else if (t === "watch_tower") { p.fillStyle = "#64748B"; p.fillRect(11, 10, 14, 20); p.fillStyle = tc; p.fillRect(9, 7, 18, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 13, 4, 5); } else if (t === "farm") { p.fillStyle = "#78350F"; p.fillRect(5, 18, 26, 12); p.fillStyle = "#EAB308"; p.fillRect(7, 14, 5, 12); p.fillRect(15, 12, 6, 14); p.fillRect(24, 15, 5, 11); } else if (t === "blacksmith") { p.fillStyle = "#475569"; p.fillRect(7, 15, 22, 15); p.fillStyle = "#F97316"; p.fillRect(13, 21, 10, 7); p.fillStyle = "#FACC15"; p.fillRect(15, 9, 6, 6); } else { p.fillStyle = tc; p.fillRect(5, 12, 26, 6); p.fillStyle = "#FACC15"; p.fillRect(15, 21, 6, 9); } } else if (selUnit) { const u = selUnit.type; p.fillStyle = "#1A120E"; p.fillRect(12, 8, 12, 11); p.fillRect(9, 17, 18, 14); if (u === "villager") { p.fillRect(8, 5, 20, 6); p.fillRect(12, 3, 12, 4); } else if (u === "war_elephant") { p.fillRect(6, 12, 24, 18); p.fillRect(4, 21, 7, 6); p.fillRect(25, 21, 7, 6); p.fillRect(11, 7, 14, 7); } else if (u === "catapult") { p.fillRect(5, 21, 26, 8); p.fillRect(14, 8, 7, 16); p.fillRect(12, 5, 10, 7); } else if (u === "cavalry" || u === "horse_archer") { p.fillRect(7, 17, 22, 14); p.fillRect(11, 7, 14, 12); p.fillRect(13, 4, 10, 5); } else if (u === "archer" || u === "chuko_nu") { p.fillRect(25, 9, 5, 18); p.fillRect(11, 5, 14, 6); } else { p.fillRect(8, 4, 16, 7); p.fillRect(9, 8, 18, 20); p.fillRect(25, 7, 5, 18); } p.fillStyle = "#FDE68A"; p.fillRect(13, 9, 10, 9); p.fillStyle = tc; p.fillRect(10, 18, 16, 12); if (u === "villager") { p.fillStyle = "#EAB308"; p.fillRect(9, 6, 18, 4); p.fillRect(13, 4, 10, 2); } else if (u === "war_elephant") { p.fillStyle = "#64748B"; p.fillRect(7, 13, 22, 16); p.fillStyle = "#E2E8F0"; p.fillRect(5, 22, 5, 4); p.fillRect(26, 22, 5, 4); p.fillStyle = "#FACC15"; p.fillRect(12, 8, 12, 5); } else if (u === "catapult") { p.fillStyle = "#78350F"; p.fillRect(6, 22, 24, 6); p.fillRect(15, 9, 5, 14); p.fillStyle = "#94A3B8"; p.fillRect(13, 6, 8, 5); } else if (u === "cavalry" || u === "horse_archer") { p.fillStyle = "#92400E"; p.fillRect(8, 18, 20, 12); p.fillStyle = tc; p.fillRect(12, 8, 12, 10); p.fillStyle = "#FACC15"; p.fillRect(14, 5, 8, 3); } else if (u === "archer" || u === "chuko_nu") { p.fillStyle = "#15803D"; p.fillRect(10, 18, 16, 12); p.fillStyle = "#FACC15"; p.fillRect(26, 10, 3, 16); p.fillStyle = tc; p.fillRect(12, 6, 12, 4); } else { p.fillStyle = tc; p.fillRect(11, 5, 14, 5); p.fillStyle = "#FACC15"; p.fillRect(9, 9, 18, 2); p.fillRect(26, 8, 3, 16); } } else { p.fillStyle = tc; p.fillRect(10, 9, 16, 18); p.fillStyle = "#FACC15"; p.fillRect(14, 13, 8, 10); } p.restore(); } function renderCommandDock() { try { updateTacticBtns(); } catch (e) {}
+  function drawSelectionPortrait(building, unit) {
+    const portrait = document.getElementById("sel-portrait");
+    const icon = portraitIcon(building?.type ?? unit?.type);
+    if (portrait.dataset.icon !== icon) {
+      portrait.dataset.icon = icon;
+      portrait.innerHTML = getIconSvg(icon, 24);
+    }
+  }
+  function renderCommandDock() { try { updateTacticBtns(); } catch (e) {}
   updateDoteCancelBtn();
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     const wrap = document.getElementById("cmd-buttons");
     const title = document.getElementById("sel-title");
@@ -2051,6 +2043,7 @@ const updateBattleHud = initBattleHud();
         button.type = "button";
         button.className = "act-btn";
         button.dataset.unitId = String(abilityUnit.id);
+        button.innerHTML = `<span>${ability.name}</span><span class="act-cost">Sẵn sàng</span>`;
         button.addEventListener("click", () => {
           if (abilityUnit.hp <= 0 || abilityUnit.garrisoned || abilityUnit.abilityCooldown > 0 || !state.selectedIds.includes(abilityUnit.id)) return;
           abilityUnit.abilityTime = ability.duration;
@@ -2097,8 +2090,10 @@ const updateBattleHud = initBattleHud();
     const unit = state.units.find(u => u.id === Number(button.dataset.unitId));
     if (!unit) { button.remove(); return; }
     const remaining = Math.ceil(unit.abilityCooldown || 0);
-    const label = ABILITIES[unit.type].name + (remaining ? ` · ${remaining}s` : "");
-    if (button.textContent !== label) button.textContent = label;
+    const status = remaining ? `Hồi chiêu · ${remaining}s` : "Sẵn sàng";
+    const badge = button.querySelector(".act-cost");
+    if (badge && badge.textContent !== status) badge.textContent = status;
+    button.setAttribute("aria-label", `${ABILITIES[unit.type].name} · ${status}`);
     button.disabled = remaining > 0;
   }
 
@@ -2163,7 +2158,7 @@ const updateBattleHud = initBattleHud();
     if (st && window.DOTETactics && state) {
       const army = selectedArmy();
       const cur = army.length && army.every(u => u.stance === "stand_ground") ? "stand_ground" : "aggressive";
-      st.textContent = window.DOTETactics.stanceLabel(cur);
+      (st.querySelector(".dote-btn-lbl") || st).textContent = window.DOTETactics.stanceLabel(cur);
       st.classList.toggle("active", cur === "stand_ground");
     }
   }
@@ -2634,24 +2629,23 @@ const updateBattleHud = initBattleHud();
     const k = e.key.toLowerCase();
     if (k === "q") R3D.rotate(-1); else if (k === "e") R3D.rotate(1);
   });
+  for (const slot of document.querySelectorAll("[data-battle-icon]")) {
+    slot.innerHTML = getIconSvg(slot.dataset.battleIcon, 16);
+  }
   const settingsButton = document.getElementById("btn-settings");
-  const settingsPanel = document.getElementById("hud-settings");
-  const compactHud = matchMedia("(orientation: landscape) and (max-height: 520px)");
-  const closeSettings = () => settingsButton.setAttribute("aria-expanded", "false");
+  const settingsPanel = document.getElementById("dote-pause-settings");
+  const audioControls = document.createElement("div");
+  audioControls.className = "dote-pause-audio";
+  audioControls.append(...audioSettingsControls());
+  settingsPanel.append(audioControls);
+  const closeSettings = () => {
+    settingsPanel.hidden = true;
+    settingsButton.setAttribute("aria-expanded", "false");
+  };
   settingsButton.addEventListener("click", () => {
-    settingsButton.setAttribute("aria-expanded", String(settingsButton.getAttribute("aria-expanded") !== "true"));
+    settingsPanel.hidden = !settingsPanel.hidden;
+    settingsButton.setAttribute("aria-expanded", String(!settingsPanel.hidden));
   });
-  compactHud.addEventListener("change", closeSettings);
-  document.addEventListener("pointerdown", e => {
-    if (!settingsButton.contains(e.target) && !settingsPanel.contains(e.target)) closeSettings();
-  });
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && settingsButton.getAttribute("aria-expanded") === "true") {
-      closeSettings();
-      settingsButton.focus();
-    }
-  });
-  document.getElementById("btn-restart").addEventListener("click", closeSettings);
 
   const gameWrap = document.getElementById("game-wrap");
   const topHud = gameWrap.querySelector(".top-hud");
@@ -2742,11 +2736,11 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     state.selectedBuildingId = tc.id; state.selectedIds = [];
     cam.x = (tc.tx + 1 - (tc.ty + 1)) * (TILE_W / 2); cam.y = (tc.tx + 1 + (tc.ty + 1)) * (TILE_H / 2);
     renderCommandDock();
-  }); document.getElementById("btn-grp-assign").addEventListener("click", () => { if (!state) return; state.assignGroupMode = !state.assignGroupMode; document.getElementById("btn-grp-assign").textContent = state.assignGroupMode ? "Chọn Đạo..." : "Gán đạo"; showToast(state.assignGroupMode ? "Bấm Đạo 1, 2 hoặc 3 để gán quân đang chọn!" : "Đã hủy chế độ gán đạo."); }); for (const n of [1, 2, 3]) { document.getElementById(`btn-grp-${n}`).addEventListener("click", () => { if (!state) return; if (state.assignGroupMode) { state.controlGroups[n] = state.selectedIds.filter(id => state.units.some(u => u.id === id && u.team === "player" && u.hp > 0)); state.assignGroupMode = false; document.getElementById("btn-grp-assign").textContent = "Gán đạo"; updateHud(); showToast(`Đã gán ${state.controlGroups[n].length} quân vào Đạo ${n}!`); } else { const ids = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = ids; if (ids.length === 0) { showToast(`Đạo ${n} chưa có quân!`); updateHud(); return; } state.selectedIds = ids; state.selectedBuildingId = null; const u0 = state.units.find(u => u.id === ids[0]); if (u0) { cam.x = (u0.x - u0.y) * (TILE_W / 2); cam.y = (u0.x + u0.y) * (TILE_H / 2); } renderCommandDock(); updateHud(); } }); }
-  document.getElementById("btn-town-bell").addEventListener("click", () => { if (!state) return; const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0); if (!tc) return; if (state.bellActive || state.garrisonedCount > 0) { state.bellActive = false; for (const u of state.units) { if (u.team === "player" && u.garrisoned) { u.garrisoned = false; u.task = "idle"; u.x = tc.tx + 1.5; u.y = tc.ty + 2.5; } } state.garrisonedCount = 0; document.getElementById("btn-town-bell").textContent = "Chuông Báo"; addFloat(tc.tx + 1, tc.ty, "Xuất kích", "#34D399"); updateHud(); } else { state.bellActive = true; sfxGong(); for (const u of state.units) { if (u.team === "player" && u.type === "villager" && !u.garrisoned && u.hp > 0) { u.task = "garrison"; u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } } document.getElementById("btn-town-bell").textContent = "Thả Dân"; showToast("Chuông báo động! Nông dân đang chạy vào Đình Làng!"); } });
+  }); document.getElementById("btn-grp-assign").addEventListener("click", () => { if (!state) return; state.assignGroupMode = !state.assignGroupMode; (document.querySelector("#btn-grp-assign .dote-btn-lbl") || document.getElementById("btn-grp-assign")).textContent = state.assignGroupMode ? "Chọn Đạo..." : "Gán đạo"; showToast(state.assignGroupMode ? "Bấm Đạo 1, 2 hoặc 3 để gán quân đang chọn!" : "Đã hủy chế độ gán đạo."); }); for (const n of [1, 2, 3]) { document.getElementById(`btn-grp-${n}`).addEventListener("click", () => { if (!state) return; if (state.assignGroupMode) { state.controlGroups[n] = state.selectedIds.filter(id => state.units.some(u => u.id === id && u.team === "player" && u.hp > 0)); state.assignGroupMode = false; document.getElementById("btn-grp-assign").textContent = "Gán đạo"; updateHud(); showToast(`Đã gán ${state.controlGroups[n].length} quân vào Đạo ${n}!`); } else { const ids = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = ids; if (ids.length === 0) { showToast(`Đạo ${n} chưa có quân!`); updateHud(); return; } state.selectedIds = ids; state.selectedBuildingId = null; const u0 = state.units.find(u => u.id === ids[0]); if (u0) { cam.x = (u0.x - u0.y) * (TILE_W / 2); cam.y = (u0.x + u0.y) * (TILE_H / 2); } renderCommandDock(); updateHud(); } }); }
+  document.getElementById("btn-town-bell").addEventListener("click", () => { if (!state) return; const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0); if (!tc) return; if (state.bellActive || state.garrisonedCount > 0) { state.bellActive = false; for (const u of state.units) { if (u.team === "player" && u.garrisoned) { u.garrisoned = false; u.task = "idle"; u.x = tc.tx + 1.5; u.y = tc.ty + 2.5; } } state.garrisonedCount = 0; (document.querySelector("#btn-town-bell .dote-btn-lbl") || document.getElementById("btn-town-bell")).textContent = "Chuông Báo"; addFloat(tc.tx + 1, tc.ty, "Xuất kích", "#34D399"); updateHud(); } else { state.bellActive = true; sfxGong(); for (const u of state.units) { if (u.team === "player" && u.type === "villager" && !u.garrisoned && u.hp > 0) { u.task = "garrison"; u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } } (document.querySelector("#btn-town-bell .dote-btn-lbl") || document.getElementById("btn-town-bell")).textContent = "Thả Dân"; showToast("Chuông báo động! Nông dân đang chạy vào Đình Làng!"); } });
 
   function resize() { const wrap = document.getElementById("game-wrap"); const w = wrap ? wrap.clientWidth : (window.visualViewport?.width || window.innerWidth); const h = wrap ? wrap.clientHeight : (window.visualViewport?.height || window.innerHeight); canvas.width = Math.round(w) || window.innerWidth; canvas.height = Math.round(h) || window.innerHeight; if (R3D) R3D.resize(canvas.width, canvas.height); }
-    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; if (e.key === "Escape" && retreatTarget) { e.preventDefault(); clearRetreatTarget(); renderCommandDock(); return; } e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
+    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (!target) closeSettings(); if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && !settingsPanel.hidden) { e.preventDefault(); closeSettings(); settingsButton.focus(); return; } if (e.key === "Escape" && retreatTarget) { e.preventDefault(); clearRetreatTarget(); renderCommandDock(); return; } e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
   
   let frameFailed = false;
   function loop(ts) {

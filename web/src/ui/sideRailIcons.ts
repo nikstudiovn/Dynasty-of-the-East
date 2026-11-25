@@ -1,4 +1,6 @@
 export type SideRailIconKey =
+  | "res_food" | "res_wood" | "res_gold" | "res_stone" | "res_pop"
+  | "pause" | "close" | "zoom_in" | "zoom_out" | "rotate_left" | "rotate_right" | "box_select"
   | "grp_1" | "grp_2" | "grp_3" | "grp_assign" | "all_army" | "idle_vil" | "town_bell"
   | "focus_tc" | "attack_move" | "stance" | "tab_eco" | "tab_mil" | "tab_def" | "train"
   | "age_up" | "house" | "depot" | "farm" | "barracks" | "archery_range" | "watch_tower"
@@ -16,7 +18,22 @@ const badge = (num: string): string =>
   `<rect x="3" y="3" width="18" height="18" rx="4" fill="${K.crimsonDark}" stroke="${K.gold}" stroke-width="1.6"/>` +
   `<text x="12" y="16.5" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="12" font-weight="800" fill="${K.goldLight}">${num}</text>`;
 
+const outline = (path: string, color: string = K.goldLight): string =>
+  `<path d="${path}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+
 const ICON_BODY: Record<SideRailIconKey, string> = {
+  res_food: outline("M12 21V3m0 7C8 10 6 7 6 5c4 0 6 2 6 5zm0 6c4 0 6-3 6-5-4 0-6 2-6 5zm0 3c-4 0-6-3-6-5 4 0 6 2 6 5z"),
+  res_wood: outline("M8 21l2-18m4 18 2-18M8 15h7m-6-5h6m0 2 4-4", "#82C6A4"),
+  res_gold: `<path d="M3 16l3-7h12l3 7-2 3H5z" fill="${K.gold}" stroke="${K.goldLight}" stroke-width="1.5"/><path d="M3 16h18M8 10l-2 5" stroke="${K.woodDark}" stroke-width="1.4"/>`,
+  res_stone: `<path d="M3 15l5-8 7-2 6 7-2 7H5z" fill="${K.steelDark}" stroke="${K.steel}" stroke-width="1.5"/><path d="M8 7l2 6 11-1M10 13l-5 6" fill="none" stroke="${K.steel}" stroke-width="1.3"/>`,
+  res_pop: outline("M3 12l9-7 9 7M6 11v8h12v-8m-8 8v-5h4v5"),
+  pause: outline("M9 5v14m6-14v14"),
+  close: outline("M6 6l12 12M18 6 6 18"),
+  zoom_in: outline("M12 5v14M5 12h14"),
+  zoom_out: outline("M5 12h14"),
+  rotate_left: outline("M4 11a8 8 0 1 1 3 8M4 5v6h6"),
+  rotate_right: outline("M20 11a8 8 0 1 0-3 8m3-14v6h-6"),
+  box_select: outline("M9 4H4v5m11-5h5v5m0 6v5h-5m-6 0H4v-5"),
   dock: `<path d="M3 9l8-6 8 6H3zm2 3h12v7H5z" fill="${K.gold}" /><path d="M2 21q4-3 8 0t8 0h4" fill="none" stroke="${K.jade}" stroke-width="2"/>`,
   fishing_boat: `<path d="M3 16h18l-4 5H7zM12 3v11H5z" fill="${K.gold}" stroke="${K.goldLight}"/>`,
   galley: `<path d="M2 15h20l-4 6H6zM12 2v11H4zm2 4 5 7h-5z" fill="${K.jade}" stroke="${K.goldLight}"/>`,
@@ -117,4 +134,14 @@ export function resolveCommandIconKey(label: string): SideRailIconKey {
     return "trade";
   }
   return "unique";
+}
+
+const UNIT_PORTRAITS: Record<string, SideRailIconKey> = {
+  town_center: "focus_tc", swordsman: "sword", spearman: "spear",
+  chuko_nu: "crossbow", war_elephant: "elephant", catapult: "siege",
+};
+
+export function portraitIcon(type?: string): SideRailIconKey {
+  if (!type) return "all_army";
+  return UNIT_PORTRAITS[type] ?? (Object.prototype.hasOwnProperty.call(ICON_BODY, type) ? type as SideRailIconKey : "default_cmd");
 }

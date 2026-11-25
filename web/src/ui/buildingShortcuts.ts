@@ -1,3 +1,4 @@
+import { getIconSvg } from "./sideRailIcons";
 export interface ShortcutBuilding {
   id: number;
   type: string;
@@ -24,7 +25,9 @@ export function initBuildingShortcuts<B extends ShortcutBuilding>(top: HTMLEleme
   trigger.type = "button";
   trigger.id = "btn-building-shortcuts";
   trigger.className = "icon-btn";
-  trigger.textContent = "Công trình";
+  trigger.innerHTML = getIconSvg("focus_tc", 16);
+  trigger.setAttribute("aria-label", "Công trình");
+  trigger.title = "Công trình";
   trigger.setAttribute("aria-controls", "building-shortcuts");
   trigger.setAttribute("aria-expanded", "false");
 
