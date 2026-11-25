@@ -111,7 +111,7 @@ body.dote-menu-open .minimap-box {
 .dote-menu-battlefield__view {
   position: absolute;
   inset: -5% -10%;
-  background: url("../assets/menu-battlefield.webp") center 58% / cover no-repeat;
+  background: url("../assets/menu-battlefield.webp") center 45% / cover no-repeat;
   animation: dote-battlefield-pan 17s ease-in-out infinite alternate;
 }
 
@@ -1011,12 +1011,12 @@ body.dote-menu-open .minimap-box {
 }
 
 .modal-card:not(.dote-modal-subpage):not(.dote-modal-endgame) #modal-title {
-  max-width: 12ch;
+  max-width: 15ch;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(26px, 4.4vw, 54px);
   letter-spacing: .015em;
   line-height: .99;
-  text-wrap: balance;
+  text-align: left;
   color: var(--dote-text);
   text-shadow: 0 2px 14px #160907;
 }
