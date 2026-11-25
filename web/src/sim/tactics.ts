@@ -46,7 +46,7 @@ export function autoAcquire(state: any, u: any, def: any): any | null {
   if (stance === "stand_ground" && !am) {
     let nd = def.range + 0.4;
     for (const o of state.units) {
-      if (o.team === u.team || o.hp <= 0) continue;
+      if (o.team === u.team || o.hp <= 0 || o.garrisoned) continue;
       const d = Math.hypot(o.x - u.x, o.y - u.y);
       if (d < nd) { nd = d; near = o; }
     }
@@ -61,7 +61,7 @@ export function autoAcquire(state: any, u: any, def: any): any | null {
   }
   let nearD = am ? Math.max(7, def.range + 2) : Math.max(5.5, def.range + 1.2);
   for (const o of state.units) {
-    if (o.team !== u.team && o.hp > 0) {
+    if (o.team !== u.team && o.hp > 0 && !o.garrisoned) {
       const d = Math.hypot(o.x - u.x, o.y - u.y);
       if (d < nearD) { nearD = d; near = o; }
     }

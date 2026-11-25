@@ -4,6 +4,7 @@ import "./ui/screens.css";
 import { initLobbyUI } from "./ui/lobbyScreen";
 import "./ui/sideRailHud.css";
 import { initSideRailHud } from "./ui/sideRailHud";;
+import * as skirmishAI from "./sim/skirmishAI";
 import * as steering from "./sim/steering";
 import * as pinch from "./input/pinchZoom";
 import * as render3d from "./render3d/index";
@@ -18,6 +19,7 @@ import * as touchSelect from "./input/touchSelect";
 import * as construction from "./sim/construction";
 import * as gameplayExtras from "./sim/gameplayExtras";
 
+(window as any).PDAI = skirmishAI;
 (window as any).PDSim = steering;
 (window as any).PDInput = pinch;
 (window as any).PD3D = render3d;

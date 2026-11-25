@@ -89,11 +89,12 @@ export function iterationLimit(mapSize: number): number { return mapSize * 60; }
 
 /**
  * A* over a size×size grid with 8-way movement. Returns the tile-centre waypoints from (but excluding)
- * the start to the goal, [] when no goal tile is reachable, or just the goal when the iteration limit hits.
+ * the start to the goal. Strict routes also reject diagonal corner cuts and return [] when no route is found.
+ * Legacy callers keep the goal-only fallback when the search runs out of nodes or iterations.
  */
 export function findPathRaw(
   size: number, sx: number, sy: number, gx: number, gy: number,
-  blocked: BlockedFn, team?: string,
+  blocked: BlockedFn, team?: string, strict = false,
 ): PathPt[] {
   const clampI = (v: number) => Math.max(0, Math.min(size - 1, Math.floor(v)));
   const startX = clampI(sx), startY = clampI(sy);
@@ -143,6 +144,7 @@ export function findPathRaw(
       if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
       const ni = ny * size + nx;
       if (closedStamp[ni] === gen || blocked(nx, ny, team)) continue;
+      if (strict && d >= 4 && (blocked(nx, cy, team) || blocked(cx, ny, team))) continue;
       const tg = cg + (d >= 4 ? 1.414 : 1);
       if (stamp[ni] !== gen || tg < gScore[ni]) {
         stamp[ni] = gen; gScore[ni] = tg; parent[ni] = cur;
@@ -150,5 +152,5 @@ export function findPathRaw(
       }
     }
   }
-  return [{ x: goalX + 0.5, y: goalY + 0.5 }];
+  return strict ? [] : [{ x: goalX + 0.5, y: goalY + 0.5 }];
 }
