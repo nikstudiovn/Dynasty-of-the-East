@@ -1,4 +1,5 @@
 // Pixel Dynasty 3D — facade used by the classic game script, plus the crisp 2D Retina overlay bridge.
+import { ModelRegistry } from "./modelRegistry";
 import * as THREE from "three";
 import { Scene3D, Cam, MIN_ZOOM, MAX_ZOOM, type QualityPreset } from "./scene3d";
 import { Terrain3D } from "./terrain3d";
@@ -73,8 +74,9 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   ensurePbrTextures();
   const fx = new FX3D();
   let terrain = new Terrain3D();
-  const buildings = new Buildings3D(fx);
-  const units = new Units3D(fx);
+  const models = new ModelRegistry();
+  const buildings = new Buildings3D(fx, models);
+  const units = new Units3D(fx, models);
   let fog = new Fog3D();
   let world = new World3D();
   const floating = new FloatingText();
@@ -182,7 +184,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       if (state && state.grid && state.fog) {
         terrain.update(state, E, time, s3, fx);
         buildings.update(state, E, time, d, s3);
-        units.update(state, E, time, d, s3.camera);
+        units.update(state, E, time, d, s3.camera, s3.quality !== "low");
         fog.update(state, time, d);
       }
       world.update(time, d, s3.target, s3.weather.lanternBoost, s3.weather.particleFraction, terrain.lakeCenter);
@@ -215,6 +217,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       disposed = true;
       buildings.dispose();
       units.dispose();
+      models.dispose();
       fx.dispose();
       terrain.dispose();
       world.dispose();

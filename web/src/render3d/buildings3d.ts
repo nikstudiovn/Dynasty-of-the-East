@@ -1,4 +1,5 @@
 // Pixel Dynasty 3D — procedural stylized East Asian architecture for all 11 building types (4-age evolution).
+import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D, MAP_N, contactShadow, disposeTree, renderFaction, type Faction, smoothstep, fxGuard } from "./common";
@@ -715,7 +716,7 @@ function scaffold(size: number, height: number): THREE.Group {
   return group;
 }
 
-interface Entry { fxState?: "none" | "smoke" | "fire"; dustBursts?: number; group: THREE.Group; rising: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
+interface Entry { model?: ModelVisual; fxState?: "none" | "smoke" | "fire"; dustBursts?: number; group: THREE.Group; rising: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
 
 function linkMask(state: any, b: any): number {
   let m = 0;
@@ -763,7 +764,7 @@ export class Buildings3D {
   private readonly ringGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 0, -0.5), new THREE.Vector3(0.5, 0, 0.5), new THREE.Vector3(-0.5, 0, 0.5)]);
   private readonly ringMat = new THREE.LineBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.95, fog: false });
 
-  constructor(private readonly fx: FX3D) {}
+  constructor(private readonly fx: FX3D, private readonly models: ModelRegistry) {}
 
   /** Building ids -> current entry (used by the overlay for HP bars). */
   entries(): IterableIterator<Entry> { return this.map.values(); }
@@ -780,6 +781,7 @@ export class Buildings3D {
   rootFor(id: number): THREE.Object3D | undefined { return this.map.get(id)?.group; }
 
   private remove(entry: Entry): void {
+    entry.model?.dispose();
     entry.ring.removeFromParent();
     entry.base.removeFromParent();
     entry.scorch.removeFromParent();
@@ -838,6 +840,7 @@ export class Buildings3D {
         const scorch = contactShadow(size * 1.21, size * 1.17);
         this.group.add(base, scorch);
         e = { group: built.group, rising, parts: built.parts, key, ring, base, scorch, dustT: 0, smokeT: 0, fireT: 0, b };
+        e.model = this.models.building(b.type, faction, size, rising, { side, color });
         this.group.add(e.group);
         this.map.set(b.id, e);
       }
@@ -882,6 +885,7 @@ export class Buildings3D {
       e.ring.visible = sel;
       if (sel) { e.ring.scale.set(size * 1.04, 1, size * 1.04); e.ring.position.y = 0.04; (e.ring.material as THREE.LineBasicMaterial).opacity = 0.7 + Math.sin(t * 6) * 0.3; }
       if (!e.group.visible) continue;
+      e.model?.update(dt, building ? "build" : "idle", scene.quality !== "low");
 
       if (building) {
         // beige soil dust hugging the ground, only while a villager is actually working on this site
