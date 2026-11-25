@@ -488,9 +488,18 @@ body.dote-menu-open .minimap-box {
 }
 
 #opt-faction {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#opt-faction .dote-faction-card {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .dote-faction-card {
@@ -915,6 +924,10 @@ body.dote-menu-open .minimap-box {
 }
 
 @media (max-height: 440px) and (orientation: landscape) {
+  #opt-faction {
+    grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr));
+    gap: 5px;
+  }
   .modal-card,
   .dote-pause-card {
     padding: 12px 14px;
