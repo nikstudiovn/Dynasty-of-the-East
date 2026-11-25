@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Pixel Dynasty — Refined Lacquer Dark Menu System (60-30-10 Palette)
+   Pixel Dynasty — Warm Stone Gray Menu
    - Fixes HUD overlap (z-index + body.pd-menu-open hides side-rail & battle HUD)
    - Centered 1-column Main Menu (Chơi tiếp / Chơi mới / Chơi online / Cài đặt)
    - Dedicated sub-pages: Chơi mới, Chơi online, Cài đặt
@@ -8,18 +8,19 @@
    ========================================================================== */
 
 :root {
-  --pd-ink: #14100E;
-  --pd-surface: #1E1815;
-  --pd-wood: #27201C;
-  --pd-wood-hover: #332A24;
+  --pd-ink: #191816;
+  --pd-panel: #252321;
+  --pd-surface: #2D2B28;
+  --pd-wood: #393530;
+  --pd-wood-hover: #48433D;
 
-  --pd-border: rgba(214, 174, 102, 0.28);
-  --pd-border-strong: rgba(217, 164, 65, 0.72);
-  --pd-text: #F2E9D8;
-  --pd-muted: #A89A87;
+  --pd-border: rgba(184, 156, 110, 0.42);
+  --pd-border-strong: rgba(214, 171, 99, 0.86);
+  --pd-text: #F1E8D8;
+  --pd-muted: #C2B6A4;
 
   --pd-lac-dark: #6D1D18;
-  --pd-lac: #8E2620;
+  --pd-lac: #932E28;
   --pd-lac-hover: #A63029;
   --pd-gold: #D9A441;
   --pd-gold-light: #F5D78E;
@@ -66,7 +67,7 @@ body.pd-menu-open .minimap-box {
     max(14px, env(safe-area-inset-right))
     max(10px, env(safe-area-inset-bottom))
     max(14px, env(safe-area-inset-left));
-  background: rgba(14, 11, 9, 0.78);
+  background: rgba(25, 24, 22, 0.82);
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   font-family: var(--pd-font-ui);
@@ -87,6 +88,86 @@ body.pd-menu-open .minimap-box {
   display: none !important;
 }
 
+#modal > .modal-card {
+  z-index: 1;
+}
+
+#modal > .modal-card:not(.pd-modal-subpage):not(.pd-modal-endgame) {
+  background-color: rgba(37, 35, 33, 0.58);
+  background-image: none;
+}
+
+.pd-menu-battlefield {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #282522;
+}
+
+.pd-modal-subpage ~ .pd-menu-battlefield,
+.pd-modal-endgame ~ .pd-menu-battlefield,
+#modal.hidden > .pd-menu-battlefield {
+  display: none;
+}
+
+.pd-menu-battlefield__view {
+  position: absolute;
+  inset: -5% -10%;
+  background: url("../assets/menu-battlefield.webp") center 58% / cover no-repeat;
+  animation: pd-battlefield-pan 17s ease-in-out infinite alternate;
+}
+
+.pd-menu-battlefield__view::before,
+.pd-menu-battlefield__view::after,
+.pd-menu-battlefield::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.pd-menu-battlefield__view::before {
+  background:
+    radial-gradient(ellipse at 17% 65%, #b7b0a24a, transparent 33%),
+    radial-gradient(ellipse at 76% 52%, #b7a99c48, transparent 38%);
+  animation: pd-battlefield-smoke 11s ease-in-out infinite alternate;
+}
+
+.pd-menu-battlefield__view::after {
+  background:
+    radial-gradient(ellipse at 15% 80%, #e2663338, transparent 16%),
+    radial-gradient(ellipse at 85% 73%, #ff99413d, transparent 19%);
+  animation: pd-battlefield-fire 3.2s ease-in-out infinite alternate;
+}
+
+.pd-menu-battlefield::after {
+  background: linear-gradient(0deg, #171514b8, transparent 45%),
+    radial-gradient(ellipse at center, #18171614 45%, #18171691);
+}
+
+@keyframes pd-battlefield-pan {
+  from { transform: translate3d(-7%, 0, 0) scale(1.02); }
+  to { transform: translate3d(7%, -1%, 0) scale(1.07); }
+}
+
+@keyframes pd-battlefield-smoke {
+  from { transform: translate3d(-3%, 4%, 0) scale(1.05); opacity: 0.45; }
+  to { transform: translate3d(6%, -6%, 0) scale(1.14); opacity: 0.9; }
+}
+
+@keyframes pd-battlefield-fire {
+  0%, 65% { opacity: 0.42; }
+  30%, 100% { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pd-menu-battlefield__view,
+  .pd-menu-battlefield__view::before,
+  .pd-menu-battlefield__view::after {
+    animation: none;
+  }
+}
+
 @keyframes pd-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -100,7 +181,7 @@ body.pd-menu-open .minimap-box {
   max-height: calc(100dvh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
   padding: 16px 18px;
   border-radius: 6px;
-  background: rgba(24, 19, 16, 0.94);
+  background: var(--pd-panel);
   border: 1px solid var(--pd-border);
   outline: none;
   box-shadow:
@@ -218,31 +299,33 @@ body.pd-menu-open .minimap-box {
 }
 
 .pd-btn--primary,
-#btn-start,
 #btn-pause-resume {
+  background: var(--pd-wood);
+  border-color: var(--pd-border-strong);
+}
+
+#btn-start {
   background: var(--pd-lac) !important;
   border-color: rgba(245, 215, 142, 0.52) !important;
   color: #FFF8EC !important;
 }
 
-.pd-btn--primary:hover:not(:disabled),
-#btn-start:hover:not(:disabled),
-#btn-pause-resume:hover:not(:disabled) {
+#btn-start:hover:not(:disabled) {
   background: var(--pd-lac-hover) !important;
   border-color: var(--pd-gold-light) !important;
 }
 
 .pd-btn--save,
 #btn-load-save {
-  background: var(--pd-jade) !important;
-  border-color: rgba(167, 243, 208, 0.42) !important;
-  color: #F4FFF9 !important;
+  background: var(--pd-wood) !important;
+  border-color: var(--pd-border-strong) !important;
+  color: var(--pd-text) !important;
 }
 
 .pd-btn--save:hover:not(:disabled),
 #btn-load-save:hover:not(:disabled) {
-  background: var(--pd-jade-hover) !important;
-  border-color: #A7F3D0 !important;
+  background: var(--pd-wood-hover) !important;
+  border-color: var(--pd-gold-light) !important;
 }
 
 #btn-load-save[style*="inline-block"],
@@ -307,7 +390,7 @@ body.pd-menu-open .minimap-box {
 .pd-menu-row-sub {
   font-size: 12px;
   font-weight: 500;
-  color: #D1FAE5;
+  color: var(--pd-muted);
   opacity: 0.92;
 }
 
@@ -433,7 +516,7 @@ body.pd-menu-open .minimap-box {
 }
 
 .pd-faction-card.active {
-  background: #2C211D !important;
+  background: var(--pd-wood-hover) !important;
   border-color: var(--pd-border-strong) !important;
   border-left-color: var(--pd-lac) !important;
 }
@@ -740,7 +823,7 @@ body.pd-menu-open .minimap-box {
   max-height: calc(100dvh - max(20px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
   padding: 16px 18px;
   border-radius: 6px;
-  background: rgba(24, 19, 16, 0.96);
+  background: var(--pd-panel);
   border: 1px solid var(--pd-border);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.72);
   display: flex;
