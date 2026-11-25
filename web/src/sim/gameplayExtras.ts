@@ -4,13 +4,20 @@ export interface FactionTraits {
   farmYieldMult: number;
   wallTowerHpMult: number;
   campBuildSpeedMult: number;
-  horseArcherMoveMult: number;
+  horseArcherMoveMult: number; 
+  buildRepairSpeedMult: number;
+  warshipHpMult: number;
+  warshipArmorBonus: number;
+  fishingBoatMult: number;
+  meleeInfantryDamageMult: number;
+  meleeInfantryAttackSpeedMult: number;
 }
+const DEFAULT_TRAITS: FactionTraits = { forestSpeedMult: 1, elephantSplash: false, farmYieldMult: 1, wallTowerHpMult: 1, campBuildSpeedMult: 1, horseArcherMoveMult: 1, buildRepairSpeedMult: 1, warshipHpMult: 1, warshipArmorBonus: 0, fishingBoatMult: 1, meleeInfantryDamageMult: 1, meleeInfantryAttackSpeedMult: 1 };
 
 export function getFactionTraits(faction: string): FactionTraits {
   switch (faction) {
     case "dai_viet":
-      return {
+      return { ...DEFAULT_TRAITS,
         forestSpeedMult: 1.15,
         elephantSplash: true,
         farmYieldMult: 1,
@@ -19,7 +26,7 @@ export function getFactionTraits(faction: string): FactionTraits {
         horseArcherMoveMult: 1,
       };
     case "trung_nguyen":
-      return {
+      return { ...DEFAULT_TRAITS,
         forestSpeedMult: 1,
         elephantSplash: false,
         farmYieldMult: 1.15,
@@ -28,16 +35,18 @@ export function getFactionTraits(faction: string): FactionTraits {
         horseArcherMoveMult: 1,
       };
     case "bac_cuong":
-      return {
+      return { ...DEFAULT_TRAITS,
         forestSpeedMult: 1,
         elephantSplash: false,
         farmYieldMult: 1,
         wallTowerHpMult: 1,
         campBuildSpeedMult: 1.25,
         horseArcherMoveMult: 1.1,
-      };
+      }; 
+      case "goryeo": return { ...DEFAULT_TRAITS, wallTowerHpMult: 1.15, buildRepairSpeedMult: 1.15, warshipHpMult: 1.15, warshipArmorBonus: 1 };
+      case "fuso": return { ...DEFAULT_TRAITS, fishingBoatMult: 1.2, meleeInfantryDamageMult: 1.12, meleeInfantryAttackSpeedMult: 1.1 };
     default:
-      return {
+      return { ...DEFAULT_TRAITS,
         forestSpeedMult: 1,
         elephantSplash: false,
         farmYieldMult: 1,
