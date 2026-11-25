@@ -66,6 +66,9 @@ interface Rig {
   root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group;
   legL: THREE.Group | null; legR: THREE.Group | null;
   tools: Record<string, THREE.Object3D>; carry: Record<string, THREE.Object3D>;
+  /** Villager animation state of the last frame (one of VILLAGER_ANIMS). */
+  anim?: VillagerAnim; foodSrc?: "farm" | "forage";
+  deathT0?: number; deathMats?: THREE.Material[]; deathSide?: number;
   legs4: THREE.Group[]; knees: THREE.Group[]; trunk: THREE.Group[]; arm: THREE.Group | null; wheels: THREE.Object3D[]; oars: THREE.Object3D[];
   ring: THREE.Mesh; faction: Faction; health: THREE.Group; healthFill: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; height: number; type: string; key: string;
   yaw: number; walk: number; lastPhase: number; atk: number; melee: number; nextPose: number; lastPose: number; dustT: number; previousCooldown: number; px: number; pz: number; init: boolean; u: any;
@@ -207,6 +210,13 @@ function tool(kind: string): THREE.Group {
     g.add(tip);
   }
   else if (kind === "hammer") g.add(mesh(box(0.05, 0.05, 0.08), steel(PAL.steelDark), 0, 0, 0.17));
+  else if (kind === "knife") { handle.scale.set(1, 0.35, 1); handle.position.z = 0.03; g.add(mesh(box(0.008, 0.026, 0.1), sm, 0, 0, 0.11)); }
+  else if (kind === "basket") {
+    // gùi nhỏ / rổ hái quả on the off hand, with a few berries heaped in it
+    g.remove(handle);
+    g.add(mesh(cyl(0.055, 0.04, 0.06, 8), pbr("mat_bamboo", PAL.bamboo), 0, -0.02, 0.04));
+    for (let k = 0; k < 3; k++) g.add(mesh(sphere(0.018, 5, 4), mat(k ? "#b5342a" : "#d18a2a", { rough: 0.5 }), (k - 1) * 0.022, 0.015, 0.04 + (k % 2) * 0.01, false));
+  }
   return g;
 }
 
@@ -220,6 +230,18 @@ function carryBundle(kind: string): THREE.Group {
     const s = mesh(cone(0.07, 0.24, 7), pbr("mat_bamboo", "#d8b048"), 0, 0.06, 0); s.rotation.z = Math.PI / 2.4; g.add(s);
     g.add(mesh(cyl(0.03, 0.03, 0.03, 6), leather(), 0.02, 0.05, 0));
     g.position.set(0.08, 0.42, -0.03);
+  } else if (kind === "meat") {
+    // haunch of game over the shoulder, tied with a leather thong
+    const haunch = mesh(sphere(0.06, 7, 5), mat("#8e3b2c", { rough: 0.62 }), 0, 0.02, 0); haunch.scale.set(1, 0.75, 1.5); g.add(haunch);
+    const bone = mesh(cyl(0.012, 0.012, 0.1, 5), mat("#e8dcc4", { rough: 0.5 }), 0, 0.02, 0.11); bone.rotation.x = Math.PI / 2; g.add(bone);
+    g.add(mesh(box(0.13, 0.012, 0.012), leather(), 0, 0.05, 0, false));
+    g.position.set(0.08, 0.43, -0.03);
+  } else if (kind === "fruit") {
+    // woven basket of fruit / herbs hugged at the chest
+    g.add(mesh(cyl(0.07, 0.05, 0.08, 8), pbr("mat_bamboo", PAL.bamboo), 0, 0, 0));
+    for (let k = 0; k < 4; k++) g.add(mesh(sphere(0.024, 5, 4), mat(k % 2 ? "#b5342a" : "#d6a12a", { rough: 0.5 }), Math.cos(k * 1.6) * 0.03, 0.05, Math.sin(k * 1.6) * 0.03, false));
+    g.add(mesh(cone(0.03, 0.06, 5), mat("#4f7a33", { rough: 0.8 }), 0.02, 0.07, -0.02, false));
+    g.position.set(0, 0.28, 0.1);
   } else {
     // gùi: tapered bamboo basket on the back with the load heaped on top
     g.add(mesh(cyl(0.07, 0.05, 0.14, 8), pbr("mat_bamboo", PAL.bamboo), 0, 0, 0));
@@ -384,8 +406,9 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
   switch (type) {
     case "villager": {
       humanoid(r, b, mute(shade(team, -0.05), 0.3));
-      for (const k of ["axe", "pick", "sickle", "hammer", "spear"]) { r.tools[k] = hand(r.armR, tool(k)); r.tools[k].visible = false; }
-      for (const k of ["wood", "food", "gold", "stone"]) { r.carry[k] = carryBundle(k); b.add(r.carry[k]); }
+      for (const k of ["axe", "pick", "sickle", "hammer", "spear", "knife"]) { r.tools[k] = hand(r.armR, tool(k)); r.tools[k].visible = false; }
+      r.tools.basket = hand(r.armL, tool("basket")); r.tools.basket.visible = false;
+      for (const k of ["wood", "food", "gold", "stone", "meat", "fruit"]) { r.carry[k] = carryBundle(k); b.add(r.carry[k]); }
       r.height = faction === "dai_viet" ? 0.572 : 0.6;
       break;
     }
@@ -727,6 +750,49 @@ function buildAnimal(species: string, seed: number): AnimalRig {
 
 interface Proj { mesh: THREE.Object3D; kind: string; lx: number; ly: number; lz: number; tx: number; tz: number; }
 
+/** The 12 villager animation states. */
+export const VILLAGER_ANIMS = ["idle", "walk", "carry_walk", "chop", "mine", "farm", "forage", "hunt", "build", "attack", "flee", "death"] as const;
+export type VillagerAnim = typeof VILLAGER_ANIMS[number];
+const VILLAGER_TOOL: Partial<Record<VillagerAnim, string>> = { chop: "axe", mine: "pick", farm: "sickle", hunt: "spear", build: "hammer", attack: "axe" };
+const DEATH_TIME = 1.9;
+const FLEE_TASKS = new Set(["garrison", "retreat", "flee"]);
+
+function findAnimalById(state: any, id: any): any {
+  if (id == null) return null;
+  for (const a of state?.animals || []) if (a.id === id) return a;
+  return null;
+}
+
+/**
+ * Picks the villager animation from sim state. Order matters: death > flee > carrying > combat > work > walk > idle.
+ * Work styles come from graphics/villagerActions (chop / mine / harvest / build); harvest splits into farm (a farm
+ * field) and forage (wild food tile).
+ */
+export function villagerAnimState(u: any, state: any, moving: boolean, target?: any): VillagerAnim {
+  if (u.hp <= 0) return "death";
+  if (moving && (FLEE_TASKS.has(u.task) || u.fleeing)) return "flee";
+  if (u.task === "return" && u.carryAmt > 0) return "carry_walk";
+  if (moving) return u.carryAmt > 0 && u.task !== "gather" && u.task !== "hunt" ? "carry_walk" : "walk";
+  if (u.task === "attack" && target && (target.hp ?? 1) > 0) return "attack";
+  if (u.task === "hunt" && u.huntBusy) return "hunt";
+  const style: string = u.workStyle || "idle";
+  if (style === "chop" || style === "mine" || style === "build") return style;
+  if (style === "harvest") {
+    const tt = u.targetTile;
+    const farm = tt && (state?.buildings || []).some((b: any) => b.type === "farm" && tt.tx >= b.tx && tt.ty >= b.ty && tt.tx < b.tx + (b.w ?? b.size ?? 1) && tt.ty < b.ty + (b.h ?? b.size ?? 1));
+    return farm ? "farm" : "forage";
+  }
+  return "idle";
+}
+
+/** Which carry bundle to show: meat from a hunt, rice sheaf from a farm, fruit basket from foraging, else the resource. */
+function carryKind(u: any, r: Rig): string {
+  const type = u.carryType || "wood";
+  if (type !== "food") return type;
+  if (u.huntId != null) return "meat";
+  return r.foodSrc === "forage" ? "fruit" : "food";
+}
+
 export class Units3D {
   readonly group = new THREE.Group();
   private readonly rigs = new Map<number, Rig>();
@@ -954,6 +1020,7 @@ export class Units3D {
     this.updateAnimals(state, t, dt, fogAt, shadows);
 
     for (const [r, end] of this.dying) {
+      if (r.deathT0 !== undefined && t < end) { fxGuard("unit-death", () => this.stepDeath(r, t)); continue; }
       if (t >= end || !r.model?.deathDuration) {
         this.disposeRig(r);
         this.dying.delete(r);
@@ -968,7 +1035,7 @@ export class Units3D {
         r.ring.visible = r.health.visible = false;
         this.dying.set(r, t + Math.min(duration, 2.5));
         r.model?.update(dt, "die", shadows);
-      } else this.disposeRig(r);
+      } else if (!(r.root.visible && !r.model?.loaded && this.startDeath(r, t))) this.disposeRig(r);
       this.rigs.delete(id);
     }
   }
@@ -1138,7 +1205,7 @@ export class Units3D {
     }
 
     switch (r.type) {
-      case "villager": this.animVillager(r, u, state, moving); break;
+      case "villager": this.animVillager(r, u, state, moving, t, target); break;
       case "swordsman": case "spearman":
         if (inMelee) {
           const recover = smoothstep(0.05, 0.9, r.melee);
@@ -1242,36 +1309,124 @@ export class Units3D {
     }
   }
 
-  private animVillager(r: Rig, u: any, state: any, moving: boolean): void {
-    const style: string = u.workStyle || "idle";
-    const hunting = u.task === "hunt" && u.huntBusy && !moving;
-    const working = !moving && u.task !== "hunt" && style !== "idle" && style !== "carry";
-    const toolKey = hunting ? "spear" : working ? (
-      style === "chop" ? "axe" : style === "mine" ? "pick" : style === "harvest" ? "sickle" : style === "build" ? "hammer" : ""
-    ) : "";
-    for (const k in r.tools) r.tools[k].visible = k === toolKey;
-    if (hunting) {
-      const cooldown = u.atkCooldown ?? 0;
-      const thrust = smoothstep(0.62, 0.02, cooldown) - smoothstep(0.67, 0.97, cooldown) * 0.8;
-      r.armL.rotation.x = -0.94;
-      r.armR.rotation.x = -1.44 + thrust * 0.65;
-      r.body.rotation.x = 0.05 - thrust * 0.16;
-    }
-    const carrying = u.task === "return" && u.carryAmt > 0;
-    for (const k in r.carry) r.carry[k].visible = carrying && (u.carryType || "wood") === k;
-    if (carrying) { r.armR.rotation.x = -2.6; r.armR.rotation.z = 0.25; }
-    if (!working) { r.lastPhase = 0; return; }
-
+  private animVillager(r: Rig, u: any, state: any, moving: boolean, t: number, target: any): void {
+    const anim = villagerAnimState(u, state, moving, target);
+    r.anim = anim;
     const phase = u.workPhase || 0, k = phase / TAU;
     // slow wind-up, fast strike that lands as the phase wraps (same moment the 2D sim plays the hit)
     const strike = smoothstep(0.08, 0.72, k) * (1 - smoothstep(0.72, 0.98, k));
-    if (style === "chop") { r.armR.rotation.x = -0.3 - strike * 2.3; r.armL.rotation.x = -0.4 - strike * 1.6; r.body.rotation.x = (1 - strike) * 0.15; }
-    else if (style === "mine") { r.armR.rotation.x = -0.4 - strike * 2.7; r.armL.rotation.x = -0.4 - strike * 2.4; r.body.rotation.x = (1 - strike) * 0.22; }
-    else if (style === "harvest") { r.armR.rotation.x = -1.1; r.armR.rotation.y = (strike - 0.5) * 1.6; r.body.rotation.x = 0.35; }
-    else if (style === "build") { r.armR.rotation.x = -0.5 - strike * 1.8; r.body.rotation.x = 0.1; }
+    const cooldown = u.atkCooldown ?? 0;
+    const thrust = smoothstep(0.62, 0.02, cooldown) - smoothstep(0.67, 0.97, cooldown) * 0.8;
+    const sw = moving ? Math.sin(r.walk) : 0;
+    const huntA = anim === "hunt" ? findAnimalById(state, u.huntId) : null;
+    const butcher = anim === "hunt" && !!huntA?.dead;
 
-    if (phase < r.lastPhase) this.strikeFx(r, u, state, style);
-    r.lastPhase = phase;
+    // --- held tool (right hand) + off-hand basket
+    const toolKey = VILLAGER_TOOL[anim] === "spear" && butcher ? "knife" : VILLAGER_TOOL[anim] ?? "";
+    for (const key in r.tools) r.tools[key].visible = key === toolKey || (key === "basket" && anim === "forage");
+    // --- carried load: wood / rice sheaf / fruit basket / ore / meat
+    if (anim === "farm" || anim === "forage") r.foodSrc = anim;
+    const load = anim === "carry_walk" ? carryKind(u, r) : "";
+    for (const key in r.carry) r.carry[key].visible = key === load;
+
+    r.body.rotation.y = 0; r.body.rotation.z = 0; r.armR.rotation.z = 0; r.armL.rotation.z = 0;
+    switch (anim) {
+      case "idle": {
+        // slow breathing and a gentle look-around
+        const br = Math.sin(t * 1.9 + u.id);
+        r.body.position.y = br * 0.004;
+        r.body.rotation.y = Math.sin(t * 0.45 + u.id * 1.7) * 0.22;
+        r.armL.rotation.x = 0.04 + br * 0.03; r.armR.rotation.x = 0.04 - br * 0.03;
+        r.armL.rotation.z = 0.06; r.armR.rotation.z = -0.06;
+        break;
+      }
+      case "walk":
+        r.armL.rotation.x = -sw * 0.55; r.armR.rotation.x = sw * 0.55;
+        r.body.rotation.y = sw * 0.06;
+        break;
+      case "carry_walk":
+        if (load === "wood" || load === "meat" || load === "food") { r.armR.rotation.x = -2.6; r.armR.rotation.z = 0.25; r.armL.rotation.x = -sw * 0.35; }
+        else if (load === "fruit") { r.armL.rotation.x = -1.05; r.armR.rotation.x = -1.05; r.armL.rotation.z = -0.35; r.armR.rotation.z = 0.35; }
+        else { r.armL.rotation.x = -0.6; r.armR.rotation.x = -0.6; r.body.rotation.x = 0.12; } // ore basket: lean into the straps
+        if (r.legL && r.legR) { r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8; } // shorter, heavier steps
+        r.body.position.y = moving ? Math.abs(Math.sin(r.walk)) * 0.012 : 0;
+        break;
+      case "chop": r.armR.rotation.x = -0.3 - strike * 2.3; r.armL.rotation.x = -0.4 - strike * 1.6; r.body.rotation.x = (1 - strike) * 0.15; r.body.rotation.y = (1 - strike) * 0.25; break;
+      case "mine": r.armR.rotation.x = -0.4 - strike * 2.7; r.armL.rotation.x = -0.4 - strike * 2.4; r.body.rotation.x = (1 - strike) * 0.22; break;
+      case "farm": // gặt lúa: deep bow, sickle sweeps low across the paddy
+        r.armR.rotation.x = -1.1; r.armR.rotation.y = (strike - 0.5) * 1.6; r.armL.rotation.x = -0.9 + strike * 0.3; r.body.rotation.x = 0.42;
+        break;
+      case "forage": { // hái quả: alternate hands reach up into the bush, basket held low on the left arm
+        const reach = Math.sin(phase * 2) * 0.5 + 0.5;
+        r.armR.rotation.x = -1.6 - reach * 0.9; r.armL.rotation.x = -0.75; r.armL.rotation.z = 0.25;
+        r.body.rotation.x = -0.05 + (1 - reach) * 0.12; r.body.rotation.y = (reach - 0.5) * 0.3;
+        break;
+      }
+      case "hunt":
+        if (butcher) { // kneel over the carcass and work the knife
+          r.body.rotation.x = 0.62; r.body.position.y = -0.05;
+          r.armR.rotation.x = -0.9 - strike * 0.7; r.armL.rotation.x = -0.8;
+          if (r.legL && r.legR) { r.legL.rotation.x = -1.2; r.legR.rotation.x = 0.35; }
+        } else { // spear thrust / throw at the living animal
+          r.armL.rotation.x = -0.94; r.armR.rotation.x = -1.44 + thrust * 0.65; r.body.rotation.x = 0.05 - thrust * 0.16;
+          if (r.legL && r.legR) { r.legL.rotation.x = -0.35; r.legR.rotation.x = 0.25; }
+        }
+        break;
+      case "build": r.armR.rotation.x = -0.5 - strike * 1.8; r.armL.rotation.x = -0.5; r.body.rotation.x = 0.1; break;
+      case "attack": { // self-defence: overhead swing with the axe, timed on the attack cooldown like soldiers
+        const sws = Math.max(r.melee, thrust);
+        r.armR.rotation.x = -2.4 + sws * 2.0; r.armL.rotation.x = -0.6; r.body.rotation.x = -0.06 + sws * 0.2;
+        if (r.legL && r.legR) { r.legL.rotation.x = -0.3; r.legR.rotation.x = 0.3; }
+        break;
+      }
+      case "flee": // sprint: forward lean, pumping arms, longer stride
+        r.body.rotation.x = 0.2;
+        r.armL.rotation.x = -sw * 1.1 - 0.3; r.armR.rotation.x = sw * 1.1 - 0.3;
+        if (r.legL && r.legR) { r.legL.rotation.x = sw * 0.95; r.legR.rotation.x = -sw * 0.95; }
+        r.body.position.y = Math.abs(Math.sin(r.walk)) * 0.035;
+        break;
+      case "death": break; // the rig is dropped from state.units on death; startDeath() plays the fall + fade
+    }
+
+    const fxStyle = anim === "farm" || anim === "forage" ? "harvest" : anim;
+    if (anim === "chop" || anim === "mine" || anim === "farm" || anim === "forage" || anim === "build") {
+      if (phase < r.lastPhase) this.strikeFx(r, u, state, fxStyle);
+      r.lastPhase = phase;
+    } else r.lastPhase = 0;
+  }
+
+  /** Procedural death (no glTF clip): topple over, then fade out and sink. Materials are cloned per rig so the fade never touches shared ones. */
+  private startDeath(r: Rig, t: number): boolean {
+    if (!r.legL || this.dying.size >= 20) return false;
+    const clones = new Map<THREE.Material, THREE.Material>();
+    r.root.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.material) return;
+      const swap = (mt: THREE.Material) => {
+        let c = clones.get(mt);
+        if (!c) { c = mt.clone(); c.transparent = true; c.userData.sharedTexture = true; clones.set(mt, c); }
+        return c;
+      };
+      m.material = Array.isArray(m.material) ? m.material.map(swap) : swap(m.material);
+    });
+    r.ring.visible = r.health.visible = false;
+    r.deathT0 = t; r.deathMats = [...clones.values()];
+    r.deathSide = hash2(r.root.position.x * 3.1, r.root.position.z * 1.7) > 0.5 ? 1 : -1;
+    this.dying.set(r, t + DEATH_TIME);
+    return true;
+  }
+
+  private stepDeath(r: Rig, t: number): void {
+    const e = t - (r.deathT0 ?? t), k = Math.min(1, e / 0.55);
+    const fall = k * k * (3 - 2 * k);
+    r.body.rotation.x = -fall * 1.42;              // collapses backwards…
+    r.body.rotation.z = fall * 0.22 * (r.deathSide ?? 1);
+    r.body.position.y = fall * 0.04;
+    r.armL.rotation.x = -fall * 2.2; r.armR.rotation.x = -fall * 1.7;
+    if (r.legL && r.legR) { r.legL.rotation.x = -fall * 0.4; r.legR.rotation.x = fall * 0.15; }
+    const fade = THREE.MathUtils.clamp((e - 1.0) / (DEATH_TIME - 1.0), 0, 1); // …lies still, then fades and sinks
+    for (const m of r.deathMats ?? []) m.opacity = 1 - fade;
+    r.body.position.y -= fade * 0.06;
   }
 
   private strikeFx(r: Rig, u: any, state: any, style: string): void {

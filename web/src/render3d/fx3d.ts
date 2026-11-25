@@ -284,11 +284,13 @@ export class FX3D {
   }
 
   /** Command ripple at a valid order target (move = gold, attack / attack-move = vermilion). */
-  command(x: number, y: number, z: number, attack: boolean): void {
+  /** Ground ripple for an order: gold = move, vermilion = attack, river blue = retreat. */
+  command(x: number, y: number, z: number, kind: "move" | "attack" | "retreat" | boolean): void {
+    const k = kind === true ? "attack" : kind === false ? "move" : kind;
     const r = this.commands[this.commandHead];
     this.commandHead = (this.commandHead + 1) % this.commands.length;
     r.life = r.max;
-    r.mat.color.setHex(attack ? 0xc2402a : 0xc9a04a);
+    r.mat.color.setHex(k === "attack" ? 0xc2402a : k === "retreat" ? 0x4f8fd0 : 0xc9a04a);
     r.mesh.position.set(x, y + 0.035, z);
     r.mesh.visible = true;
   }

@@ -18,7 +18,7 @@ export type VisualEvent =
   | { type: "deposit"; x: number; y: number; amount: number; res: string }
   | { type: "text"; x: number; y: number; text: string; color?: string }
   | { type: "heal"; x: number; y: number }
-  | { type: "command"; x: number; y: number; kind: "move" | "attack" };
+  | { type: "command"; x: number; y: number; kind: "move" | "attack" | "retreat" };
 
 const RES_LABEL: Record<string, string> = { food: "Lúa", wood: "Gỗ", gold: "Vàng", stone: "Đá" };
 
@@ -390,7 +390,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         } else if (type === "text") {
           floating.add(x, z, String(data.text ?? ""), data.color || FLOAT_COLORS.bronze);
         } else if (type === "command") {
-          fx.command(x, ground, z, data.kind === "attack");
+          fx.command(x, ground, z, data.kind === "attack" ? "attack" : data.kind === "retreat" ? "retreat" : "move");
         }
       });
     },

@@ -52,6 +52,15 @@ function limb(parts: THREE.BufferGeometry[], from: THREE.Vector3, dir: THREE.Vec
 const BROAD_TIPS: THREE.Vector3[] = [];
 
 /** Branched trunk (height ≈ 1.1): root flare, a leaning bole that forks into 3 asymmetric limbs + twigs. */
+/** Villager height in world units (foot to nón lá tip, measured on the procedural rig). Resource scale reference. */
+export const VILLAGER_H = 0.6;
+/** Tree height band in villager heights. */
+export const TREE_SCALE: readonly [number, number] = [2.5, 3.5];
+/** Stone / gold main block height band in villager heights. */
+export const MINE_SCALE: readonly [number, number] = [1.2, 1.8];
+/** Fruit trees (when they exist) height band in villager heights. */
+export const FRUIT_TREE_SCALE: readonly [number, number] = [1.4, 1.8];
+
 export function branchedTrunkGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   BROAD_TIPS.length = 0;
