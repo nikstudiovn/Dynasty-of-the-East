@@ -72,6 +72,7 @@ export class Fog3D {
     });
     this.mesh = new THREE.Mesh(g, this.mat);
     this.mesh.renderOrder = 8;
+    this.mesh.userData.occludesBloom = true;
     this.mesh.frustumCulled = false;
   }
 
