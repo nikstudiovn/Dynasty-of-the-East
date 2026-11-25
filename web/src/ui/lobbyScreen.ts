@@ -21,7 +21,9 @@ const FACTION_META: Record<FactionKey, FactionMeta> = {
     chip: "Tượng Binh",
     stat: "+15% Lúa & Tre",
     svg: FACTION_CRESTS.dai_viet,
-  },
+  }, 
+  goryeo: { name: "Cao Ly", chip: "Hỏa Xa", stat: "+15% Công trình & Tàu chiến", svg: FACTION_CRESTS.goryeo },
+  fuso: { name: "Phù Tang", chip: "Samurai", stat: "+12% Sát thương Bộ binh", svg: FACTION_CRESTS.fuso },
   trung_nguyen: {
     name: "Trung Nguyên",
     chip: "Nỏ Liên Châu",
