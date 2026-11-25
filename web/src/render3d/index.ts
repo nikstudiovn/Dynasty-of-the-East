@@ -4,12 +4,12 @@ import { ModelRegistry } from "./modelRegistry";
 import * as THREE from "three";
 import { Scene3D, Cam, MIN_ZOOM, MAX_ZOOM, type QualityPreset } from "./scene3d";
 import { Terrain3D } from "./terrain3d";
-import { Buildings3D } from "./buildings3d";
+import { buildSacredShrine, Buildings3D } from "./buildings3d";
 import { Units3D } from "./units3d";
 import { Fog3D } from "./fog3d";
 import { FX3D } from "./fx3d";
 import { World3D } from "./world3d";
-import { Env3D, MAP_N, WATER_LEVEL, cyl, cone, mat, mesh, setMapSize, isoToTile, tileToIso, clamp, standHeight, retainRenderAssets, releaseRenderAssets, fxGuard } from "./common";
+import { Env3D, MAP_N, WATER_LEVEL, disposeTree, setMapSize, isoToTile, tileToIso, clamp, standHeight, retainRenderAssets, releaseRenderAssets, fxGuard } from "./common";
 import { ensurePbrTextures, disposePbrMaterials } from "./pbrMaterials";
 import { FloatingText, FLOAT_COLORS, onFloatingTextChange } from "./floatingText";
 
@@ -86,15 +86,11 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   s3.scene.add(monuments);
   let fishSites: { x: number; y: number }[] = [];
   function setMapDecor(state: any): void {
-    monuments.clear();
+    for (const monument of [...monuments.children]) disposeTree(monument);
     fishSites = [];
     for (const shrine of state.shrines ?? []) {
-      const altar = new THREE.Group();
+      const altar = buildSacredShrine();
       altar.position.set(shrine.x, standHeight(shrine.x, shrine.y, state.grid), shrine.y);
-      const stone = mat("#827661", { surface: "stone" });
-      altar.add(mesh(cyl(0.64, 0.72, 0.11, 8), stone, 0, 0.055, 0));
-      altar.add(mesh(cyl(0.33, 0.46, 0.29, 8), stone, 0, 0.20, 0));
-      altar.add(mesh(cone(0.18, 0.45, 4), mat("#d3a05c", { metal: 0.45 }), 0, 0.55, 0));
       monuments.add(altar);
     }
     state.grid?.forEach((row: any[], y: number) => row.forEach((cell, x) => {
@@ -172,7 +168,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         octx.stroke();
       }
       for (const shrine of state.shrines ?? []) {
-        const p = s3.project(shrine.x, standHeight(shrine.x, shrine.y, state.grid) + 0.3, shrine.y);
+        const p = s3.project(shrine.x, standHeight(shrine.x, shrine.y, state.grid) + 1.19, shrine.y);
         if (!p.visible || p.x < 0 || p.y < 0 || p.x > W || p.y > H) continue;
         octx.save();
         octx.fillStyle = shrine.owner === "player" ? "#a8e4ac" : shrine.owner ? "#ff9b84" : "#f9db94";
@@ -316,7 +312,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       octx.clearRect(0, 0, s3.width, s3.height);
       lastState = null;
       decoratedState = null;
-      monuments.clear();
+      for (const monument of [...monuments.children]) disposeTree(monument);
       fishSites = [];
     },
 
