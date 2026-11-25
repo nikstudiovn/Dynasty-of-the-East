@@ -5,7 +5,7 @@ export type SideRailIconKey =
   | "wall" | "gate" | "market" | "blacksmith" | "stable" | "siege_workshop" | "imperial_citadel"
   | "villager" | "sword" | "spear" | "archer" | "crossbow" | "cavalry" | "elephant"
   | "horse_archer" | "siege" | "unique" | "upgrade_atk" | "upgrade_def" | "trade" | "rally"
-  | "collapse" | "expand" | "left_hand" | "default_cmd";
+  | "temple" | "healer" | "collapse" | "expand" | "left_hand" | "default_cmd";
 
 const K = {
   gold: "#E5B454", goldLight: "#FCE5A6", crimson: "#B8352D", crimsonDark: "#6E1D18",
@@ -17,6 +17,8 @@ const badge = (num: string): string =>
   `<text x="12" y="16.5" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="12" font-weight="800" fill="${K.goldLight}">${num}</text>`;
 
 const ICON_BODY: Record<SideRailIconKey, string> = {
+  temple: `<path d="M3 11l9-7 9 7H3z" fill="${K.jade}" stroke="${K.gold}"/><path d="M6 12v8m12-8v8M4 20h16" stroke="${K.goldLight}" stroke-width="2"/>`,
+  healer: `<circle cx="12" cy="12" r="9" fill="${K.jade}"/><path d="M8 12h8m-4-4v8" stroke="${K.goldLight}" stroke-width="2.5"/>`,
   grp_1: badge("1"),
   grp_2: badge("2"),
   grp_3: badge("3"),

@@ -264,6 +264,7 @@ export function buildBuilding(type: string, team: string, age: number, size: num
     return { group: g, parts };
   }
   switch (type) {
+    case "temple":
     case "town_center": {
       const top = hall(g, parts, S * 0.82, S * 0.62, 0.42, ageStyle);
       if (age >= 4) {

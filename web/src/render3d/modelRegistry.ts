@@ -6,7 +6,7 @@ import type { Faction } from "./common";
 import { PBR_MATERIALS, pbrTint, type PbrName } from "./pbrMaterials";
 
 const BUILDINGS = new Set(["town_center", "imperial_citadel", "barracks", "archery_range", "stable", "siege_workshop"]);
-const UNITS = new Set(["villager", "swordsman", "spearman", "archer", "chuko_nu", "cavalry", "war_elephant", "horse_archer", "catapult"]);
+const UNITS = new Set(["healer", "villager", "swordsman", "spearman", "archer", "chuko_nu", "cavalry", "war_elephant", "horse_archer", "catapult"]);
 const WILDLIFE = new Set(["deer", "goat", "cattle", "lion", "wild_elephant"]);
 const SLOTS = ["wood", "roof", "stone", "gold", "foliage", "team"] as const;
 

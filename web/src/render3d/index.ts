@@ -17,6 +17,7 @@ export type VisualEvent =
   | { type: "hit"; x: number; y: number; dmg: number; targetId?: number | null; isBldg?: boolean; melee?: boolean; team?: string }
   | { type: "deposit"; x: number; y: number; amount: number; res: string }
   | { type: "text"; x: number; y: number; text: string; color?: string }
+  | { type: "heal"; x: number; y: number }
   | { type: "command"; x: number; y: number; kind: "move" | "attack" };
 
 const RES_LABEL: Record<string, string> = { food: "Lúa", wood: "Gỗ", gold: "Vàng", stone: "Đá" };
@@ -306,6 +307,8 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
           if (dmg > 0) floating.add(x, z, `-${dmg}`, data.team === "player" ? FLOAT_COLORS.ember : FLOAT_COLORS.ivory);
           if (data.targetId != null) fx.flash(data.isBldg ? buildings.rootFor(data.targetId) : units.rigFor(data.targetId)?.root);
           if (data.melee) fx.meleeSparks(x, ground + 0.35, z);
+        } else if (type === "heal") {
+          fx.heal(x, ground, z);
         } else if (type === "deposit") {
           const amount = Math.round(Number(data.amount) || 0);
           if (amount > 0) floating.add(x, z, `+${amount} ${RES_LABEL[data.res] ?? ""}`.trim(), data.res === "gold" || data.res === "stone" ? FLOAT_COLORS.bronze : FLOAT_COLORS.jade);

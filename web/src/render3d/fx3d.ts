@@ -335,6 +335,10 @@ export class FX3D {
   private restoreAllFlashes(): void { for (const f of this.flashes) if (f.root) this.restore(f); }
 
   /** Orange melee sparks (medium / high). */
+  heal(x: number, y: number, z: number): void {
+    this.glow.emit(x, y + 0.3, z, 0, 0.45, 0, 0.52, 0.28, 0x54dca3, 0);
+  }
+
   meleeSparks(x: number, y: number, z: number): void {
     if (!this.rich) return;
     this.glow.burst(x, y, z, 7, 1.6, 1.4, 0.32, 0.5, [0xff7a1a, 0xffb347, 0xffe2a0], -7);

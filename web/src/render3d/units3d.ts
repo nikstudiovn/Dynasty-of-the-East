@@ -181,6 +181,13 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       r.height = 0.6;
       break;
     }
+    case "healer": {
+      humanoid(r, r.body, "#447c62", { legs: true });
+      r.body.add(mesh(cyl(0.018, 0.018, 0.56, 6), mat("#604a32", { surface: "teak" }), 0.22, 0.29, 0.1));
+      r.body.add(mesh(sphere(0.055, 8, 6), mat("#87d9ac", { emissive: "#135635" }), 0.22, 0.59, 0.1));
+      r.height = 0.67;
+      break;
+    }
     case "swordsman": {
       humanoid(r, b, team, { armor: true });
       const blade = new THREE.Group();

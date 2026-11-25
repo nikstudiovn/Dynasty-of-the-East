@@ -608,7 +608,13 @@ const updateBattleHud = initBattleHud();
     { age: 4, name: "Đời 4 · Đế Quốc", cost: { food: 840, wood: 0, gold: 560, stone: 280 } }
   ];
 
+  const ABILITIES = {
+    war_elephant: { name: "Xung Phong", duration: 4 },
+    chuko_nu: { name: "Mưa Tên", duration: 5 },
+    horse_archer: { name: "Phi Mã", duration: 6 }
+  };
   const UNIT_DEFS = {
+    healer: { name: "Y Sư", hp: 58, atk: 0, range: 0, vision: 6, speed: 1.9, cost: { food: 55, wood: 0, gold: 45, stone: 0 }, age: 2, role: "support" },
     villager: { name: "Dân Làng", hp: 40, atk: 4, range: 1.1, vision: 5, speed: 2.1, cost: { food: 50, wood: 0, gold: 0, stone: 0 }, age: 1, role: "eco" },
     swordsman: { name: "Đao Binh", hp: 75, atk: 9, range: 1.15, vision: 5, speed: 2.0, cost: { food: 50, wood: 0, gold: 15, stone: 0 }, age: 1, role: "infantry" },
     spearman: { name: "Trường Thương", hp: 70, atk: 8, range: 1.25, vision: 5, speed: 2.1, cost: { food: 35, wood: 25, gold: 0, stone: 0 }, age: 2, role: "infantry", bonusElephant: 1.6, bonusCav: 1.5 },
@@ -620,9 +626,10 @@ const updateBattleHud = initBattleHud();
     catapult: { name: "Pháo Thạch", hp: 130, atk: 38, range: 7.8, vision: 8, speed: 1.2, cost: { food: 0, wood: 140, gold: 110, stone: 0 }, age: 3, role: "siege", proj: "boulder", splash: 2.1, bonusBuilding: 2.5 }
   };
 
-  const TRAIN_TIMES = { villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
+  const TRAIN_TIMES = { healer: 9, villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
 
   const BLDG_DEFS = {
+    temple: { name: "Từ Đường", size: 2, hp: 780, vision: 6, cost: { food: 0, wood: 135, gold: 35, stone: 60 }, pop: 0, age: 2 },
     town_center: { name: "Đình Làng", size: 2, hp: 1960, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
     house: { name: "Nhà Ngói", size: 1, hp: 400, vision: 4, cost: { food: 0, wood: 35, gold: 0, stone: 0 }, pop: 10, age: 1 },
     depot: { name: "Kho Lẫm", size: 1, hp: 450, vision: 4, cost: { food: 0, wood: 65, gold: 0, stone: 0 }, pop: 0, age: 1 },
@@ -1035,6 +1042,19 @@ const updateBattleHud = initBattleHud();
       dmg = Math.max(2, dmg - state.upgrades.armor * 2);
     }
 
+    if (!isBldg && target.type === "horse_archer" && target.abilityTime > 0 &&
+      (def?.proj === "arrow" || def?.proj === "bolt" || attacker?.type === "watch_tower" || attacker?.type === "imperial_citadel") &&
+      Math.random() < 0.15) return;
+    if (attacker?.type === "war_elephant" && attacker.abilityTime > 0 && attacker.chargeReady) {
+      attacker.chargeReady = false;
+      const x = isBldg ? target.tx + target.size / 2 : target.x;
+      const y = isBldg ? target.ty + target.size / 2 : target.y;
+      for (const nearby of state.units) {
+        if (nearby.team === attacker.team || nearby.hp <= 0 || nearby.garrisoned || Math.hypot(nearby.x - x, nearby.y - y) > 1.5) continue;
+        nearby.slowTime = Math.max(nearby.slowTime ?? 0, 1.2);
+        if (nearby !== target) nearby.hp -= Math.max(1, Math.round(dmg * 0.35));
+      }
+    }
     target.hp -= dmg;
     const tx = isBldg ? target.tx + target.size / 2 : target.x;
     const ty = isBldg ? target.ty + target.size / 2 : target.y;
@@ -1201,11 +1221,29 @@ const updateBattleHud = initBattleHud();
     for (const u of state.units) {
       if (u.hp <= 0 || u.garrisoned) continue;
       const def = UNIT_DEFS[u.type];
+      if (u.abilityTime > 0) u.abilityTime = Math.max(0, u.abilityTime - dt);
+      if (u.abilityCooldown > 0) u.abilityCooldown = Math.max(0, u.abilityCooldown - dt);
+      if (u.slowTime > 0) u.slowTime = Math.max(0, u.slowTime - dt);
+      if (u.type === "healer") {
+        let patient = null, nearest = 4.5;
+        for (const ally of state.units) {
+          if (ally === u || ally.team !== u.team || (u.team === "enemy" && ally.aiIndex !== u.aiIndex) ||
+              ally.hp <= 0 || ally.hp >= ally.maxHp || ally.garrisoned) continue;
+          const distance = Math.hypot(ally.x - u.x, ally.y - u.y);
+          if (distance <= nearest) { patient = ally; nearest = distance; }
+        }
+        if (patient) {
+          patient.hp = Math.min(patient.maxHp, patient.hp + dt * (u.team === "player" && state.herbalMedicine ? 13 : 10));
+          u.healPulse = (u.healPulse ?? 0) - dt;
+          if (u.healPulse <= 0) { u.healPulse = 0.35; visualFx("heal", { x: patient.x, y: patient.y }); }
+        }
+        if (u.task === "attack") { u.task = "idle"; u.targetEntityId = null; u.path = []; }
+      }
       if (u.repathCd > 0) u.repathCd -= dt;
       if (u.atkCooldown > 0) u.atkCooldown -= dt;
 
       curTeam = u.team;
-      if (u.type !== "villager" && !u.targetEntityId && (u.path.length === 0 || u.task === "attack_move") && window.DOTETactics) {
+      if (def.atk > 0 && u.type !== "villager" && !u.targetEntityId && (u.path.length === 0 || u.task === "attack_move") && window.DOTETactics) {
         const near = window.DOTETactics.autoAcquire(state, u, def);
         if (near) { u.task = "attack"; u.targetEntityId = near.id; u.manualAtk = false; if (u.path.length) u.path = []; }
       }
@@ -1228,6 +1266,8 @@ const updateBattleHud = initBattleHud();
         let mult = 1.0;
         if (u.team === "player" && u.type === "villager") mult = state.faction.vilSpeedMult;
         if (u.team === "player" && def.role === "cavalry") mult = state.faction.cavSpeedMult;
+        if (u.abilityTime > 0) mult *= u.type === "war_elephant" ? 1.45 : u.type === "horse_archer" ? 1.4 : 1;
+        if (u.slowTime > 0) mult *= 0.55;
         const step = def.speed * mult * dt;
         if (window.DOTESim) { window.DOTESim.moveUnit(u, dt, def.speed * mult, state.units, blockedByTeam[u.team] || isTileBlocked); }
         else if (dist <= step) { u.x = next.x; u.y = next.y; u.path.shift(); }
@@ -1356,7 +1396,7 @@ const updateBattleHud = initBattleHud();
             } else u.repathCd = u.team === "enemy" ? 0.45 : 0;
           }
         } else if (u.atkCooldown <= 0) {
-          u.atkCooldown = def.proj === "boulder" ? 2.1 : 1.0;
+          u.atkCooldown = def.proj === "boulder" ? 2.1 : u.type === "chuko_nu" && u.abilityTime > 0 ? 0.5 : 1;
           const forgeAtk = u.team === "player" ? state.upgrades.attack * 2 : 0;
           const dmg = def.atk + forgeAtk + (u.team === "player" ? (state.age - 1) : 0);
           if (def.proj) {
@@ -1789,6 +1829,14 @@ const updateBattleHud = initBattleHud();
         const uKey = state.faction.uniqueUnit;
         const uDef = UNIT_DEFS[uKey];
         addBtn(uDef.name, formatCost(uDef.cost), pop < cap && canAfford(uDef.cost), false, () => trainFrom(selBldg, uKey));
+      } else if (selBldg.type === "temple") {
+        const def = UNIT_DEFS.healer;
+        addBtn(def.name, formatCost(def.cost), pop < cap && canAfford(def.cost), false, () => trainFrom(selBldg, "healer"));
+        const herbs = { wood: 85, gold: 90 };
+        addBtn("Thảo Dược", state.herbalMedicine ? "Đã nghiên cứu" : formatCost(herbs), !state.herbalMedicine && canAfford(herbs), false, () => {
+          if (state.herbalMedicine || !canAfford(herbs)) return;
+          spend(herbs); state.herbalMedicine = true; updateHud(); renderCommandDock();
+        });
       } else if (selBldg.type === "market" && window.DOTETactics) {
         for (const o of window.DOTETactics.TRADE_OFFERS) {
           addBtn(o.label, "Tức thì", window.DOTETactics.canTrade(state, o), false, () => {
@@ -1804,6 +1852,25 @@ const updateBattleHud = initBattleHud();
     }
 
     if (selUnits.length > 0) {
+      const abilityUnit = selUnits.find(u => ABILITIES[u.type] && UNIT_DEFS[u.type].factionOnly === state.factionId);
+      if (abilityUnit) {
+        const ability = ABILITIES[abilityUnit.type];
+        const button = document.createElement("button");
+        button.id = "btn-faction-ability";
+        button.type = "button";
+        button.className = "act-btn";
+        button.dataset.unitId = String(abilityUnit.id);
+        button.addEventListener("click", () => {
+          if (abilityUnit.hp <= 0 || abilityUnit.garrisoned || abilityUnit.abilityCooldown > 0 || !state.selectedIds.includes(abilityUnit.id)) return;
+          abilityUnit.abilityTime = ability.duration;
+          abilityUnit.abilityCooldown = 35;
+          abilityUnit.chargeReady = abilityUnit.type === "war_elephant";
+          sfxClick();
+        });
+        wrap.append(button);
+        updateAbilityButton();
+      }
+
       const hasVil = selUnits.some(u => u.type === "villager");
       title.textContent = `Đang chọn ${selUnits.length} đơn vị${hasVil ? " (chạm tài nguyên hoặc xây nhà)" : " (chạm địch đánh / kéo khung chọn cụm)"}`;
         const addCancelBtn = (id, label, sub, onClick) => {
@@ -1833,7 +1900,7 @@ const updateBattleHud = initBattleHud();
       });
     } 
  if (hasVil) {
-        for (const key of ["house", "depot", "farm", "barracks", "archery_range", "watch_tower", "wall", "gate", "market", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
+        for (const key of ["house", "depot", "farm", "temple", "barracks", "archery_range", "watch_tower", "wall", "gate", "market", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
           const d = BLDG_DEFS[key];
           const okAge = state.age >= d.age;
           addBtn(
@@ -1853,6 +1920,17 @@ const updateBattleHud = initBattleHud();
       return;
     }
     title.textContent = "Chạm Đình Làng, Dân Làng hoặc bật Kéo chọn để quét cụm quân";
+  }
+
+  function updateAbilityButton() {
+    const button = document.getElementById("btn-faction-ability");
+    if (!button || !state) return;
+    const unit = state.units.find(u => u.id === Number(button.dataset.unitId));
+    if (!unit) { button.remove(); return; }
+    const remaining = Math.ceil(unit.abilityCooldown || 0);
+    const label = ABILITIES[unit.type].name + (remaining ? ` · ${remaining}s` : "");
+    if (button.textContent !== label) button.textContent = label;
+    button.disabled = remaining > 0;
   }
 
   function selectedArmy() { return state ? state.units.filter(u => state.selectedIds.includes(u.id) && u.type !== "villager") : []; }
@@ -2335,7 +2413,7 @@ const updateBattleHud = initBattleHud();
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
-function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, herbalMedicine: state.herbalMedicine, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], herbalMedicine: !!d.herbalMedicine, shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
  nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id), ...state.animals.map(a => a.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
@@ -2407,6 +2485,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
           gfx.villager.update(dt, state);
           gfx.atmosphere.update(dt, canvas.width, canvas.height);
         }
+        updateAbilityButton();
         render();
       }
       frameFailed = false;
