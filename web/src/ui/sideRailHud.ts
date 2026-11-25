@@ -216,6 +216,7 @@ export function initSideRailHud(): void {
   const drawerBtn = document.createElement("button");
   drawerBtn.type = "button";
   drawerBtn.className = "dote-rail-btn";
+  drawerBtn.setAttribute("aria-label", "Mở bảng lệnh chi tiết");    
   drawerBtn.innerHTML = `${getIconSvg("tab_eco", 24)}<span class="dote-btn-lbl">Lệnh</span>`;
   drawerBtn.addEventListener("click", () => setDrawerOpen(!drawerOpen));
   attachLongPress(drawerBtn, () => "Mở/Đóng bảng lệnh chi tiết");
@@ -237,6 +238,7 @@ export function initSideRailHud(): void {
     const el = document.getElementById(spec.id);
     if (!el) return null;
     el.classList.add("dote-rail-btn");
+    el.setAttribute("aria-label", spec.tooltip);
     el.innerHTML = `${getIconSvg(spec.icon, 24)}<span class="dote-btn-lbl">${spec.shortLabel}</span>`;
     attachLongPress(el, () => el.getAttribute("title") || spec.tooltip);
     return el;
