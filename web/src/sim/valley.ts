@@ -1,5 +1,6 @@
 import { footprintOf, ringTiles } from "./footprint";
 import { stockFish } from "./naval";
+import { addContestedFish, addHomeInlets, makeDelta, makeDeltaBridges } from "./waterMaps";
 // Map generator for 48 / 64 / 96 tile maps and 4 map types. Pure data, no rendering.
 //   river_valley     winding river + central lotus lake crossed by 3 / 4 / 5 arched wooden bridges
 //   open_plains      no river barrier, wide open ground (fast cavalry flanking)
@@ -31,6 +32,8 @@ export interface ValleyCell {
   res: string | null;
   resAmt: number;
   bridge?: string;
+  dockReserve?: boolean;
+  fish?: number;
   resVariant?: ResourceVariant;
   resFootprint?: 1 | 2 | 3;
   resOrigin?: number;
@@ -166,17 +169,16 @@ export function generateValley(
     return false;
   };
 
-  if (biome === "river_valley" || biome === "river_delta") {
-    const delta = biome === "river_delta";
+  if (biome === "river_delta") {
+    makeDelta(grid);
+  } else if (biome === "river_valley") {
     for (let tx = 0; tx < n; tx++) {
       const riverY =
         n / 2 +
         Math.sin(tx * 0.22 / s + p0 * 0.1) * (2.6 * s) +
         Math.cos(tx * 0.09 / s + p1 * 0.1) * (1.2 * s);
       for (let ty = 0; ty < n; ty++) {
-        const branch = riverY + Math.sin(tx / n * Math.PI) * n * 0.15;
-        if (Math.abs(ty - riverY) < (delta ? 3.2 : 1.85) * Math.min(1.6, s) ||
-          (delta && Math.abs(ty - branch) < 2.3 * Math.min(1.6, s))) {
+        if (Math.abs(ty - riverY) < 1.85 * Math.min(1.6, s)) {
           grid[ty][tx].terrain = "water";
           grid[ty][tx].waterDepth = "deep";
           grid[ty][tx].elev = 0;
@@ -194,7 +196,7 @@ export function generateValley(
         }
       }
     }
-    const bridgeXs = delta ? [0.22, 0.5, 0.78].map(f => Math.round(f * n)) :
+    const bridgeXs =
       n >= 96
         ? [14, 32, 48, 64, 82]
         : n >= 64
@@ -202,12 +204,12 @@ export function generateValley(
           : [9, 24, 39];
     for (const bx of bridgeXs) {
       const bx2 = Math.max(4, Math.min(n - 5, Math.round(bx + (seed === 0 ? 0 : (r() - 0.5) * 3))));
-      for (let dx = delta ? 0 : -1; dx <= (delta ? 0 : 1); dx++) {
+      for (let dx = -1; dx <= 1; dx++) {
         const x = bx2 + dx;
         for (let ty = 0; ty < n; ty++) {
           if (grid[ty][x].terrain === "water") {
-            grid[ty][x].terrain = delta ? "bridge" : "dirt";
-            grid[ty][x].bridge = delta ? "v" : dx === 0 ? "center" : "edge";
+            grid[ty][x].terrain = "dirt";
+            grid[ty][x].bridge = dx === 0 ? "center" : "edge";
             grid[ty][x].waterDepth = undefined;
             grid[ty][x].elev = 0;
           }
@@ -317,10 +319,15 @@ export function generateValley(
     }
   }
 
+  if (biome === "river_delta") {
+    addHomeInlets(grid, allCorners);
+    makeDeltaBridges(grid);
+  }
+
   const canPlace1x1 = (tx: number, ty: number): boolean => {
     if (tx < 1 || ty < 1 || tx >= n - 1 || ty >= n - 1) return false;
     const c = grid[ty][tx];
-    return (c.terrain === "grass" || c.terrain === "dirt") && !c.bridge && !c.res;
+    return (c.terrain === "grass" || c.terrain === "dirt") && !c.bridge && !c.dockReserve && !c.res;
   };
 
   const goldOrigins: { x: number; y: number }[] = [];
@@ -548,7 +555,8 @@ export function generateValley(
     }
     break;
   }
-  stockFish(grid, biome === "river_delta");
+  if (biome === "river_delta") addContestedFish(grid);
+  else stockFish(grid, false);
   return { grid, size: n, biome, seed };
 }
  
