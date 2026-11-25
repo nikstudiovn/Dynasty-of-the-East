@@ -12,7 +12,7 @@ const SLOTS = ["wood", "roof", "stone", "gold", "foliage", "team"] as const;
 
 type Pose = "idle" | "walk" | "run" | "attack" | "gather" | "build" | "die";
 type Side = "player" | "enemy";
-type Fit = { footprint: number } | { height: number };
+type Fit = { footprint: number; targetHeight?: number } | { height: number };
 type Appearance = { side: Side; color: string };
 interface ModelAsset { gltf: GLTF; bounds: THREE.Box3 }
 interface ModelInstance {
@@ -114,9 +114,10 @@ function instantiate(asset: ModelAsset, fit: Fit, appearance?: Appearance): Mode
   const size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
   const scale = "footprint" in fit ? (fit.footprint * 0.96) / Math.max(size.x, size.z, 0.001) : fit.height / size.y;
+  const yScale = "footprint" in fit && fit.targetHeight && size.y > 0.001 ? fit.targetHeight / size.y : scale;
   const grounded = new THREE.Group(); // animation tracks can safely target the imported root
-  grounded.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
-  grounded.scale.setScalar(scale);
+  grounded.position.set(-center.x * scale, -bounds.min.y * yScale, -center.z * scale);
+  grounded.scale.set(scale, yScale, scale);
   grounded.add(animatedRoot);
   root.add(grounded);
   const clips = matchClips(asset.gltf.animations);
@@ -125,12 +126,37 @@ function instantiate(asset: ModelAsset, fit: Fit, appearance?: Appearance): Mode
 }
 
 /** Swap just the visible model; selection rings, HP, scaffolding and world transforms stay on the original rig. */
+type BuildStages = {
+  foundation: THREE.Object3D[];
+  walls: THREE.Object3D[];
+  frame: THREE.Object3D[];
+  roof: THREE.Object3D[];
+};
+
+function classifyBuildStages(root: THREE.Object3D): BuildStages | null {
+  const stages: BuildStages = { foundation: [], walls: [], frame: [], roof: [] };
+  root.traverse((node) => {
+    if (node === root) return;
+    const raw = String(node.userData?.buildStage ?? node.userData?.stage ?? node.name ?? "").toLowerCase();
+    if (!raw) return;
+    if (/foundation|base|plinth/.test(raw)) stages.foundation.push(node);
+    else if (/wall|pillar|column|body/.test(raw)) stages.walls.push(node);
+    else if (/frame|beam|rafter|truss/.test(raw)) stages.frame.push(node);
+    else if (/roof|tile|eave|cap/.test(raw)) stages.roof.push(node);
+  });
+  const populated = [stages.foundation, stages.walls, stages.frame, stages.roof].filter((a) => a.length > 0).length;
+  return populated >= 2 ? stages : null;
+}
+
 export class ModelVisual {
+  private progress = 1;
+  private buildStages: BuildStages | null = null;
   private model: ModelInstance | null = null;
   private disposed = false;
   private action?: THREE.AnimationAction;
   private shadowState: boolean | undefined;
   private fallbackVisibility: boolean[] | undefined;
+
 
   constructor(private readonly parent: THREE.Object3D, private readonly procedural: readonly THREE.Object3D[],
     asset: Promise<ModelAsset | null>, fit: Fit, appearance?: Appearance) {
@@ -140,8 +166,9 @@ export class ModelVisual {
         this.model = instantiate(result, fit, appearance);
         this.parent.add(this.model.root);
         this.fallbackVisibility = this.procedural.map(node => node.visible);
-        for (const node of this.procedural) node.visible = false;
-        this.update(0, "idle", Boolean(this.shadowState));
+        this.buildStages = classifyBuildStages(this.model.root);
+        this.setConstructionProgress(this.progress);
+        this.update(0, this.progress < 1 ? "build" : "idle", Boolean(this.shadowState));
       } catch {
         this.dispose();
       }
@@ -149,6 +176,33 @@ export class ModelVisual {
   }
 
   get deathDuration(): number { return this.model?.clips.die?.duration ?? 0; }
+
+  setConstructionProgress(progress: number): void {
+    this.progress = Math.max(0, Math.min(1, progress));
+    if (!this.model) return;
+    if (this.progress >= 1) {
+      this.restoreFallback(false);
+      this.model.root.visible = true;
+      if (this.buildStages) {
+        for (const node of this.buildStages.foundation) node.visible = true;
+        for (const node of this.buildStages.walls) node.visible = true;
+        for (const node of this.buildStages.frame) node.visible = true;
+        for (const node of this.buildStages.roof) node.visible = true;
+      }
+      return;
+    }
+    if (this.buildStages) {
+      this.restoreFallback(false);
+      this.model.root.visible = true;
+      for (const node of this.buildStages.foundation) node.visible = this.progress >= 0;
+      for (const node of this.buildStages.walls) node.visible = this.progress >= 0.15;
+      for (const node of this.buildStages.frame) node.visible = this.progress >= 0.55;
+      for (const node of this.buildStages.roof) node.visible = this.progress >= 0.75;
+    } else {
+      this.restoreFallback(true);
+      this.model.root.visible = false;
+    }
+  }
 
   update(dt: number, pose: Pose, shadows: boolean): void {
     const model = this.model;
@@ -161,7 +215,7 @@ export class ModelVisual {
     }
     if (!model) return;
     // Unanimated carcasses retain the existing procedural death pose.
-    const show = pose !== "die" || Boolean(model.clips.die);
+    const show = (this.progress >= 1 || Boolean(this.buildStages)) && (pose !== "die" || Boolean(model.clips.die));
     if (model.root.visible !== show) {
       model.root.visible = show;
       this.restoreFallback(!show);
@@ -253,11 +307,11 @@ export class ModelRegistry {
     return request;
   }
 
-  building(type: string, faction: Faction, size: number, parent: THREE.Object3D, appearance: Appearance): ModelVisual | undefined {
+  building(type: string, faction: Faction, size: number, parent: THREE.Object3D, appearance: Appearance, targetHeight?: number): ModelVisual | undefined {
     if (!BUILDINGS.has(type)) return;
     const asset = this.load(`./models/buildings/${faction}/${type}.glb`).then(result =>
       result ?? this.load(`./models/buildings/common/${type}.glb`));
-    return new ModelVisual(parent, [...parent.children], asset, { footprint: size }, appearance);
+    return new ModelVisual(parent, [...parent.children], asset, { footprint: size, targetHeight }, appearance);
   }
 
   creature(kind: "units" | "wildlife", type: string, height: number, parent: THREE.Object3D,

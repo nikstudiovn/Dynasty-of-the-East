@@ -265,7 +265,7 @@ export function buildBuilding(type: string, team: string, age: number, size: num
   }
   switch (type) {
     case "town_center": {
-      const top = hall(g, parts, S * 0.82, S * 0.62, 0.42, ageStyle);
+      const top = hall(g, parts, S * 0.82, S * 0.62, 0.54, ageStyle);
       if (age >= 4) {
         // ornate carved stone terrace with balustrade around the imperial double pavilion
         const tw = S * 0.98;
@@ -385,7 +385,7 @@ export function buildBuilding(type: string, team: string, age: number, size: num
         for (let row = -1; row <= 1; row++) for (let col = -1; col <= 1; col++) {
           position.set((tx * 0.5 + col * 0.26) * footprint, 0, (tz * 0.5 + row * 0.26) * footprint);
           rotation.setFromAxisAngle(axis, i * 2.399);
-          scale.set(footprint, dry ? 0.049 : [0.13, 0.25, 0.38][stage], footprint);
+          scale.set(footprint, dry ? 0.049 : [0.10, 0.18, 0.23][stage], footprint);
           tufts.setMatrixAt(i++, matrix.compose(position, rotation, scale));
         }
       }
@@ -397,7 +397,7 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       break;
     }
     case "barracks": {
-      hall(g, parts, S * 0.8, S * 0.5, 0.36, milStyle);
+      hall(g, parts, S * 0.8, S * 0.5, 0.50, milStyle);
       // weapon rack + training dummy
       for (let k = 0; k < 4; k++) {
         g.add(mesh(cyl(0.008, 0.008, 0.5, 4), mat(TIMBER, { surface: "teak" }), -0.55 + k * 0.06, 0.25, S * 0.36));
@@ -757,6 +757,57 @@ class RallyFlag {
   dispose(): void { disposeTree(this.group); }
 }
 
+
+type ProceduralBuildStage = "foundation" | "walls" | "frame" | "roof";
+type ProceduralBuildEntry = { node: THREE.Object3D; stage: ProceduralBuildStage; baseScaleY: number };
+
+function applyProceduralConstruction(rising: THREE.Group, progress: number, top: number): void {
+  const p = Math.max(0, Math.min(1, progress));
+  rising.userData.progress = p;
+  let entries = rising.userData.buildStages as ProceduralBuildEntry[] | undefined;
+  if (!entries) {
+    entries = [];
+    const box = new THREE.Box3();
+    const h = Math.max(top, 0.5);
+    for (const child of rising.children) {
+      const tag = String(child.userData?.buildStage ?? child.name ?? "").toLowerCase();
+      let stage: ProceduralBuildStage;
+      if (/foundation|base|plinth/.test(tag)) stage = "foundation";
+      else if (/frame|beam|rafter|truss/.test(tag)) stage = "frame";
+      else if (/roof|tile|eave|cap/.test(tag)) stage = "roof";
+      else if (/wall|pillar|column|body/.test(tag)) stage = "walls";
+      else {
+        box.setFromObject(child);
+        const centerY = box.isEmpty() ? 0 : (box.min.y + box.max.y) * 0.5;
+        if (centerY <= 0.10 || (!box.isEmpty() && box.max.y <= 0.12)) stage = "foundation";
+        else if (centerY <= h * 0.50) stage = "walls";
+        else if (centerY <= h * 0.66) stage = "frame";
+        else stage = "roof";
+      }
+      entries.push({ node: child, stage, baseScaleY: child.scale.y || 1 });
+    }
+    rising.userData.buildStages = entries;
+  }
+  for (const item of entries) {
+    if (p >= 1) {
+      item.node.visible = true;
+      item.node.scale.y = item.baseScaleY;
+    } else if (item.stage === "foundation") {
+      item.node.visible = p >= 0;
+      item.node.scale.y = item.baseScaleY * Math.min(1, 0.3 + (p / 0.15) * 0.7);
+    } else if (item.stage === "walls") {
+      item.node.visible = p >= 0.15;
+      if (item.node.visible) item.node.scale.y = item.baseScaleY * Math.max(0.05, Math.min(1, (p - 0.15) / 0.60));
+    } else if (item.stage === "frame") {
+      item.node.visible = p >= 0.55;
+      if (item.node.visible) item.node.scale.y = item.baseScaleY * Math.max(0.05, Math.min(1, (p - 0.55) / 0.25));
+    } else {
+      item.node.visible = p >= 0.75;
+      if (item.node.visible) item.node.scale.y = item.baseScaleY * Math.max(0.05, Math.min(1, (p - 0.75) / 0.25));
+    }
+  }
+}
+
 export class Buildings3D {
   private readonly rally = new Map<number, RallyFlag>();
   readonly group = new THREE.Group();
@@ -772,7 +823,7 @@ export class Buildings3D {
   /** Diagnostics: construction / damage state per building. */
   stats(): Array<Record<string, unknown>> {
     return [...this.map.values()].map(e => ({
-      id: e.b.id, type: e.b.type, building: (e.b.progress ?? 1) < 1, rising: +e.rising.scale.y.toFixed(3), scaffold: Boolean(e.scaffold),
+      id: e.b.id, type: e.b.type, building: (e.b.progress ?? 1) < 1, rising: +(e.rising.userData.progress ?? e.rising.scale.y).toFixed(3), scaffold: Boolean(e.scaffold),
       scorch: e.scorch.visible, fx: e.fxState ?? "none", dustBursts: e.dustBursts ?? 0
     }));
   }
@@ -840,7 +891,7 @@ export class Buildings3D {
         const scorch = contactShadow(size * 1.21, size * 1.17);
         this.group.add(base, scorch);
         e = { group: built.group, rising, parts: built.parts, key, ring, base, scorch, dustT: 0, smokeT: 0, fireT: 0, b };
-        e.model = this.models.building(b.type, faction, size, rising, { side, color });
+        e.model = this.models.building(b.type, faction, size, rising, { side, color }, built.parts.top);
         this.group.add(e.group);
         this.map.set(b.id, e);
       }
@@ -875,7 +926,8 @@ export class Buildings3D {
         e.scaffold.position.set(cx, gy, cz);
       }
       const progress = building ? Math.max(0, Math.min(1, b.progress)) : 1;
-      e.rising.scale.y = Math.max(0.04, progress);
+      applyProceduralConstruction(e.rising, progress, e.parts.top);
+      e.model?.setConstructionProgress(progress);
       e.rising.visible = progress > 0.025;
       if (e.parts.rice) {
         e.parts.rice.scale.y = Math.max(0.035, smoothstep(0.22, 1, progress));
@@ -896,7 +948,6 @@ export class Buildings3D {
           const working = state.units.some((u: any) => u.hp > 0 && u.team === b.team && u.type === "villager" && u.task === "build" &&
             u.buildTargetId === b.id && Math.hypot(u.x - cx, u.y - cz) <= 2.3 + size / 2);
           if (working) e!.dustBursts = (e!.dustBursts ?? 0) + 1;
-          if (working) this.fx.smoke.burst(cx + (Math.random() - 0.5) * size * 0.9, gy + 0.05, cz + (Math.random() - 0.5) * size * 0.9, 2, 0.32, 0.08, 0.6, 0.6, [0xc8b28a, 0xb8a27c], 0, 0.7);
         });
       }
       // auto-opening gate doors: swing wide while a friendly unit is passing
@@ -982,7 +1033,7 @@ export class Buildings3D {
       // one-shot collapse when a building is destroyed; a site under construction collapses with only
       // the part that was already raised (no lingering damage fire either way)
       if (e.group.visible) fxGuard("collapse", () => {
-        const raised = Math.max(0.15, e.rising.scale.y);
+        const raised = Math.max(0.15, (e.rising.userData.progress ?? e.rising.scale.y));
         this.fx.debris.burst(e.group.position.x, e.group.position.y + 0.3 * raised, e.group.position.z, Math.round(24 * raised), 1.8, 3 * raised, 1.2, 2.2, [0x6b665e, 0x8f8a80, 0x5a3a22], -8);
         this.fx.smoke.burst(e.group.position.x, e.group.position.y + 0.1, e.group.position.z, Math.round(6 * raised) + 1, 0.8, 0.3, 1.1, 0.9, [0xb8a27c, 0x8f857a], 0, 1.3);
       });
