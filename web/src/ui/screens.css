@@ -65,6 +65,90 @@
   display: none !important;
 }
 
+#modal {
+  z-index: 50;
+}
+
+#modal > .modal-card {
+  z-index: 1;
+}
+
+#modal > .modal-card:not(.pd-modal-setup):not(.pd-modal-endgame) {
+  background-color: rgba(37, 35, 33, 0.58);
+  background-image: none;
+}
+
+.pd-menu-battlefield {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #282522;
+}
+
+.pd-modal-setup ~ .pd-menu-battlefield,
+.pd-modal-endgame ~ .pd-menu-battlefield,
+#modal.hidden > .pd-menu-battlefield {
+  display: none;
+}
+
+.pd-menu-battlefield__view {
+  position: absolute;
+  inset: -5% -10%;
+  background: url("../assets/menu-battlefield.webp") center 58% / cover no-repeat;
+  animation: pd-battlefield-pan 17s ease-in-out infinite alternate;
+}
+
+.pd-menu-battlefield__view::before,
+.pd-menu-battlefield__view::after,
+.pd-menu-battlefield::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.pd-menu-battlefield__view::before {
+  background:
+    radial-gradient(ellipse at 17% 65%, #b7b0a24a, transparent 33%),
+    radial-gradient(ellipse at 76% 52%, #b7a99c48, transparent 38%);
+  animation: pd-battlefield-smoke 11s ease-in-out infinite alternate;
+}
+
+.pd-menu-battlefield__view::after {
+  background:
+    radial-gradient(ellipse at 15% 80%, #e2663338, transparent 16%),
+    radial-gradient(ellipse at 85% 73%, #ff99413d, transparent 19%);
+  animation: pd-battlefield-fire 3.2s ease-in-out infinite alternate;
+}
+
+.pd-menu-battlefield::after {
+  background: linear-gradient(0deg, #171514b8, transparent 45%),
+    radial-gradient(ellipse at center, #18171614 45%, #18171691);
+}
+
+@keyframes pd-battlefield-pan {
+  from { transform: translate3d(-7%, 0, 0) scale(1.02); }
+  to { transform: translate3d(7%, -1%, 0) scale(1.07); }
+}
+
+@keyframes pd-battlefield-smoke {
+  from { transform: translate3d(-3%, 4%, 0) scale(1.05); opacity: 0.45; }
+  to { transform: translate3d(6%, -6%, 0) scale(1.14); opacity: 0.9; }
+}
+
+@keyframes pd-battlefield-fire {
+  0%, 65% { opacity: 0.42; }
+  30%, 100% { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pd-menu-battlefield__view,
+  .pd-menu-battlefield__view::before,
+  .pd-menu-battlefield__view::after {
+    animation: none;
+  }
+}
+
 @keyframes pd-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
