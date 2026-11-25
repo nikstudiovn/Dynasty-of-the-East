@@ -550,6 +550,8 @@
   <div id="pause-modal" style="display:none"><div class="dote-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="dote-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="dote-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số chiến đấu: Bật</button></div></div></div>
   
 <script type="module">
+import { bindAudioButtons } from "./src/audio/settings";
+import { battleAudio, cue, endAudioMatch, resetAudioMatch, setAudioAtmosphere, unlockAudio, updateGameAudio } from "./src/audio/gameAudio";
 import "./src/ui/hudTheme.css";
 import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
 import { NAVAL_TYPES, isWaterway, coastalWater, findWaterPath } from "./src/sim/naval";
@@ -658,41 +660,14 @@ const updateBattleHud = initBattleHud();
   // =========================================================================
   // 2. SYNTHESIZED AUDIO
   // =========================================================================
-  let audioCtx = null;
-  let soundOn = true;
-
-  function ensureAudio() {
-    if (!audioCtx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (AC) audioCtx = new AC();
-    }
-    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
-  }
-
-  function playTone(freq, dur = 0.11, type = "triangle", vol = 0.07) {
-    if (!soundOn || !audioCtx) return;
-    try {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + dur);
-    } catch (_) {}
-  }
-
-  const sfxClick = () => playTone(523.25, 0.05, "triangle", 0.05);
-  const sfxBuild = () => { playTone(220, 0.08, "square", 0.05); setTimeout(() => playTone(329.63, 0.12, "triangle", 0.06), 70); };
-  const sfxTrain = () => { playTone(392, 0.08, "triangle", 0.06); setTimeout(() => playTone(523.25, 0.13, "triangle", 0.06), 85); };
-  const sfxForge = () => { playTone(660, 0.07, "square", 0.05); setTimeout(() => playTone(880, 0.16, "triangle", 0.07), 80); };
-  const sfxBow = () => playTone(760 + Math.random() * 80, 0.05, "sine", 0.032);
-  const sfxBoom = () => playTone(95, 0.22, "sawtooth", 0.08);
-  const sfxHit = () => playTone(155 + Math.random() * 45, 0.05, "sawtooth", 0.035);
-  const sfxGong = () => { ensureAudio(); playTone(146.83, 0.75, "sine", 0.14); playTone(220.0, 0.55, "triangle", 0.09); }; let bgmOn = true, bgmTimer = null, bgmStep = 0; const PENTATONIC = [293.66, 329.63, 392.0, 440.0, 493.88, 587.33, 440.0, 392.0]; function startBGM() { if (bgmTimer) return; ensureAudio(); bgmStep = 0; const tick = () => { if (!bgmOn || !soundOn || !state || state.gameOver) { bgmTimer = setTimeout(tick, 600); return; } ensureAudio(); const combat = state.projectiles && state.projectiles.length > 0; playTone(PENTATONIC[bgmStep % PENTATONIC.length], 0.42, "triangle", 0.045); if (bgmStep % 2 === 0 || combat) playTone(combat ? 78 : 65, 0.18, "sine", combat ? 0.09 : 0.055); bgmStep++; bgmTimer = setTimeout(tick, combat ? 260 : 480); }; tick(); } const sfxAgeUp = () => [293.66, 392.0, 440.0, 587.33].forEach((f, i) => setTimeout(() => playTone(f, 0.22, "triangle", 0.08), i * 90));
+  const ensureAudio = unlockAudio;
+  const sfxClick = () => cue("click");
+  const sfxBuild = () => cue("foundation", "light");
+  const sfxForge = () => cue("forge");
+  const sfxTrain = () => cue("train");
+  const sfxHit = () => cue("hit");
+  const sfxGong = () => cue("alarm");
+  const sfxAgeUp = () => cue("age");
 
   // =========================================================================
   // 3. STATE, MAP, FOG OF WAR & BOX SELECT
@@ -918,6 +893,7 @@ const updateBattleHud = initBattleHud();
 
   // Visual-only hook into the 3D renderer, called after a gameplay step is resolved. Never throws.
   function visualFx(type, data) {
+    if (type === "command") cue(data.kind === "attack" ? "attack" : "move", "light");
     try { if (R3D && R3D.visualEvent) R3D.visualEvent(type, data); } catch (e) { /* effects must not stop the match */ }
   }
 
@@ -1069,6 +1045,13 @@ const updateBattleHud = initBattleHud();
     target.hp -= dmg;
     const tx = isBldg ? target.tx + target.size / 2 : target.x;
     const ty = isBldg ? target.ty + target.size / 2 : target.y;
+    if (attacker && (attacker.team === "player" || target.team === "player" || state.fog[Math.floor(ty)]?.[Math.floor(tx)] === 2)) {
+      battleAudio(attacker.type === "catapult" || (isBldg && (dmg >= 24 || target.hp < target.maxHp * 0.5)),
+        isBldg && target.team === "player" && (target.type === "town_center" || target.type === "watch_tower" || target.type === "imperial_citadel"));
+      if (attacker.type === "catapult") cue("siege", "heavy");
+      else if (attacker.type === "fire_ship") cue("fireShip");
+      else cue("hit");
+    }
     addFloat(tx, ty - 0.5, `-${dmg}`, "#EF4444");
     visualFx("hit", { x: tx, y: ty, dmg, targetId: target.id, isBldg, team: target.team, melee: Boolean(def && !def.proj) });
     if (window.DOTEGfx) window.DOTEGfx.vfx.onHit(attacker, target, isBldg);
@@ -1140,7 +1123,7 @@ const updateBattleHud = initBattleHud();
         b.hp = Math.min(b.maxHp, Math.max(b.hp, Math.round(b.maxHp * (0.1 + 0.9 * (b.progress ?? 0)))));
         if ((b.progress ?? 0) >= 1) {
           b.progress = 1; b.hp = b.maxHp;
-          if (b.team === "player") showToast(`Hoàn thành ${BLDG_DEFS[b.type].name}!`);
+          if (b.team === "player") { cue("complete"); showToast(`Hoàn thành ${BLDG_DEFS[b.type].name}!`); }
           for (const u of state.units) {
             if (u.hp > 0 && u.team === b.team && u.task === "build" && u.buildTargetId === b.id) {
               u.buildTargetId = null;
@@ -1166,7 +1149,7 @@ const updateBattleHud = initBattleHud();
         const nu = spawnUnit(b.team, item.type, exit.x, exit.y, b.aiIndex || 0);
         if (state.stats && b.team === "player") state.stats.unitsTrained++;
         if (b.rallyPoint && window.DOTETactics) window.DOTETactics.applyRally(nu, b, (uu, gx, gy) => findPath(uu.x, uu.y, gx, gy, NAVAL_TYPES.has(uu.type) ? "water" : b.team));
-        if (b.team === "player") { sfxTrain(); showToast(`Đã chiêu mộ ${UNIT_DEFS[item.type].name}`); updateHud(); }
+        if (b.team === "player") { cue(b.type === "dock" ? "launch" : "train"); showToast(`Đã chiêu mộ ${UNIT_DEFS[item.type].name}`); updateHud(); }
         if (state.selectedBuildingId === b.id) renderCommandDock();
       }
     }
@@ -1201,7 +1184,7 @@ const updateBattleHud = initBattleHud();
               sx: bx, sy: by, tx: target.x, ty: target.y,
               t: 0, speed: 3.6, dmg, targetId: target.id, attacker: null
             });
-            sfxBow();
+            if (b.team === "player" || state.fog[b.ty]?.[b.tx] === 2) cue("bow");
           }, s * 95);
         }
       }
@@ -1217,7 +1200,6 @@ const updateBattleHud = initBattleHud();
         const target = tUnit || tBldg;
         if (target) {
           applyDamage(p.attacker, target, Boolean(tBldg), p.dmg);
-          if (p.kind === "boulder") sfxBoom(); else sfxHit();
         }
         if (p.kind === "boulder" && window.DOTEGfx) window.DOTEGfx.vfx.impact(p.tx, p.ty);
         state.projectiles.splice(i, 1);
@@ -1246,7 +1228,7 @@ const updateBattleHud = initBattleHud();
         if (patient) {
           patient.hp = Math.min(patient.maxHp, patient.hp + dt * (u.team === "player" && state.herbalMedicine ? 13 : 10));
           u.healPulse = (u.healPulse ?? 0) - dt;
-          if (u.healPulse <= 0) { u.healPulse = 0.35; visualFx("heal", { x: patient.x, y: patient.y }); }
+          if (u.healPulse <= 0) { u.healPulse = 0.35; visualFx("heal", { x: patient.x, y: patient.y }); if (u.team === "player" || state.fog[Math.floor(u.y)]?.[Math.floor(u.x)] === 2) cue("heal"); }
         }
         if (u.task === "attack") { u.task = "idle"; u.targetEntityId = null; u.path = []; }
       }
@@ -1425,12 +1407,13 @@ const updateBattleHud = initBattleHud();
                   sx: u.x, sy: u.y, tx, ty,
                   t: 0, speed: def.proj === "boulder" ? 1.5 : 3.2, dmg, targetId: target.id, attacker: u
                 });
-                if (def.proj === "boulder") sfxBoom(); else sfxBow();
+                if (def.proj !== "boulder" && (u.team === "player" || state.fog[Math.floor(u.y)]?.[Math.floor(u.x)] === 2)) {
+                  cue(naval ? "navalBow" : u.type === "chuko_nu" && u.abilityTime > 0 ? "volley" : "bow");
+                }
               }, s * 110);
             }
           } else {
             applyDamage(u, target, Boolean(tBldg), dmg);
-            sfxHit();
           }
         }
       }
@@ -1601,6 +1584,7 @@ const updateBattleHud = initBattleHud();
   }
 
   function endGame(victory, relic = false) {
+    endAudioMatch(victory);
     state.gameOver = true;
     const modal = document.getElementById("modal");
     document.getElementById("setup-panel").style.display = "none";
@@ -2014,7 +1998,7 @@ const updateBattleHud = initBattleHud();
           abilityUnit.abilityTime = ability.duration;
           abilityUnit.abilityCooldown = 35;
           abilityUnit.chargeReady = abilityUnit.type === "war_elephant";
-          sfxClick();
+          cue(abilityUnit.chargeReady ? "charge" : abilityUnit.type === "chuko_nu" ? "volley" : "gallop", "medium");
         });
         wrap.append(button);
         updateAbilityButton();
@@ -2345,12 +2329,12 @@ const updateBattleHud = initBattleHud();
         state._lastTapUnit = { id: tappedOwnUnit.id, type: tappedOwnUnit.type, x: tappedOwnUnit.x, y: tappedOwnUnit.y };
       }
       state.selectedBuildingId = null;
-      sfxClick(); renderCommandDock(); return;
+      cue("select"); renderCommandDock(); return;
     }
 
     if (tappedOwnBldg && !(tappedOwnBldg.type === "farm" && selVils.length > 0)) {
       state.selectedBuildingId = tappedOwnBldg.id; state.selectedIds = [];
-      sfxClick(); renderCommandDock(); return;
+      cue("select"); renderCommandDock(); return;
     }
 
     const rallyB = state.buildings.find(b => b.id === state.selectedBuildingId && b.team === "player");
@@ -2550,18 +2534,17 @@ const updateBattleHud = initBattleHud();
 
  const btnAtmos = document.getElementById("btn-atmosphere");
  const atmosLabels = { auto: "Trời: Tự động", golden: "Trời: Hoàng hôn", night: "Trời: Đêm đèn lồng" };
- btnAtmos?.addEventListener("click", () => { const m = R3D?.cycleAtmosphere?.(); if (m && atmosLabels[m]) btnAtmos.textContent = atmosLabels[m]; }); const QUALITY_KEY = "dote_quality", qualityPresets = ["auto", "high", "medium", "low"], qualityLabels = { auto: "Đồ họa: Tự động", high: "Đồ họa: Cao", medium: "Đồ họa: Trung bình", low: "Đồ họa: Thấp" }; let savedQuality = "auto"; try { let q = localStorage.getItem(QUALITY_KEY); if (!q) { q = localStorage.getItem("pixel_dynasty_quality"); if (q) localStorage.setItem(QUALITY_KEY, q); } if (q && qualityPresets.includes(q)) savedQuality = q; } catch {} const btnQuality = document.getElementById("btn-quality"); if (btnQuality) btnQuality.textContent = qualityLabels[savedQuality] || qualityLabels.auto; btnQuality?.addEventListener("click", () => { savedQuality = qualityPresets[(qualityPresets.indexOf(savedQuality) + 1) % qualityPresets.length]; try { localStorage.setItem(QUALITY_KEY, savedQuality); } catch {} btnQuality.textContent = qualityLabels[savedQuality] || qualityLabels.auto; R3D?.setQuality?.(savedQuality); });
-  document.getElementById("btn-sound").addEventListener("click", e => {
-    soundOn = !soundOn; e.target.textContent = soundOn ? "Âm: Bật" : "Âm: Tắt";
-  }); document.getElementById("btn-music").addEventListener("click", e => { bgmOn = !bgmOn; e.target.textContent = bgmOn ? "Nhạc: Bật" : "Nhạc: Tắt"; if (bgmOn) { ensureAudio(); startBGM(); } });
+ btnAtmos?.addEventListener("click", () => { const m = R3D?.cycleAtmosphere?.(); if (m) { setAudioAtmosphere(m); if (atmosLabels[m]) btnAtmos.textContent = atmosLabels[m]; } else { const next = btnAtmos.dataset.audioAtmosphere === "night" ? "auto" : btnAtmos.dataset.audioAtmosphere === "golden" ? "night" : "golden"; btnAtmos.dataset.audioAtmosphere = next; setAudioAtmosphere(next); btnAtmos.textContent = atmosLabels[next] || "Trời: Tự động"; } }); const QUALITY_KEY = "dote_quality", qualityPresets = ["auto", "high", "medium", "low"], qualityLabels = { auto: "Đồ họa: Tự động", high: "Đồ họa: Cao", medium: "Đồ họa: Trung bình", low: "Đồ họa: Thấp" }; let savedQuality = "auto"; try { let q = localStorage.getItem(QUALITY_KEY); if (!q) { q = localStorage.getItem("pixel_dynasty_quality"); if (q) localStorage.setItem(QUALITY_KEY, q); } if (q && qualityPresets.includes(q)) savedQuality = q; } catch {} const btnQuality = document.getElementById("btn-quality"); if (btnQuality) btnQuality.textContent = qualityLabels[savedQuality] || qualityLabels.auto; btnQuality?.addEventListener("click", () => { savedQuality = qualityPresets[(qualityPresets.indexOf(savedQuality) + 1) % qualityPresets.length]; try { localStorage.setItem(QUALITY_KEY, savedQuality); } catch {} btnQuality.textContent = qualityLabels[savedQuality] || qualityLabels.auto; R3D?.setQuality?.(savedQuality); });
+  bindAudioButtons();
   document.getElementById("btn-restart").addEventListener("click", () => {
+    resetAudioMatch(null);
     document.getElementById("setup-panel").style.display = "block";
     document.getElementById("modal-title").textContent = "DYNASTY OF THE EAST";
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
 function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, herbalMedicine: state.herbalMedicine, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], herbalMedicine: !!d.herbalMedicine, shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
- nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id), ...state.animals.map(a => a.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
+ nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id), ...state.animals.map(a => a.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
     if (state && state.gameOver && document.getElementById("setup-panel").style.display === "none") {
@@ -2572,7 +2555,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     }
     initGame();
     document.getElementById("modal").classList.add("hidden");
-    sfxAgeUp(); startBGM();
+    sfxAgeUp();
   });
 
   document.getElementById("btn-idle-vil").addEventListener("click", () => {
@@ -2616,7 +2599,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
   document.getElementById("btn-town-bell").addEventListener("click", () => { if (!state) return; const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0); if (!tc) return; if (state.bellActive || state.garrisonedCount > 0) { state.bellActive = false; for (const u of state.units) { if (u.team === "player" && u.garrisoned) { u.garrisoned = false; u.task = "idle"; u.x = tc.tx + 1.5; u.y = tc.ty + 2.5; } } state.garrisonedCount = 0; document.getElementById("btn-town-bell").textContent = "Chuông Báo"; addFloat(tc.tx + 1, tc.ty, "Xuất kích", "#34D399"); updateHud(); } else { state.bellActive = true; sfxGong(); for (const u of state.units) { if (u.team === "player" && u.type === "villager" && !u.garrisoned && u.hp > 0) { u.task = "garrison"; u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } } document.getElementById("btn-town-bell").textContent = "Thả Dân"; showToast("Chuông báo động! Nông dân đang chạy vào Đình Làng!"); } });
 
   function resize() { const wrap = document.getElementById("game-wrap"); const w = wrap ? wrap.clientWidth : (window.visualViewport?.width || window.innerWidth); const h = wrap ? wrap.clientHeight : (window.visualViewport?.height || window.innerHeight); canvas.width = Math.round(w) || window.innerWidth; canvas.height = Math.round(h) || window.innerHeight; if (R3D) R3D.resize(canvas.width, canvas.height); }
-    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); startBGM(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
+    let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
   
   let frameFailed = false;
   function loop(ts) {
@@ -2624,6 +2607,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     lastTime = ts;
     frameDt = dt;
     try {
+      resetAudioMatch(state);
       if (state) {
         if (!paused || isOnlineMode()) stepSimulation(dt);
         const gfx = window.DOTEGfx;
@@ -2635,6 +2619,9 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
         updateAbilityButton();
         render();
       }
+      const setupVisible = !document.getElementById("modal").classList.contains("hidden") &&
+        document.getElementById("setup-panel").style.display !== "none";
+      updateGameAudio(state, setupVisible, paused, dt);
       frameFailed = false;
     } catch (error) {
       if (!frameFailed) console.error("Game frame failed", error);
@@ -2667,7 +2654,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     init3D();
     resize();
     if (window.DOTEInput) window.DOTEInput.install({ canvas, cam, minZoom: zoomMin, maxZoom: zoomMax, view: R3D || undefined, onPinchStart: cancelCanvasGesture });
-    if (window.DOTEGfx) window.DOTEGfx.villager.init({ findPath, clink: () => { playTone(1850, 0.05, "square", 0.03); playTone(2750, 0.04, "triangle", 0.02); }, thock: () => playTone(150, 0.07, "triangle", 0.05) });
+    if (window.DOTEGfx) window.DOTEGfx.villager.init({ findPath, clink: () => cue("work"), thock: () => cue("work") });
     initGame();
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(loop);

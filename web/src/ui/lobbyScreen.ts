@@ -1,3 +1,4 @@
+import { audioSettingsControls } from "../audio/settings";
 import { createLobbyCombatTextButton } from "./combatTextSetting";
 import {
   FACTION_CRESTS,
@@ -489,8 +490,7 @@ export function enhanceModal(modalCard: HTMLElement): void {
   const settingsList = document.createElement("div");
   settingsList.className = "dote-settings-list";
   settingsList.append(
-    buildSettingProxyButton("btn-music", "Nhạc: Bật"),
-    buildSettingProxyButton("btn-sound", "Âm: Bật"),
+    ...audioSettingsControls(),
     buildSettingProxyButton("btn-quality", "Đồ họa: Tự động"),
     buildSettingProxyButton("btn-atmosphere", "Trời: Tự động"),
     createLobbyCombatTextButton(),

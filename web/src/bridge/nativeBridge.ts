@@ -1,7 +1,7 @@
 export type HapticStyle = "light" | "medium" | "heavy" | "success" | "warning";
 
 interface NativePayload {
-  type: "haptic" | "lan_host" | "lan_browse" | "lan_send" | "gamecenter_auth";
+  type: "haptic" | "music_deck" | "lan_host" | "lan_browse" | "lan_send" | "gamecenter_auth";
   data?: Record<string, unknown>;
 }
 
@@ -30,6 +30,12 @@ export const nativeBridge = {
         data: { style }
       });
     }
+  },
+
+  musicDeck(action: string, deck: number, options?: { track?: string; loop?: boolean; volume?: number }): void {
+    try {
+      window.webkit?.messageHandlers?.dote?.postMessage({ type: "music_deck", data: { action, deck, ...options } });
+    } catch {}
   },
 
   hostLanRoom(roomName: string): void {
