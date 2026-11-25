@@ -921,7 +921,7 @@ const updateBattleHud = initBattleHud();
       const o = typeof cmd === "object" && cmd ? cmd : { command: cmd, unitIds, x, z };
       if (o.command === "retreat") return issueRetreatCommand(o.unitIds, o.x, o.z ?? o.y);
       console.warn("[DOTE] unknown command", o.command); return 0;
-    },
+    }, repairSelectedOrNearest(buildingId) { if (!state || state.gameOver) return 0; const b = buildingId != null ? state.buildings.find(x => x.id === buildingId && x.team === "player" && x.hp > 0 && (x.progress ?? 1) >= 1 && x.hp < x.maxHp) : state.buildings.find(x => x.team === "player" && x.hp > 0 && (x.progress ?? 1) >= 1 && x.hp < x.maxHp); if (!b) return 0; let vils = state.units.filter(u => state.selectedIds.includes(u.id) && u.team === "player" && u.type === "villager" && u.hp > 0); if (!vils.length) { const n = state.units.filter(u => u.team === "player" && u.type === "villager" && u.hp > 0).sort((a, c) => footDist(b, a.x, a.y) - footDist(b, c.x, c.y))[0]; if (n) vils = [n]; } let assigned = 0; for (const u of vils) { let path = []; if (footDist(b, u.x, u.y) > 1.45) { path = pathToBuilding(u, b, "player"); if (!path.length) continue; } u.task = "repair"; u.buildTargetId = b.id; u.targetTile = null; u.targetId = null; u.path = path; assigned++; } return assigned; }, reseedFarm(farmId) { if (!state || state.gameOver) return false; const f = state.buildings.find(x => x.id === farmId && x.team === "player" && x.type === "farm" && x.hp > 0); if (!f || state.resources.wood < 30) return false; state.resources.wood -= 30; f.cropAmount = f.maxCrop || 300; f.depleted = false; return true; }, toggleFarmAutoReseed(farmId) { if (!state || state.gameOver) return null; const f = state.buildings.find(x => x.id === farmId && x.team === "player" && x.type === "farm" && x.hp > 0); if (!f) return null; f.autoReseed = !(f.autoReseed ?? true); return f.autoReseed; },
   };
 
   function addFloat(x, y, text, color = "#F5B841") {
@@ -1346,14 +1346,14 @@ const updateBattleHud = initBattleHud();
         u.path = pathToBuilding(u, tb, u.team);
       }
       continue;
-    }
+    } if (u.type === "villager" && u.task === "repair" && u.buildTargetId) { const tb = state.buildings.find(b => b.id === u.buildTargetId && b.team === u.team && b.hp > 0 && (b.progress ?? 1) >= 1 && b.hp < b.maxHp); if (!tb) { u.buildTargetId = null; u.task = "idle"; } else if (footDist(tb, u.x, u.y) > 1.45) { u.path = pathToBuilding(u, tb, u.team); } else { const repairersHere = state.units.filter(v => v.type === "villager" && v.team === u.team && v.hp > 0 && v.task === "repair" && v.buildTargetId === tb.id && footDist(tb, v.x, v.y) <= 1.45).length || 1; const mult = u.team === "player" ? (state.faction?.buildRepairSpeedMult ?? 1) : 1; const rate = 18 * mult * dt; const woodCost = Math.min(state.resources.wood, rate * 0.15); if (u.team === "player" && woodCost > 0) state.resources.wood = Math.max(0, state.resources.wood - woodCost); if (window.DOTEBuild?.stepBuildingRepair) { window.DOTEBuild.stepBuildingRepair(tb, repairersHere, dt * mult / repairersHere); } else { tb.hp = Math.min(tb.maxHp, tb.hp + rate); } if (tb.hp >= tb.maxHp) { tb.hp = tb.maxHp; u.buildTargetId = null; u.task = "idle"; } } continue; }
     if (u.type === "villager" && u.task === "gather" && u.targetTile) {
         const { tx, ty } = u.targetTile;
         const cell = state.grid[ty]?.[tx];
         const farmBldg = state.buildings.find(b => b.type === "farm" && inFoot(b, tx, ty) &&
           b.team === u.team && b.hp > 0 && (b.progress ?? 1) >= 1 &&
           (u.team !== "enemy" || b.aiIndex === u.aiIndex));
-        const resType = farmBldg ? "food" : cell?.res;
+        const resType = farmBldg ? "food" : cell?.res; if (farmBldg && (farmBldg.cropAmount ?? FARM_CAPACITY) <= 0) { if (u.team === "player" && (farmBldg.autoReseed ?? true) && state.resources.wood >= 30) { state.resources.wood -= 30; farmBldg.cropAmount = farmBldg.maxCrop || 300; farmBldg.depleted = false; } else { farmBldg.depleted = true; } }
         const hasRes = farmBldg ? (farmBldg.cropAmount ?? FARM_CAPACITY) > 0 : (cell && cell.resAmt > 0);
         if (!hasRes) {
           if (u.team === "enemy" || farmBldg) {
@@ -1381,7 +1381,7 @@ const updateBattleHud = initBattleHud();
             u.carryAmt += amount;
             if (farmBldg) {
               farmBldg.cropAmount = (farmBldg.cropAmount ?? FARM_CAPACITY) - amount;
-              farmBldg.depleted = farmBldg.cropAmount <= 0;
+              if (farmBldg.cropAmount <= 0) { if (u.team === "player" && (farmBldg.autoReseed ?? true) && state.resources.wood >= 30) { state.resources.wood -= 30; farmBldg.cropAmount = farmBldg.maxCrop || 300; farmBldg.depleted = false; } else { farmBldg.depleted = true; const drop = u.carryAmt > 0 && findDropoff(u.team, u.x, u.y, u.aiIndex); u.targetTile = null; u.task = drop ? "return" : "idle"; if (drop) u.path = pathToBuilding(u, drop, u.team); } } else { farmBldg.depleted = false; }
             }
             if (!farmBldg && cell) {
               cell.resAmt -= amount;
@@ -2456,7 +2456,7 @@ const updateBattleHud = initBattleHud();
         showToast(`Tiếp tục xây ${BLDG_DEFS[tappedOwnBldg.type].name}`);
       } else showToast("Dân làng không tìm được lối tới công trình.");
       return;
-    }
+    } if (!state.attackMove && tappedOwnBldg && (tappedOwnBldg.progress ?? 1) >= 1 && tappedOwnBldg.hp < tappedOwnBldg.maxHp && selVils.length > 0) { let assigned = 0; for (const u of selVils) { let path = []; if (footDist(tappedOwnBldg, u.x, u.y) > 1.45) { path = pathToBuilding(u, tappedOwnBldg, "player"); if (!path.length) continue; } u.task = "repair"; u.buildTargetId = tappedOwnBldg.id; u.targetTile = null; u.targetId = null; u.path = path; assigned++; } if (assigned) { sfxClick(); showToast(`Sửa chữa ${BLDG_DEFS[tappedOwnBldg.type].name}`); } else showToast("Dân làng không tìm được lối tới công trình."); return; }
 
     if (state.buildMode) {
       const def = BLDG_DEFS[state.buildMode];
