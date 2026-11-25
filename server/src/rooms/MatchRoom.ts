@@ -1,6 +1,6 @@
 import { Client, Room } from "colyseus";
 
-export type Faction = "dai_viet" | "trung_nguyen" | "bac_cuong";
+export type Faction = "dai_viet" | "trung_nguyen" | "bac_cuong" | "goryeo" | "fuso";
 export type MapSize = 48 | 64 | 96;
 export type MapType = "river_valley" | "open_plains" | "highland_passes" | "random";
 export type MatchStatus = "lobby" | "playing";
@@ -34,7 +34,7 @@ interface MatchCreateOptions {
 }
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const VALID_FACTIONS: Faction[] = ["dai_viet", "trung_nguyen", "bac_cuong"];
+const VALID_FACTIONS: Faction[] = ["dai_viet", "trung_nguyen", "bac_cuong", "goryeo", "fuso"];
 const VALID_MAP_SIZES: MapSize[] = [48, 64, 96];
 const VALID_MAP_TYPES: MapType[] = ["river_valley", "open_plains", "highland_passes", "random"];
 
