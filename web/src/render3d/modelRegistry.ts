@@ -189,6 +189,8 @@ export class ModelVisual {
   }
 
   get deathDuration(): number { return this.model?.clips.die?.duration ?? 0; }
+  /** True once the glTF replaced the procedural fallback. */
+  get loaded(): boolean { return !!this.model && !this.disposed; }
 
   setConstructionProgress(progress: number): void {
     this.progress = Math.max(0, Math.min(1, progress));
