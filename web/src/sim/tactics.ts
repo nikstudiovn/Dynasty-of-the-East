@@ -1,3 +1,4 @@
+import { fcx, fcy, fmax } from "./footprint";
 // Dynasty of the East — tactical RTS controls: rally points, attack-move, unit stances, market trades, stuck-unit wall breaking.
 
 export type Stance = "aggressive" | "stand_ground";
@@ -53,8 +54,8 @@ export function autoAcquire(state: any, u: any, def: any): any | null {
     if (!near) {
       for (const b of state.buildings) {
         if (b.team === u.team || b.hp <= 0) continue;
-        const d = Math.hypot(b.tx + b.size / 2 - u.x, b.ty + b.size / 2 - u.y);
-        if (d <= def.range + b.size * 0.55 + 0.35 && d < nd + 3) { nd = d; near = b; }
+        const d = Math.hypot(fcx(b) - u.x, fcy(b) - u.y);
+        if (d <= def.range + fmax(b) * 0.55 + 0.35 && d < nd + 3) { nd = d; near = b; }
       }
     }
     return near;
@@ -69,7 +70,7 @@ export function autoAcquire(state: any, u: any, def: any): any | null {
   if (!near) {
     for (const b of state.buildings) {
       if (b.team !== u.team && b.hp > 0) {
-        const d = Math.hypot(b.tx + b.size / 2 - u.x, b.ty + b.size / 2 - u.y);
+        const d = Math.hypot(fcx(b) - u.x, fcy(b) - u.y);
         if (d < nearD + 1.5) { nearD = d; near = b; }
       }
     }
@@ -91,7 +92,7 @@ export function breakThrough(state: any, u: any, dt: number): any | null {
   let best: any = null, bd = 3.2;
   for (const b of state.buildings) {
     if (b.team === u.team || b.hp <= 0) continue;
-    const d = Math.hypot(b.tx + b.size / 2 - u.x, b.ty + b.size / 2 - u.y) - b.size / 2 - ((b.type === "wall" || b.type === "gate") ? 0.6 : 0);
+    const d = Math.hypot(fcx(b) - u.x, fcy(b) - u.y) - fmax(b) / 2 - ((b.type === "wall" || b.type === "gate") ? 0.6 : 0);
     if (d < bd) { bd = d; best = b; }
   }
   return best;

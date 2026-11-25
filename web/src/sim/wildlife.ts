@@ -1,6 +1,7 @@
 // Dynasty of the East — wildlife: deer herds (flee when startled), wild boar (charge back at attackers) and villager hunting.
 // Animals live in `state.animals` (never in `state.units`, so soldiers never auto-target them).
 import { rng } from "./valley";
+import { edgeTiles, fcx, fcy } from "./footprint";
 
 export type AnimalType = "deer" | "boar" | "goat" | "cattle" | "lion" | "wild_elephant";
 
@@ -248,7 +249,13 @@ export interface HuntCtx {
 function goDrop(ctx: HuntCtx, u: any): void {
   const drop = ctx.findDropoff(u.team, u.x, u.y);
   u.huntBusy = false;
-  if (drop) { u.task = "return"; u.path = ctx.findPath(u, drop.tx + drop.size / 2, drop.ty + drop.size / 2); }
+  if (drop) {
+    u.task = "return";
+    const grid = ctx.state.grid;
+    const open = edgeTiles(drop).filter(t => { const c = grid[t.y]?.[t.x]; return c && c.terrain !== "water" && c.terrain !== "rock"; })
+      .sort((p, q) => Math.hypot(p.x + 0.5 - u.x, p.y + 0.5 - u.y) - Math.hypot(q.x + 0.5 - u.x, q.y + 0.5 - u.y))[0];
+    u.path = open ? ctx.findPath(u, open.x + 0.5, open.y + 0.5) : ctx.findPath(u, fcx(drop), fcy(drop));
+  }
   else { u.task = "idle"; u.huntId = null; }
 }
 

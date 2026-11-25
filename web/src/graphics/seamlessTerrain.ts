@@ -1,4 +1,5 @@
 // Dynasty of the East — seamless organic terrain.
+import { fcx, fcy } from "../sim/footprint";
 // The static ground is painted ONCE per match into an offscreen canvas (pixel-level 2D value noise,
 // Bayer-dithered between 4 meadow shades, winding footpaths, flowers, pebbles, mossy banks) and then
 // blitted every frame with a single drawImage. It is re-baked only when the terrain signature
@@ -96,7 +97,7 @@ function buildPaths(state: any, n: number): PathFields {
   const tcs = state.buildings.filter((b: any) => b.type === "town_center");
   let seed = 100;
   for (const tc of tcs) {
-    const cx = tc.tx + tc.size / 2, cy = tc.ty + tc.size / 2;
+    const cx = fcx(tc), cy = fcy(tc);
     // cobbled plaza around the town center
     for (let a = 0; a < 40; a++) {
       const ang = (a / 40) * Math.PI * 2;
