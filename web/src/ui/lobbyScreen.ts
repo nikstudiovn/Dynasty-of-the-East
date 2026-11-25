@@ -1,80 +1,160 @@
+import {
+  FACTION_CRESTS,
+  MOTIF_CORNER_CLOUD,
+  MOTIF_DIVIDER_LOTUS,
+  MOTIF_DONG_SON_DRUM,
+  MOTIF_LANTERN,
+  PIXEL_ICONS,
+  RANK_MEDALS,
+  type FactionKey,
+  type RankGrade,
+} from "./pixelMotifs";
 interface FactionMeta {
   name: string;
   chip: string;
   stat: string;
+  lore: string;
   svg: string;
 }
 
-const FACTION_META: Record<string, FactionMeta> = {
+const FACTION_META: Record<FactionKey, FactionMeta> = {
   dai_viet: {
     name: "Đại Việt",
     chip: "Tượng Binh",
     stat: "+15% Lúa & Tre",
-    svg: `<svg viewBox="0 0 36 36" aria-hidden="true">
-      <defs>
-        <linearGradient id="pdDvBg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#D93829"/>
-          <stop offset="100%" stop-color="#7F1414"/>
-        </linearGradient>
-      </defs>
-      <path d="M6 5h24v16c0 6.5-12 11-12 11S6 27.5 6 21V5z" fill="url(#pdDvBg)" stroke="#F5B841" stroke-width="2"/>
-      <circle cx="18" cy="15.5" r="5.2" fill="none" stroke="#FFE38A" stroke-width="1.6"/>
-      <path d="M18 8.5v14M11 15.5h14M13.2 10.7l9.6 9.6M22.8 10.7l-9.6 9.6" stroke="#F5B841" stroke-width="1.4" stroke-linecap="round"/>
-      <circle cx="18" cy="15.5" r="2.2" fill="#FFE38A"/>
-    </svg>`,
+    lore: "Đình Làng vững chãi, Tượng Binh thiện chiến, kinh tế lúa nước & tre dồi dào.",
+    svg: FACTION_CRESTS.dai_viet,
   },
   trung_nguyen: {
     name: "Trung Nguyên",
     chip: "Nỏ Liên Châu",
-    stat: "-15% Chi phí Lên đời",
-    svg: `<svg viewBox="0 0 36 36" aria-hidden="true">
-      <defs>
-        <linearGradient id="pdTnBg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#1F9D7A"/>
-          <stop offset="100%" stop-color="#0D4F3E"/>
-        </linearGradient>
-      </defs>
-      <path d="M6 5h24v16c0 6.5-12 11-12 11S6 27.5 6 21V5z" fill="url(#pdTnBg)" stroke="#F5B841" stroke-width="2"/>
-      <path d="M18 9l5.5 6.5L18 22l-5.5-6.5L18 9z" fill="none" stroke="#FFE38A" stroke-width="1.8"/>
-      <path d="M18 12.2l2.6 3.3-2.6 3.3-2.6-3.3 2.6-3.3z" fill="#F5B841"/>
-    </svg>`,
+    stat: "-15% Lên đời",
+    lore: "Nỏ Liên Châu bắn loạt dày đặc, tiết kiệm tài nguyên khi Phục Hưng & Lên 4 Đời.",
+    svg: FACTION_CRESTS.trung_nguyen,
   },
   bac_cuong: {
     name: "Bắc Cương",
     chip: "Thiết Kỵ Xạ",
-    stat: "Kỵ binh +10% Tốc độ",
-    svg: `<svg viewBox="0 0 36 36" aria-hidden="true">
-      <defs>
-        <linearGradient id="pdBcBg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#2563EB"/>
-          <stop offset="100%" stop-color="#162957"/>
-        </linearGradient>
-      </defs>
-      <path d="M6 5h24v16c0 6.5-12 11-12 11S6 27.5 6 21V5z" fill="url(#pdBcBg)" stroke="#E2E8F0" stroke-width="2"/>
-      <path d="M11 18c2.2-4.8 5.2-7 7-7s4.8 2.2 7 7c-2.6-.9-4.7-1.1-7-1.1S13.6 17.1 11 18z" fill="#E2E8F0"/>
-      <path d="M14.5 21.5c1.8 1.8 5.2 1.8 7 0" fill="none" stroke="#93C5FD" stroke-width="1.8" stroke-linecap="round"/>
-    </svg>`,
+    stat: "Kỵ +10% tốc độ",
+    lore: "Thiết Kỵ Xạ cơ động cao, Ưu Tiên đột kích cánh và kiểm soát bãi tài nguyên sớm.",
+    svg: FACTION_CRESTS.bac_cuong,
   },
 };
 
 const QUICK_GUIDE_CARDS: Array<{ title: string; desc: string }> = [
   {
-    title: "1. Chạm chọn & Khai thác",
-    desc: "Chạm nông dân rồi chạm Lúa, Tre, Đá hoặc Bãi Vàng để thu thập tài nguyên tự động.",
+    title: "1. Khai thác & Xây dựng",
+    desc: "Chạm nông dân rồi chạm Lúa, Tre, Đá hoặc Vàng; đặt nhiều móng để xây nối tiếp.",
   },
   {
-    title: "2. Zoom 2 ngón & Xoay 3D",
-    desc: "Chụm/mở 2 ngón để thu phóng bản đồ; giữ và kéo nhẹ để xoay góc nhìn 3D chiến trường.",
+    title: "2. Chọn nhanh & Đạo 1–3",
+    desc: "Chạm đúp chọn quân cùng loại trong 6 ô; nhấn đúp giữ để kéo khung chọn cụm.",
   },
   {
-    title: "3. Kéo chọn cụm & Đạo 1–3",
-    desc: "Kéo khung chọn nhiều quân cùng lúc và gán vào Đạo 1–3 để điều phối tấn công nhanh.",
+    title: "3. Camera 3D Cảm ứng",
+    desc: "Chụm/mở 2 ngón thu phóng chiến trường; kéo góc nhìn để quan sát địa hình.",
   },
   {
-    title: "4. Chuông Báo & Lên 4 Đời",
-    desc: "Rung Chuông Báo khi bị tập kích để dân vào nhà chính; tích đủ tài nguyên để Lên 4 Đời.",
+    title: "4. Chuông Báo & 4 Đời",
+    desc: "Rung Chuông Báo đưa dân vào Đình Làng khi bị tập kích; tích tài nguyên Lên 4 Đời.",
   },
 ];
+
+interface SaveSummary {
+  factionName: string;
+  age: number;
+  timeText: string;
+}
+
+function readLocalSaveSummary(): SaveSummary | null {
+  try {
+    const raw = window.localStorage.getItem("pixel_dynasty_save_v1");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!parsed || typeof parsed !== "object") return null;
+    const fKey = String(parsed.factionId || "dai_viet") as FactionKey;
+    const factionName = FACTION_META[fKey]?.name ?? "Đại Việt";
+    const age = Number(parsed.age) || 1;
+    const sec = Math.max(0, Math.floor(Number(parsed.time) || 0));
+    const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+    const ss = String(sec % 60).padStart(2, "0");
+    return { factionName, age, timeText: `${mm}:${ss}` };
+  } catch {
+    return null;
+  }
+}
+
+function refreshLoadSaveButton(): void {
+  const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
+  if (!loadSaveBtn) return;
+  loadSaveBtn.classList.add("pd-btn", "pd-home-btn", "pd-btn--save");
+  const save = readLocalSaveSummary();
+  if (save) {
+    loadSaveBtn.innerHTML = `
+      ${PIXEL_ICONS.save}
+      <span class="pd-home-btn-text">
+        <span class="pd-home-btn-title">Tiếp tục ván</span>
+        <span class="pd-home-btn-sub">${save.factionName} · Đời ${save.age} · ${save.timeText}</span>
+      </span>
+    `;
+  }
+}
+function attachPanelOrnaments(panel: HTMLElement): void {
+  if (panel.dataset.pdOrnamented === "1") return;
+  panel.dataset.pdOrnamented = "1";
+  panel.classList.add("pd-panel");
+
+  const corners: Array<string> = ["tl", "tr", "bl", "br"];
+  for (const pos of corners) {
+    const c = document.createElement("span");
+    c.className = `pd-corner pd-corner--${pos}`;
+    c.setAttribute("aria-hidden", "true");
+    c.innerHTML = MOTIF_CORNER_CLOUD;
+    panel.appendChild(c);
+  }
+}
+
+function attachAmbientLanterns(panel: HTMLElement): void {
+  if (panel.querySelector(".pd-lantern")) return;
+  for (const side of ["l", "r"] as const) {
+    const l = document.createElement("span");
+    l.className = `pd-lantern pd-lantern--${side}`;
+    l.setAttribute("aria-hidden", "true");
+    l.innerHTML = MOTIF_LANTERN;
+    panel.appendChild(l);
+  }
+}
+
+function upgradeTitleBanner(modalCard: HTMLElement): void {
+  if (modalCard.querySelector(".pd-title-bar")) return;
+  const titleEl = document.getElementById("modal-title");
+  if (!titleEl || !modalCard.contains(titleEl)) return;
+
+  const subEl = document.getElementById("modal-sub");
+  const bar = document.createElement("div");
+  bar.className = "pd-title-bar";
+
+  const drum = document.createElement("span");
+  drum.setAttribute("aria-hidden", "true");
+  drum.innerHTML = MOTIF_DONG_SON_DRUM;
+
+  const textWrap = document.createElement("div");
+  textWrap.style.minWidth = "0";
+  titleEl.insertAdjacentElement("beforebegin", bar);
+  textWrap.appendChild(titleEl);
+  if (subEl && modalCard.contains(subEl)) {
+    textWrap.appendChild(subEl);
+  }
+
+  bar.appendChild(drum);
+  bar.appendChild(textWrap);
+
+  const divider = document.createElement("div");
+  divider.className = "pd-divider";
+  divider.setAttribute("aria-hidden", "true");
+  divider.innerHTML = MOTIF_DIVIDER_LOTUS;
+  bar.insertAdjacentElement("afterend", divider);
+}
 
 function upgradeFactionButtons(): void {
   const row = document.getElementById("opt-faction");
@@ -83,7 +163,7 @@ function upgradeFactionButtons(): void {
   const buttons = row.querySelectorAll<HTMLButtonElement>(".opt-btn");
   buttons.forEach((btn) => {
     if (btn.dataset.pdEnhanced === "1") return;
-    const key = btn.dataset.val || "";
+    const key = (btn.dataset.val || "") as FactionKey;
     const meta = FACTION_META[key];
     if (!meta) return;
 
@@ -91,54 +171,331 @@ function upgradeFactionButtons(): void {
     btn.classList.add("pd-faction-card");
     btn.innerHTML = `
       <span class="pd-crest">${meta.svg}</span>
-      <span class="pd-faction-name">${meta.name}</span>
-      <span class="pd-chip">${meta.chip}</span>
-      <span class="pd-faction-stat">${meta.stat}</span>
+      <span class="pd-faction-info">
+        <span class="pd-faction-head">
+          <span class="pd-faction-name">${meta.name}</span>
+          <span class="pd-chip">${meta.chip}</span>
+        </span>
+        <span class="pd-faction-stat">${meta.stat}</span>
+      </span>
     `;
   });
 }
 
-function injectQuickGuide(modalCard: HTMLElement): void {
-  if (modalCard.querySelector(".pd-guide-wrap")) return;
-
-  const wrap = document.createElement("div");
-  wrap.className = "pd-guide-wrap";
-
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "pd-guide-toggle";
-  toggle.setAttribute("aria-expanded", "false");
-  toggle.innerHTML = `<span>Hướng dẫn nhanh</span><span>▾</span>`;
-
-  const grid = document.createElement("div");
-  grid.className = "pd-guide-grid";
-  grid.innerHTML = QUICK_GUIDE_CARDS.map(
-    (card) => `
-      <div class="pd-guide-card">
-        <div class="pd-guide-title">${card.title}</div>
-        <div class="pd-guide-desc">${card.desc}</div>
-      </div>
-    `
-  ).join("");
-
-  toggle.addEventListener("click", () => {
-    const open = grid.classList.toggle("is-open");
-    toggle.setAttribute("aria-expanded", open ? "true" : "false");
-    const arrow = toggle.lastElementChild;
-    if (arrow) arrow.textContent = open ? "▴" : "▾";
-  });
-
-  wrap.appendChild(toggle);
-  wrap.appendChild(grid);
-
-  const setupPanel = document.getElementById("setup-panel");
-  if (setupPanel && modalCard.contains(setupPanel)) {
-    setupPanel.appendChild(wrap);
-  } else {
-    modalCard.appendChild(wrap);
+function findDirectChild(root: HTMLElement, id: string): HTMLElement | null {
+  const el = document.getElementById(id);
+  if (!el || !root.contains(el)) return null;
+  let cur: HTMLElement | null = el;
+  while (cur && cur.parentElement && cur.parentElement !== root) {
+    cur = cur.parentElement;
   }
+  return cur;
 }
 
+function getSelectedFaction(): FactionKey {
+  const active = document.querySelector<HTMLElement>("#opt-faction .opt-btn.active");
+  const val = (active?.dataset.val || "dai_viet") as FactionKey;
+  return FACTION_META[val] ? val : "dai_viet";
+}
+
+function buildLobbySettingButton(targetId: string, fallbackLabel: string): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pd-btn pd-btn--ghost";
+  const sync = (): void => {
+    const src = document.getElementById(targetId);
+    btn.textContent = src?.textContent?.trim() || fallbackLabel;
+  };
+  sync();
+  btn.addEventListener("click", () => {
+    try {
+      document.getElementById(targetId)?.click();
+      sync();
+    } catch {
+      /* ignore */
+    }
+  });
+  return btn;
+}
+
+function enhancePauseModal(): void {
+  const pauseModal = document.getElementById("pause-modal");
+  if (!pauseModal) return;
+  const card = pauseModal.querySelector<HTMLElement>(".pd-pause-card");
+  if (!card || card.dataset.pdEnhanced === "1") return;
+  card.dataset.pdEnhanced = "1";
+
+  attachPanelOrnaments(card);
+
+  const actions = card.querySelector<HTMLElement>(".pd-pause-actions");
+  const quick = card.querySelector<HTMLElement>(".pd-pause-quick-settings");
+
+  if (actions && quick && !card.querySelector(".pd-pause-body")) {
+    const body = document.createElement("div");
+    body.className = "pd-pause-body";
+
+    const quickLabel = document.createElement("div");
+    quickLabel.className = "pd-pause-col-label";
+    quickLabel.textContent = "Cài đặt nhanh";
+    quick.insertAdjacentElement("afterbegin", quickLabel);
+
+    actions.insertAdjacentElement("beforebegin", body);
+    body.appendChild(actions);
+    body.appendChild(quick);
+  }
+}
+export function enhanceModal(modalCard: HTMLElement): void {
+  const setupPanel =
+    modalCard.querySelector<HTMLElement>("#setup-panel") ??
+    document.getElementById("setup-panel");
+  if (!setupPanel || setupPanel.dataset.pdTwoTier === "1") return;
+  setupPanel.dataset.pdTwoTier = "1";
+
+  attachPanelOrnaments(modalCard);
+  attachAmbientLanterns(modalCard);
+  upgradeTitleBanner(modalCard);
+
+  const factionGroup = findDirectChild(setupPanel, "opt-faction");
+  const modeGroup = findDirectChild(setupPanel, "opt-mode");
+  const mapSizeGroup = findDirectChild(setupPanel, "opt-map-size");
+  const mapTypeGroup = findDirectChild(setupPanel, "opt-map-type");
+  const diffGroup = findDirectChild(setupPanel, "opt-diff");
+  const startBtn = document.getElementById("btn-start") as HTMLButtonElement | null;
+  const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
+
+  const homeLayout = document.createElement("div");
+  homeLayout.className = "pd-home-layout";
+
+  const homeLeft = document.createElement("div");
+  homeLeft.className = "pd-home-left";
+
+  const homeActions = document.createElement("div");
+  homeActions.className = "pd-home-actions";
+
+  const homeRight = document.createElement("div");
+  homeRight.className = "pd-home-right";
+
+  const setupTier = document.createElement("div");
+  setupTier.className = "pd-setup-tier";
+
+  const setTier = (tier: "home" | "setup"): void => {
+    homeLayout.hidden = tier !== "home";
+    setupTier.hidden = tier !== "setup";
+    modalCard.classList.toggle("pd-modal-setup", tier === "setup");
+  };
+
+  const tabsBar = document.createElement("div");
+  tabsBar.className = "pd-preview-tabs";
+  const paneOverview = document.createElement("div");
+  paneOverview.className = "pd-preview-pane is-active";
+  const paneGuide = document.createElement("div");
+  paneGuide.className = "pd-preview-pane";
+  const paneSettings = document.createElement("div");
+  paneSettings.className = "pd-preview-pane";
+
+  const tabOverviewBtn = document.createElement("button");
+  tabOverviewBtn.type = "button";
+  tabOverviewBtn.className = "pd-tab-btn is-active";
+  tabOverviewBtn.textContent = "Quốc gia";
+
+  const tabGuideBtn = document.createElement("button");
+  tabGuideBtn.type = "button";
+  tabGuideBtn.className = "pd-tab-btn";
+  tabGuideBtn.textContent = "Hướng dẫn";
+
+  const tabSettingsBtn = document.createElement("button");
+  tabSettingsBtn.type = "button";
+  tabSettingsBtn.className = "pd-tab-btn";
+  tabSettingsBtn.textContent = "Cài đặt";
+
+  const setRightTab = (tab: "overview" | "guide" | "settings"): void => {
+    tabOverviewBtn.classList.toggle("is-active", tab === "overview");
+    tabGuideBtn.classList.toggle("is-active", tab === "guide");
+    tabSettingsBtn.classList.toggle("is-active", tab === "settings");
+    paneOverview.classList.toggle("is-active", tab === "overview");
+    paneGuide.classList.toggle("is-active", tab === "guide");
+    paneSettings.classList.toggle("is-active", tab === "settings");
+  };
+
+  tabOverviewBtn.addEventListener("click", () => setRightTab("overview"));
+  tabGuideBtn.addEventListener("click", () => setRightTab("guide"));
+  tabSettingsBtn.addEventListener("click", () => setRightTab("settings"));
+  tabsBar.append(tabOverviewBtn, tabGuideBtn, tabSettingsBtn);
+
+  const renderOverviewPane = (): void => {
+    const fKey = getSelectedFaction();
+    const meta = FACTION_META[fKey];
+    const save = readLocalSaveSummary();
+    const saveBadge = save
+      ? `<span class="pd-badge pd-badge--jade">Đã lưu: ${save.factionName} · Đời ${save.age} · ${save.timeText}</span>`
+      : `<span class="pd-badge">Sẵn sàng xuất quân</span>`;
+
+    paneOverview.innerHTML = `
+      <div class="pd-hero-card">
+        <span class="pd-crest">${meta.svg}</span>
+        <div class="pd-hero-meta">
+          <div class="pd-hero-heading">${meta.name} · ${meta.chip}</div>
+          <p class="pd-hero-copy">${meta.lore}</p>
+          <div>${saveBadge}</div>
+        </div>
+      </div>
+      <div class="pd-motto-strip">Đình Làng · Ấp Ủ · Tượng Binh · Phục Hưng · Ưu Tiên · Nỗ Liên Châu</div>
+    `;
+  };
+
+  renderOverviewPane();
+
+  paneGuide.innerHTML = `
+    <div class="pd-guide-grid">
+      ${QUICK_GUIDE_CARDS.map(
+        (card) => `
+        <div class="pd-guide-card">
+          <div class="pd-guide-title">${card.title}</div>
+          <div class="pd-guide-desc">${card.desc}</div>
+        </div>`,
+      ).join("")}
+    </div>
+  `;
+
+  const settingsGrid = document.createElement("div");
+  settingsGrid.className = "pd-lobby-settings-grid";
+  settingsGrid.append(
+    buildLobbySettingButton("btn-music", "Nhạc: Bật"),
+    buildLobbySettingButton("btn-sound", "Âm: Bật"),
+    buildLobbySettingButton("btn-quality", "Đồ họa: Tự động"),
+    buildLobbySettingButton("btn-atmosphere", "Trời: Tự động"),
+  );
+  paneSettings.appendChild(settingsGrid);
+
+  homeRight.append(tabsBar, paneOverview, paneGuide, paneSettings);
+  
+  const makeHomeBtn = (
+    cls: string,
+    iconSvg: string,
+    title: string,
+    sub: string,
+    onClick: () => void,
+  ): HTMLButtonElement => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `pd-btn pd-home-btn ${cls}`;
+    btn.innerHTML = `
+      ${iconSvg}
+      <span class="pd-home-btn-text">
+        <span class="pd-home-btn-title">${title}</span>
+        <span class="pd-home-btn-sub">${sub}</span>
+      </span>
+    `;
+    btn.addEventListener("click", onClick);
+    return btn;
+  };
+
+  if (loadSaveBtn) {
+    refreshLoadSaveButton();
+    homeActions.appendChild(loadSaveBtn);
+  }
+
+  homeActions.appendChild(
+    makeHomeBtn("pd-btn--primary", PIXEL_ICONS.swords, "Trận mới", "Chọn phe, bản đồ & AI", () => {
+      setTier("setup");
+    }),
+  );
+
+  homeActions.appendChild(
+    makeHomeBtn("pd-btn--ghost", PIXEL_ICONS.multi, "Nhiều người chơi", "Đấu mạng hoặc phòng LAN", () => {
+      setTier("setup");
+    }),
+  );
+
+  const pairRow = document.createElement("div");
+  pairRow.className = "pd-home-row-pair";
+
+  const guideBtn = document.createElement("button");
+  guideBtn.type = "button";
+  guideBtn.className = "pd-btn pd-btn--ghost";
+  guideBtn.innerHTML = `${PIXEL_ICONS.guide}<span>Hướng dẫn</span>`;
+  guideBtn.addEventListener("click", () => setRightTab("guide"));
+
+  const settingsBtn = document.createElement("button");
+  settingsBtn.type = "button";
+  settingsBtn.className = "pd-btn pd-btn--ghost";
+  settingsBtn.innerHTML = `${PIXEL_ICONS.settings}<span>Cài đặt</span>`;
+  settingsBtn.addEventListener("click", () => setRightTab("settings"));
+
+  pairRow.append(guideBtn, settingsBtn);
+  homeActions.appendChild(pairRow);
+
+  homeLeft.appendChild(homeActions);
+  homeLayout.append(homeLeft, homeRight);
+
+  const topbar = document.createElement("div");
+  topbar.className = "pd-setup-topbar";
+
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.className = "pd-btn pd-btn--ghost";
+  backBtn.textContent = "← Quay lại";
+  backBtn.addEventListener("click", () => {
+    refreshLoadSaveButton();
+    renderOverviewPane();
+    setTier("home");
+  });
+
+  const setupHeading = document.createElement("span");
+  setupHeading.className = "pd-setup-heading";
+  setupHeading.textContent = "Thiết lập trận đấu";
+
+  topbar.append(backBtn, setupHeading);
+  if (startBtn) {
+    startBtn.classList.add("pd-btn", "pd-btn--primary");
+    topbar.appendChild(startBtn);
+  }
+
+  const columns = document.createElement("div");
+  columns.className = "pd-setup-columns";
+  const colLeft = document.createElement("div");
+  colLeft.className = "pd-setup-col-left";
+  const colRight = document.createElement("div");
+  colRight.className = "pd-setup-col-right";
+
+  const moved = new Set<HTMLElement>();
+  const moveTo = (el: HTMLElement | null, target: HTMLElement): void => {
+    if (!el || moved.has(el)) return;
+    moved.add(el);
+    target.appendChild(el);
+  };
+
+  moveTo(factionGroup, colLeft);
+  moveTo(modeGroup, colRight);
+  moveTo(diffGroup, colRight);
+  moveTo(mapSizeGroup, colRight);
+  moveTo(mapTypeGroup, colRight);
+
+  for (const child of Array.from(setupPanel.children)) {
+    if (child instanceof HTMLElement && !moved.has(child)) {
+      if (child.children.length > 0 || (child.textContent ?? "").trim().length > 0) {
+        moveTo(child, colRight);
+      }
+    }
+  }
+
+  columns.append(colLeft, colRight);
+  setupTier.append(topbar, columns);
+  setupPanel.append(homeLayout, setupTier);
+
+  const factionRow = document.getElementById("opt-faction");
+  factionRow?.addEventListener("click", () => {
+    window.setTimeout(() => {
+      try {
+        renderOverviewPane();
+      } catch {
+        /* ignore */
+      }
+    }, 0);
+  });
+
+  setTier("home");
+}
 function extractMetric(text: string, patterns: RegExp[]): number | null {
   for (const rx of patterns) {
     const m = text.match(rx);
@@ -157,14 +514,26 @@ function isSetupHidden(): boolean {
   return setup.hidden || style.display === "none";
 }
 
-function renderEndgameScorecard(modalCard: HTMLElement, tipsEl: HTMLElement): void {
+function renderEndgameScorecard(modalCard: HTMLElement, tipEl: HTMLElement): void {
   const existing = modalCard.querySelector(".pd-rank-banner");
-  if (!isSetupHidden()) {
+  const endgame = isSetupHidden();
+  modalCard.classList.toggle("pd-modal-endgame", endgame);
+
+  const startBtn = document.getElementById("btn-start");
+  if (!endgame) {
     if (existing) existing.remove();
+    const topbar = modalCard.querySelector<HTMLElement>(".pd-setup-topbar");
+    if (startBtn && topbar && !topbar.contains(startBtn)) {
+      topbar.appendChild(startBtn);
+    }
     return;
   }
 
-  const rawText = (tipsEl.textContent || "").trim();
+  if (startBtn && !modalCard.querySelector(":scope > #btn-start")) {
+    tipEl.insertAdjacentElement("afterend", startBtn);
+  }
+
+  const rawText = (tipEl.textContent || "").trim();
   if (!rawText) return;
 
   const numbers = (rawText.match(/\d[\d.,]*/g) || [])
@@ -190,10 +559,17 @@ function renderEndgameScorecard(modalCard: HTMLElement, tipsEl: HTMLElement): vo
     extractMetric(rawText, [/t[ổo]ng\s*[đd]i[ểe]m\D*(\d[\d.,]*)/i, /[đd]i[ểe]m\D*(\d[\d.,]*)/i]) ??
     econ + mil + bld;
 
-  let rank: "S" | "A" | "B" | "C" = "C";
+  let rank: RankGrade = "C";
   if (total >= 2400) rank = "S";
   else if (total >= 1500) rank = "A";
   else if (total >= 800) rank = "B";
+
+  const rankTitles: Record<RankGrade, string> = {
+    S: "HẠNG S · HOÀNG KIM",
+    A: "HẠNG A · BẠC KHẢM",
+    B: "HẠNG B · ĐỒNG CỔ",
+    C: "HẠNG C · GỖ MỘC",
+  };
 
   const maxVal = Math.max(econ, mil, bld, 1);
   const pct = (v: number): number => Math.max(8, Math.min(100, Math.round((v / maxVal) * 100)));
@@ -201,7 +577,10 @@ function renderEndgameScorecard(modalCard: HTMLElement, tipsEl: HTMLElement): vo
   const banner = existing ?? document.createElement("div");
   banner.className = "pd-rank-banner";
   banner.innerHTML = `
-    <div class="pd-seal pd-rank-${rank}" title="Xếp hạng ${rank}">${rank}</div>
+    <div class="pd-medal-wrap" title="Xếp hạng ${rank}">
+      ${RANK_MEDALS[rank]}
+      <span class="pd-medal-label">${rankTitles[rank]}</span>
+    </div>
     <div class="pd-bars">
       <div class="pd-bar-row">
         <span class="pd-bar-label">Kinh tế</span>
@@ -222,200 +601,53 @@ function renderEndgameScorecard(modalCard: HTMLElement, tipsEl: HTMLElement): vo
   `;
 
   if (!existing) {
-    tipsEl.insertAdjacentElement("beforebegin", banner);
+    tipEl.insertAdjacentElement("beforebegin", banner);
   }
-}
-
-function findDirectChild(root: HTMLElement, id: string): HTMLElement | null {
-  const el = document.getElementById(id);
-  if (!el || !root.contains(el)) return null;
-  let cur: HTMLElement | null = el;
-  while (cur && cur.parentElement && cur.parentElement !== root) {
-    cur = cur.parentElement;
-  }
-  return cur;
-}
-
-function selectModeOption(preferMulti: boolean): void {
-  const modeRoot = document.getElementById("opt-mode");
-  if (!modeRoot) return;
-  const pills = Array.from(modeRoot.querySelectorAll<HTMLElement>(".pill, button"));
-  if (pills.length === 0) return;
-  const multiRe = /(multi|online|2p|pvp|coop|lan|net)/i;
-  const soloRe = /(solo|single|1p|offline|ai)/i;
-  const target =
-    pills.find((p) => {
-      const v = `${p.dataset.v ?? ""} ${p.textContent ?? ""}`;
-      return preferMulti ? multiRe.test(v) : soloRe.test(v);
-    }) ?? (preferMulti ? pills[pills.length - 1] : pills[0]);
-  target?.click();
-}
-
-export function enhanceModal(modalCard: HTMLElement): void {
-  const setupPanel =
-    modalCard.querySelector<HTMLElement>("#setup-panel") ??
-    document.getElementById("setup-panel");
-  if (!setupPanel || setupPanel.dataset.pdTwoTier === "1") return;
-  setupPanel.dataset.pdTwoTier = "1";
-
-  const factionGroup = findDirectChild(setupPanel, "opt-faction");
-  const modeGroup = findDirectChild(setupPanel, "opt-mode");
-  const mapSizeGroup = findDirectChild(setupPanel, "opt-map-size");
-  const mapTypeGroup = findDirectChild(setupPanel, "opt-map-type");
-  const diffGroup = findDirectChild(setupPanel, "opt-diff");
-  const startGroup = findDirectChild(setupPanel, "btn-start");
-  const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
-
-  const homeTier = document.createElement("div");
-  homeTier.className = "pd-home-actions";
-
-  const setupTier = document.createElement("div");
-  setupTier.className = "pd-setup-tier";
-
-  const setTier = (tier: "home" | "setup"): void => {
-    homeTier.hidden = tier !== "home";
-    setupTier.hidden = tier !== "setup";
-    modalCard.classList.toggle("pd-modal-setup", tier === "setup");
-  };
-
-  const makeHomeBtn = (
-    cls: string,
-    icon: string,
-    title: string,
-    sub: string,
-    onClick: () => void,
-  ): HTMLButtonElement => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = `pd-home-btn ${cls}`;
-    btn.innerHTML = `
-      <span class="pd-home-btn-icon" aria-hidden="true">${icon}</span>
-      <span class="pd-home-btn-text">
-        <span class="pd-home-btn-title">${title}</span>
-        <span class="pd-home-btn-sub">${sub}</span>
-      </span>
-    `;
-    btn.addEventListener("click", onClick);
-    return btn;
-  };
-
-  homeTier.appendChild(
-    makeHomeBtn("pd-home-btn-primary", "⚔️", "Đấu Đơn", "Chinh phạt AI trên bản đồ chiến thuật", () => {
-      selectModeOption(false);
-      setTier("setup");
-    }),
-  );
-
-  homeTier.appendChild(
-    makeHomeBtn("pd-home-btn-multi", "🌐", "Đấu Mạng", "Tạo phòng hoặc đối đầu trực tuyến", () => {
-      selectModeOption(true);
-      setTier("setup");
-    }),
-  );
-
-  if (loadSaveBtn) {
-    loadSaveBtn.classList.add("pd-home-btn", "pd-home-btn-save");
-    homeTier.appendChild(loadSaveBtn);
-  } else {
-    const fallbackSave = makeHomeBtn(
-      "pd-home-btn-save",
-      "💾",
-      "Tiếp tục ván đã lưu",
-      "Chưa có dữ liệu lưu",
-      () => {},
-    );
-    fallbackSave.id = "btn-load-save";
-    fallbackSave.disabled = true;
-    homeTier.appendChild(fallbackSave);
-  }
-
-  homeTier.appendChild(
-    makeHomeBtn("pd-home-btn-guide", "📜", "Hướng dẫn nhanh", "Xem luật chơi, tài nguyên và mẹo xuất quân", () => {
-      const guide = modalCard.querySelector<HTMLDetailsElement>("details.pd-guide");
-      if (guide) {
-        guide.open = !guide.open;
-        if (guide.open) {
-          guide.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }
-      }
-    }),
-  );
-
-  const topbar = document.createElement("div");
-  topbar.className = "pd-setup-topbar";
-
-  const backBtn = document.createElement("button");
-  backBtn.type = "button";
-  backBtn.className = "pd-btn-back";
-  backBtn.textContent = "← Quay lại";
-  backBtn.addEventListener("click", () => setTier("home"));
-  topbar.appendChild(backBtn);
-
-  const columns = document.createElement("div");
-  columns.className = "pd-setup-columns";
-
-  const colLeft = document.createElement("div");
-  colLeft.className = "pd-setup-col-left";
-
-  const colRight = document.createElement("div");
-  colRight.className = "pd-setup-col-right";
-
-  const moved = new Set<HTMLElement>();
-  const moveTo = (el: HTMLElement | null, target: HTMLElement): void => {
-    if (!el || moved.has(el)) return;
-    moved.add(el);
-    target.appendChild(el);
-  };
-
-  moveTo(factionGroup, colLeft);
-  moveTo(modeGroup, colRight);
-  moveTo(mapSizeGroup, colRight);
-  moveTo(mapTypeGroup, colRight);
-  moveTo(diffGroup, colRight);
-
-  for (const child of Array.from(setupPanel.children)) {
-    if (child instanceof HTMLElement && !moved.has(child) && child !== startGroup) {
-      if (child.children.length > 0 || (child.textContent ?? "").trim().length > 0) {
-        moveTo(child, colRight);
-      } else {
-        child.remove();
-      }
-    }
-  }
-
-  moveTo(startGroup, colRight);
-
-  columns.appendChild(colLeft);
-  columns.appendChild(colRight);
-  setupTier.appendChild(topbar);
-  setupTier.appendChild(columns);
-
-  setupPanel.appendChild(homeTier);
-  setupPanel.appendChild(setupTier);
-  setTier("home");
 }
 
 export function initLobbyUI(): void {
-  const modalCard = document.querySelector<HTMLElement>("#modal .modal-card");
-  if (!modalCard) return;
+  try {
+    const modalCard = document.querySelector<HTMLElement>("#modal .modal-card");
+    if (!modalCard) return;
 
-  upgradeFactionButtons();
-  enhanceModal(modalCard);
-  injectQuickGuide(modalCard);
+    upgradeFactionButtons();
+    enhanceModal(modalCard);
+    enhancePauseModal();
 
-  const tipsEl = document.getElementById("modal-tips");
-  if (!tipsEl) return;
+    const loadSaveBtn = document.getElementById("btn-load-save");
+    if (loadSaveBtn) {
+      const saveObserver = new MutationObserver(() => {
+        try {
+          refreshLoadSaveButton();
+        } catch {
+          /* ignore */
+        }
+      });
+      saveObserver.observe(loadSaveBtn, { attributes: true, attributeFilter: ["style"] });
+    }
 
-  const update = (): void => renderEndgameScorecard(modalCard, tipsEl);
-  update();
+    const tipsEl = document.getElementById("modal-tips");
+    if (!tipsEl) return;
 
-  const observer = new MutationObserver(() => {
+    const update = (): void => {
+      try {
+        renderEndgameScorecard(modalCard, tipsEl);
+      } catch {
+        /* guard against render-blocking errors */
+      }
+    };
     update();
-  });
-  observer.observe(tipsEl, { childList: true, characterData: true, subtree: true });
 
-  const setupPanel = document.getElementById("setup-panel");
-  if (setupPanel) {
-    observer.observe(setupPanel, { attributes: true, attributeFilter: ["style", "hidden", "class"] });
+    const observer = new MutationObserver(() => {
+      update();
+    });
+    observer.observe(tipsEl, { childList: true, characterData: true, subtree: true });
+
+    const setupPanel = document.getElementById("setup-panel");
+    if (setupPanel) {
+      observer.observe(setupPanel, { attributes: true, attributeFilter: ["style", "hidden", "class"] });
+    }
+  } catch {
+    /* never block main game boot */
   }
 }
