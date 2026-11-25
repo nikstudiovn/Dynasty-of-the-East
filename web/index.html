@@ -2053,6 +2053,9 @@ const updateBattleHud = initBattleHud();
           });
         }
       }
+      if (selBldg.hp > 0 && selBldg.hp < selBldg.maxHp) addBtn("Sửa nhà", "", true, false, () => { window.DOTECommands?.repairSelectedOrNearest?.(selBldg.id); renderCommandDock(); });
+      if (selBldg.type === "farm" && (selBldg.depleted || (selBldg.cropAmount ?? 0) <= 0)) addBtn("Trồng lại", "30 Gỗ", true, false, () => { window.DOTECommands?.reseedFarm?.(selBldg.id); updateHud(); renderCommandDock(); });
+      if (selBldg.type === "farm") addBtn("Tự trồng lại", "Tự tái canh: " + ((selBldg.autoReseed ?? true) ? "Bật" : "Tắt"), true, selBldg.autoReseed ?? true, () => { window.DOTECommands?.toggleFarmAutoReseed?.(selBldg.id); renderCommandDock(); });
       if (window.DOTETactics && window.DOTETactics.canRally(selBldg.type)) {
         title.textContent += selBldg.rallyPoint ? " · Cờ tập kết đã đặt" : " · Chạm đất để đặt cờ tập kết";
         if (selBldg.rallyPoint) addBtn("Gỡ cờ tập kết", "", true, false, () => { selBldg.rallyPoint = null; renderCommandDock(); });
