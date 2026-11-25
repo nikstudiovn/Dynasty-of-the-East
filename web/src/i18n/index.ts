@@ -3,7 +3,8 @@ import en from "./en.json";
 
 export type Lang = "vi" | "en";
 
-const STORAGE_KEY = "pd_lang";
+const STORAGE_KEY = "dote_lang";
+const LEGACY_STORAGE_KEY = "pd_lang";
 const DICTIONARIES: Record<Lang, Record<string, string>> = {
   vi: vi as Record<string, string>,
   en: en as Record<string, string>,
@@ -11,9 +12,11 @@ const DICTIONARIES: Record<Lang, Record<string, string>> = {
 let currentLang: Lang = "vi";
 
 try {
-  const saved = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-  if (saved === "vi" || saved === "en") {
-    currentLang = saved;
+  const saved = localStorage.getItem(STORAGE_KEY);
+  const lang = saved ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (lang === "vi" || lang === "en") {
+    currentLang = lang;
+    if (saved === null) localStorage.setItem(STORAGE_KEY, lang);
   }
 } catch {
   // Ignore storage errors in restricted environments

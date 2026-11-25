@@ -8,8 +8,20 @@ import { Units3D } from "./units3d";
 import { Fog3D } from "./fog3d";
 import { FX3D } from "./fx3d";
 import { World3D } from "./world3d";
-import { Env3D, MAP_N, setMapSize, isoToTile, tileToIso, clamp, standHeight, retainRenderAssets, releaseRenderAssets } from "./common";
+import { Env3D, MAP_N, setMapSize, isoToTile, tileToIso, clamp, standHeight, retainRenderAssets, releaseRenderAssets, fxGuard } from "./common";
 import { ensurePbrTextures, disposePbrMaterials } from "./pbrMaterials";
+import { FloatingText, FLOAT_COLORS, onFloatingTextChange } from "./floatingText";
+
+/** Gameplay → visuals bridge (index.html calls it only after the gameplay step has been resolved). */
+export type VisualEvent =
+  | { type: "hit"; x: number; y: number; dmg: number; targetId?: number | null; isBldg?: boolean; melee?: boolean; team?: string }
+  | { type: "deposit"; x: number; y: number; amount: number; res: string }
+  | { type: "text"; x: number; y: number; text: string; color?: string }
+  | { type: "command"; x: number; y: number; kind: "move" | "attack" };
+
+const RES_LABEL: Record<string, string> = { food: "Lúa", wood: "Gỗ", gold: "Vàng", stone: "Đá" };
+
+
 
 export { MIN_ZOOM, MAX_ZOOM };
 export type { QualityPreset };
@@ -35,6 +47,10 @@ export interface Renderer3D {
   /** Smooth 45° camera yaw rotation (+1 clockwise, -1 counter-clockwise). */
   rotate(dir: number): void;
   cycleAtmosphere(): string;
+  /** Read-only effect / GPU counters for tests and on-device profiling. */
+  fxStats(): Record<string, unknown>;
+  /** Hit flash / sparks / floating numbers / command ripples for a resolved gameplay event. */
+  visualEvent(type: VisualEvent["type"], data: any): void;
   readonly renderer: THREE.WebGLRenderer;
 }
 
@@ -63,6 +79,9 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   const units = new Units3D(fx, models);
   let fog = new Fog3D();
   let world = new World3D();
+  const floating = new FloatingText();
+  onFloatingTextChange(on => { if (!on) floating.clear(); });
+  fx.setQuality(s3.quality);
   s3.scene.add(world.group, terrain.group, buildings.group, units.group, fx.group, fog.mesh);
 
   // The size-dependent subsystems (terrain, world ridges, fog DataTexture) are rebuilt whenever the map size,
@@ -118,24 +137,10 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         if (!p.visible) continue;
         drawBar(p.x, p.y, r.type === "war_elephant" ? 30 : 20, u.hp / u.maxHp, u.team === "player");
       }
-      // floating +15 / -22 combat & gather text
-      octx.textAlign = "center";
-      octx.textBaseline = "middle";
-      octx.font = "800 13px -apple-system, 'SF Pro Rounded', system-ui, sans-serif";
-      octx.lineJoin = "round";
-      for (const f of state.floats || []) {
-        const fv = state.fog[Math.max(0, Math.min(MAP_N - 1, Math.floor(f.y)))]?.[Math.max(0, Math.min(MAP_N - 1, Math.floor(f.x)))] ?? 0;
-        if (fv < 2) continue;
-        const p = s3.project(f.x, standHeight(f.x, f.y, state.grid) + 0.75, f.y);
-        if (!p.visible) continue;
-        octx.globalAlpha = clamp((f.life ?? 1) * 1.6, 0, 1);
-        octx.lineWidth = 3;
-        octx.strokeStyle = "rgba(20, 12, 8, 0.9)";
-        octx.strokeText(f.text, p.x, p.y);
-        octx.fillStyle = f.color || "#F5B841";
-        octx.fillText(f.text, p.x, p.y);
-      }
-      octx.globalAlpha = 1;
+      // floating -24 / +10 Vàng labels (one per gameplay event, pooled)
+      fxGuard("floating-text", () => floating.draw(octx, (x, y, z) => s3.project(x, y, z),
+        (x, z) => standHeight(x, z, state.grid),
+        (x, z) => (state.fog[Math.max(0, Math.min(MAP_N - 1, Math.floor(z)))]?.[Math.max(0, Math.min(MAP_N - 1, Math.floor(x)))] ?? 0) === 2));
     }
     const sb = E.getSelectionBox();
     if (sb) {
@@ -170,7 +175,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       time += d;
       if (state !== lastState) {
         // new match / loaded save: drop every pooled mesh from the previous game
-        if (lastState) { buildings.clear(); units.clear(); fx.clear(); }
+        if (lastState) { buildings.clear(); units.clear(); fx.clear(); floating.clear(); }
         lastState = state;
       }
       if (state && state.grid && state.fog) ensureMap(state);
@@ -183,7 +188,12 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         fog.update(state, time, d);
       }
       world.update(time, d, s3.target, s3.weather.lanternBoost, s3.weather.particleFraction, terrain.lakeCenter);
-      fx.update(d);
+      fxGuard("fx", () => {
+        fx.update(d);
+        floating.update(d);
+        const kick = fx.consumeShake();
+        if (kick) s3.kick(kick);
+      });
       s3.render();
       drawOverlay(state);
     },
@@ -198,6 +208,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       if (disposed) return;
       s3.setQuality(preset);
       fx.setDensity(s3.weather.particleFraction);
+      fx.setQuality(s3.quality);
       resizeOverlay();
     },
 
@@ -261,6 +272,36 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     },
 
     rotate(dir: number): void { s3.rotate(dir); },
+    fxStats() {
+      const info = s3.renderer.info;
+      return {
+        quality: s3.quality, drawCalls: info.render.calls, triangles: info.render.triangles,
+        geometries: info.memory.geometries, textures: info.memory.textures, programs: info.programs?.length ?? 0,
+        kicks: s3.kicks, fx: fx.stats(), labels: floating.stats(), buildings: buildings.stats()
+      };
+    },
+    visualEvent(type: VisualEvent["type"], data: any): void {
+      if (disposed || !lastState || !data) return;
+      fxGuard(`event:${type}`, () => {
+        const state = lastState;
+        const x = Number(data.x), z = Number(data.y);
+        if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+        const ground = standHeight(x, z, state.grid);
+        if (type === "hit") {
+          const dmg = Math.round(Number(data.dmg) || 0);
+          if (dmg > 0) floating.add(x, z, `-${dmg}`, data.team === "player" ? FLOAT_COLORS.ember : FLOAT_COLORS.ivory);
+          if (data.targetId != null) fx.flash(data.isBldg ? buildings.rootFor(data.targetId) : units.rigFor(data.targetId)?.root);
+          if (data.melee) fx.meleeSparks(x, ground + 0.35, z);
+        } else if (type === "deposit") {
+          const amount = Math.round(Number(data.amount) || 0);
+          if (amount > 0) floating.add(x, z, `+${amount} ${RES_LABEL[data.res] ?? ""}`.trim(), data.res === "gold" || data.res === "stone" ? FLOAT_COLORS.bronze : FLOAT_COLORS.jade);
+        } else if (type === "text") {
+          floating.add(x, z, String(data.text ?? ""), data.color || FLOAT_COLORS.bronze);
+        } else if (type === "command") {
+          fx.command(x, ground, z, data.kind === "attack");
+        }
+      });
+    },
     cycleAtmosphere(): string { return s3.cycleAtmosphere(); }
   };
   return api;

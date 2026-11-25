@@ -276,7 +276,7 @@ function patchShader(material: THREE.MeshStandardMaterial, spec: Spec): void {
       roughnessFactor = max(0.1, roughnessFactor * (1.0 - uRainWetness * ${wet}));`
     );
   };
-  material.customProgramCacheKey = () => `pd-pbr-${spec.uv}-${scale}-${wet}`;
+  material.customProgramCacheKey = () => `dote-pbr-${spec.uv}-${scale}-${wet}`;
 }
 
 export interface PbrOptions {

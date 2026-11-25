@@ -225,7 +225,7 @@ export function applyWetness(material: THREE.MeshStandardMaterial, strength: num
       roughnessFactor = max(0.13, roughnessFactor * (1.0 - uRainWetness * ${strength.toFixed(2)}));`
     );
   };
-  material.customProgramCacheKey = () => `pd-wet-${strength}`;
+  material.customProgramCacheKey = () => `dote-wet-${strength}`;
 }
 
 export function retainRenderAssets(): void { cacheUsers++; }
@@ -299,6 +299,13 @@ export function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z
   me.position.set(x, y, z);
   me.castShadow = shadows; me.receiveShadow = shadows;
   return me;
+}
+
+// ---- Effect isolation -----------------------------------------------------------
+let fxWarnings = 0;
+/** Visual effects must never stop the match: run guarded, log the first few failures, then stay quiet. */
+export function fxGuard(where: string, fn: () => void): void {
+  try { fn(); } catch (err) { if (fxWarnings++ < 5) console.warn(`[DOTE3D] effect error in ${where}:`, err); }
 }
 
 // ---- Disposal -----------------------------------------------------------------
