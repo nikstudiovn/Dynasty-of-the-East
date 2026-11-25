@@ -10,12 +10,13 @@ export const chopWind = { value: Array.from({ length: 4 }, () => new THREE.Vecto
 
 export const grassUnits = { value: Array.from({ length: 12 }, () => new THREE.Vector4()) };
 
-type WindShape = "stalk" | "leaf" | "rice" | "flag" | "crown" | "grass";
+export type WindShape = "stalk" | "leaf" | "rice" | "flag" | "crown" | "canopy" | "grass";
 
 export function applyWind(material: THREE.Material, shape: WindShape): void {
   const flag = shape === "flag";
   const height = shape === "leaf" ? "aWindLift + position.y * 0.5" :
-    shape === "crown" ? "0.85 + position.y" : "max(position.y, 0.0) * length(instanceMatrix[1].xyz)";
+    shape === "crown" ? "0.85 + position.y" :
+    shape === "canopy" ? "max(position.y - 0.45, 0.0) * 0.9" : "max(position.y, 0.0) * length(instanceMatrix[1].xyz)";
   const bend = flag ? `
     vec2 anchor = modelMatrix[3].xz;
     float trailing = uv.x * uv.x;
@@ -27,7 +28,7 @@ export function applyWind(material: THREE.Material, shape: WindShape): void {
       float h = max(0.0, ${height});
       float gust = sin(uTime * 1.5 + dot(anchor, vec2(0.76, 0.48))) + 0.28 * sin(uTime * 3.7 + anchor.x);
       vec2 drift = uWindDir * gust * h * ${shape === "rice" ? "1.6" : "0.68"} * uWindStrength;
-      ${shape === "stalk" || shape === "leaf" ? `
+      ${shape === "stalk" || shape === "leaf" || shape === "canopy" ? `
       for (int i = 0; i < 4; ++i) {
         vec3 chop = uChop[i];
         drift.x += max(0.0, 1.0 - length(anchor - chop.xy)) * chop.z * sin(uTime * 35.0) * h * 0.13;

@@ -8,6 +8,7 @@ import { Fog3D } from "./fog3d";
 import { FX3D } from "./fx3d";
 import { World3D } from "./world3d";
 import { Env3D, MAP_N, setMapSize, isoToTile, tileToIso, clamp, standHeight, retainRenderAssets, releaseRenderAssets } from "./common";
+import { ensurePbrTextures, disposePbrMaterials } from "./pbrMaterials";
 
 export { MIN_ZOOM, MAX_ZOOM };
 export type { QualityPreset };
@@ -53,6 +54,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     throw new Error("WebGL2 unavailable");
   }
   retainRenderAssets();
+  ensurePbrTextures();
   const fx = new FX3D();
   let terrain = new Terrain3D();
   const buildings = new Buildings3D(fx);
@@ -207,6 +209,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       world.dispose();
       fog.dispose();
       releaseRenderAssets();
+      disposePbrMaterials();
       s3.dispose();
       octx.clearRect(0, 0, s3.width, s3.height);
       lastState = null;
