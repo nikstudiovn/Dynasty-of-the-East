@@ -10,18 +10,32 @@ export interface Animal {
   food: number;            // meat left (full amount from the start; harvestable once dead)
   dead: boolean; deadT: number;
   heading: number; wanderT: number; fleeT: number;
+  /** Seconds left of the rest pause after a flee burst (prey stands still, cannot be re-startled). */
+  restT?: number;
   homeX: number; homeY: number;
   aggroId: number | null; aggroT: number; atkCd: number;
 }
 
+/** Villager base move speed (UNIT_DEFS.villager.speed). Animal run speeds are fractions of it so hunters can catch up. */
+export const VILLAGER_SPEED = 2.1;
+/** Prey that flees: 65–75% of villager speed. Animals that fight back: 85–90%. */
+export const RUN_FRACTION: Record<AnimalType, number> = { deer: 0.72, goat: 0.7, cattle: 0.66, boar: 0.88, lion: 0.9, wild_elephant: 0.85 };
+/** A fleeing animal runs one burst of this many seconds, then stands and rests for REST_TIME before it can bolt again. */
+export const FLEE_BURST: readonly [number, number] = [1.2, 2.0];
+export const REST_TIME: readonly [number, number] = [1.5, 2.0];
+
+const run = (t: AnimalType) => +(VILLAGER_SPEED * RUN_FRACTION[t]).toFixed(3);
+
 export const ANIMAL_DEFS: Record<AnimalType, { name: string; hp: number; food: number; atk: number; walk: number; run: number; startle: number }> = {
-  deer: { name: "Hươu", hp: 18, food: 140, atk: 0, walk: 0.5, run: 2.7, startle: 3.2 },
-  boar: { name: "Lợn Rừng", hp: 65, food: 240, atk: 7, walk: 0.45, run: 2.5, startle: 0 },
-  goat: { name: "Dê Núi", hp: 22, food: 110, atk: 0, walk: 0.55, run: 2.5, startle: 2.8 },
-  cattle: { name: "Bò Rừng", hp: 40, food: 180, atk: 0, walk: 0.4, run: 2.0, startle: 2.4 },
-  lion: { name: "Sư Tử", hp: 95, food: 260, atk: 13, walk: 0.6, run: 3.0, startle: 0 },
-  wild_elephant: { name: "Voi Rừng", hp: 180, food: 420, atk: 18, walk: 0.38, run: 2.1, startle: 0 },
+  deer: { name: "Hươu", hp: 18, food: 140, atk: 0, walk: 0.5, run: run("deer"), startle: 3.2 },
+  boar: { name: "Lợn Rừng", hp: 65, food: 240, atk: 7, walk: 0.45, run: run("boar"), startle: 0 },
+  goat: { name: "Dê Núi", hp: 22, food: 110, atk: 0, walk: 0.55, run: run("goat"), startle: 2.8 },
+  cattle: { name: "Bò Rừng", hp: 40, food: 180, atk: 0, walk: 0.4, run: run("cattle"), startle: 2.4 },
+  lion: { name: "Sư Tử", hp: 95, food: 260, atk: 13, walk: 0.6, run: run("lion"), startle: 0 },
+  wild_elephant: { name: "Voi Rừng", hp: 180, food: 420, atk: 18, walk: 0.38, run: run("wild_elephant"), startle: 0 },
 };
+
+const between = (r: readonly [number, number]) => r[0] + Math.random() * (r[1] - r[0]);
 
 /** Villagers butcher a carcass this much faster than they gather ordinary food. */
 export const HUNT_FOOD_MULT = 1.5;
@@ -31,7 +45,7 @@ const TAU = Math.PI * 2;
 
 export function mkAnimal(id: number, type: AnimalType, x: number, y: number, hx: number, hy: number): Animal {
   const d = ANIMAL_DEFS[type];
-  return { id, type, x, y, hp: d.hp, maxHp: d.hp, food: d.food, dead: false, deadT: 0, heading: Math.random() * TAU, wanderT: Math.random() * 3, fleeT: 0, homeX: hx, homeY: hy, aggroId: null, aggroT: 0, atkCd: 0 };
+  return { id, type, x, y, hp: d.hp, maxHp: d.hp, food: d.food, dead: false, deadT: 0, heading: Math.random() * TAU, wanderT: Math.random() * 3, fleeT: 0, restT: 0, homeX: hx, homeY: hy, aggroId: null, aggroT: 0, atkCd: 0 };
 }
 
 /** Scatter deer herds (3–4 deer) and boars over open grass, away from every start base. */
@@ -163,7 +177,7 @@ export function damageAnimal(a: Animal, dmg: number, attacker: any): boolean {
   a.hp -= dmg;
   if (a.hp <= 0) { a.hp = 0; a.dead = true; a.aggroId = null; a.fleeT = 0; return true; }
   if (ANIMAL_DEFS[a.type].atk <= 0) {
-    a.fleeT = 1.6 + Math.random() * 0.9;
+    a.fleeT = between(FLEE_BURST); a.restT = 0; // a hit always breaks the rest pause
     if (attacker) a.heading = Math.atan2(a.y - attacker.y, a.x - attacker.x) + (Math.random() - 0.5) * 0.7;
   } else if (attacker) {
     a.aggroId = attacker.id; a.aggroT = 9;
@@ -195,15 +209,22 @@ export function stepAnimals(state: any, dt: number, blocked: Blocked, hurt: (u: 
 
     if (def.atk <= 0) {
       // startled by anyone walking close
+      if ((a.restT ?? 0) > 0) {
+        a.restT = (a.restT ?? 0) - dt;           // panting after a sprint: stands still, villagers close in
+        (a as any).resting = true;
+        continue;
+      }
+      (a as any).resting = false;
       if (a.fleeT <= 0) {
         for (const u of state.units) {
           if (u.hp <= 0 || u.garrisoned) continue;
           const d = Math.hypot(u.x - a.x, u.y - a.y);
-          if (d < def.startle) { a.fleeT = 1.2 + Math.random() * 0.8; a.heading = Math.atan2(a.y - u.y, a.x - u.x) + (Math.random() - 0.5) * 0.6; break; }
+          if (d < def.startle) { a.fleeT = between(FLEE_BURST); a.heading = Math.atan2(a.y - u.y, a.x - u.x) + (Math.random() - 0.5) * 0.6; break; }
         }
       }
       if (a.fleeT > 0) {
         a.fleeT -= dt;
+        if (a.fleeT <= 0) { a.fleeT = 0; a.restT = between(REST_TIME); }
         if (!step(a, Math.cos(a.heading) * def.run * dt, Math.sin(a.heading) * def.run * dt, blocked)) a.heading += Math.PI * (0.6 + Math.random() * 0.8);
         continue;
       }

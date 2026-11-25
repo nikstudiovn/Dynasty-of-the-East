@@ -12,7 +12,7 @@ import {
   MAP_N, WATER_LEVEL, BRIDGE_DECK, fbm, hash2, smoothstep, clamp, terrainHeight, wetness, shallowAt, rockiness, setWaterGrid, setFoundations, archLift, mat, Env3D, rainWetness, groundPadWeight
 } from "./common";
 import { createPbrMaterial } from "./pbrMaterials";
-import { bambooCulmGeometry, branchedTrunkGeometry, broadCanopyGeometry, chiselledRockGeometry, goldCrystalGeometry, pineCanopyGeometry, slateSlabGeometry } from "./nature3d";
+import { bambooCulmGeometry, branchedTrunkGeometry, broadCanopyGeometry, chiselledRockGeometry, goldCrystalGeometry, pineCanopyGeometry, slateSlabGeometry, VILLAGER_H, TREE_SCALE, MINE_SCALE } from "./nature3d";
 
 /** Terrain quad density: 3 per tile, 2 per tile on 96×96 to keep vertex count mobile-friendly. */
 const segFor = () => (MAP_N >= 96 ? MAP_N * 2 : MAP_N * 3);
@@ -685,6 +685,13 @@ export class Terrain3D {
     const item = (x: number, y: number, z: number, tx: number, ty: number, ry: number, sx: number, sy = sx, sz = sx, extra: Partial<Item> = {}): Item =>
       ({ x, y, z, ry, sx, sy, sz, tx, ty, sway: 0, ...extra });
 
+    // Resource scale is anchored to the villager (VILLAGER_H, foot to hat tip = 1.0x):
+    //   trees 2.5–3.5x (trunk stays inside the tile so the tile collision reads as a compact base),
+    //   stone / gold main block 1.2–1.8x. Geometry heights at scale 1: broad canopy top 1.47, pine 1.46,
+    //   bamboo culm 1.0, chiselled rock 0.49, slate slab 0.35, gold crystal 0.31.
+    const treeH = (k: number) => VILLAGER_H * (TREE_SCALE[0] + k * (TREE_SCALE[1] - TREE_SCALE[0]));
+    const mineH = (k: number) => VILLAGER_H * (MINE_SCALE[0] + k * (MINE_SCALE[1] - MINE_SCALE[0]));
+
     // --- trees: branched trunk (mat_wood) + multi-tier canopy (mat_foliage), one InstancedMesh each
     const broadTree = (px: number, pz: number, tx: number, ty: number, s: number, sy: number, k: number) => {
       const tree = item(px, h(px, pz) - 0.02, pz, tx, ty, k * TAU, s, sy, s, { sway: k * 6 });
@@ -692,8 +699,8 @@ export class Terrain3D {
       canopies.push(tree);
       canopyCol.push(LEAF_TINTS[Math.floor(k * 97) % LEAF_TINTS.length]);
     };
-    const pineTree = (px: number, pz: number, tx: number, ty: number, s: number, k: number) => {
-      const tree = item(px, h(px, pz) - 0.02, pz, tx, ty, k * TAU, s * 0.5, s * 1.05, s * 0.5, { sway: k * 6 });
+    const pineTree = (px: number, pz: number, tx: number, ty: number, s: number, k: number, sy = s * 1.05) => {
+      const tree = item(px, h(px, pz) - 0.02, pz, tx, ty, k * TAU, s * 0.5, sy, s * 0.5, { sway: k * 6 });
       trunks.push(tree);
       pines.push({ ...tree, sx: s, sz: s });
       pineCol.push(LEAF_TINTS[Math.floor(k * 53) % LEAF_TINTS.length].clone().multiplyScalar(0.92));
@@ -702,7 +709,7 @@ export class Terrain3D {
       const k = hash2(x + 43 + seed % 101, y - 25);
       const px = x + 0.5 + (k - 0.5) * 0.12, pz = y + 0.5 + (hash2(y, x) - 0.5) * 0.12;
       const s = 0.7 * (0.88 + amt * 0.12);
-      broadTree(px, pz, x, y, s, s * (1.25 + k * 0.25), k);
+      broadTree(px, pz, x, y, s, treeH(hash2(x * 2.1 + 5, y * 1.3)) / 1.47, k);
     };
     const forest = (x: number, y: number, amt: number) => {
       const n = hash2(x * 1.7, y * 2.3) > 0.45 ? 3 : 2;
@@ -710,16 +717,16 @@ export class Terrain3D {
       for (let i = 0; i < n; i++) {
         const a = rot + (i / n) * TAU, r = 0.2 + hash2(x + i, y) * 0.07;
         const k = hash2(x * 3 + i, y * 5);
-        pineTree(x + 0.5 + Math.cos(a) * r, y + 0.5 + Math.sin(a) * r, x, y, (0.5 + k * 0.16) * (0.85 + amt * 0.15), k);
+        pineTree(x + 0.5 + Math.cos(a) * r, y + 0.5 + Math.sin(a) * r, x, y, (0.5 + k * 0.16) * (0.85 + amt * 0.15), k, treeH(hash2(x + i * 3.7, y * 1.9)) / 1.46);
       }
     };
     const ancientTree = (px: number, pz: number, x: number, y: number) => {
       const k = hash2(x + 7, y + seed % 31);
-      broadTree(px, pz, x, y, 1.22, 1.75, k);
+      broadTree(px, pz, x, y, 1.22, treeH(0.85 + k * 0.15) / 1.47, k); // ancient: top of the 2.5–3.5x band
       // banyan-like secondary stems with their own crowns + mossy root stones
       for (let i = 0; i < 2; i++) {
         const a = k * TAU + i * 2.6 + 0.8;
-        broadTree(px + Math.cos(a) * 0.5, pz + Math.sin(a) * 0.5, x, y, 0.72, 1.05, hash2(i + x, y));
+        broadTree(px + Math.cos(a) * 0.5, pz + Math.sin(a) * 0.5, x, y, 0.72, treeH(hash2(i + x, y) * 0.4) / 1.47, hash2(i + x, y));
       }
       for (let i = 0; i < 4; i++) {
         const a = k * 5 + i * 1.57, rx = px + Math.cos(a) * 0.42, rz = pz + Math.sin(a) * 0.42;
@@ -736,7 +743,7 @@ export class Terrain3D {
         const a = rot + (k / n) * TAU + (hash2(x + k, y) - 0.5) * 0.6;
         const r = 0.06 + hash2(x + k * 3, y + 1) * 0.16;
         const px = x + 0.5 + Math.cos(a) * r, pz = y + 0.5 + Math.sin(a) * r;
-        const ht = (1.25 + hash2(x * 2 + k, y * 3) * 0.75) * (0.7 + amt * 0.3);
+        const ht = treeH(hash2(x * 2 + k, y * 3)) * 0.9; // + leaf tufts above the culm tip ≈ 2.5–3.5x
         const tl = 0.05 + hash2(x * 7 + k, y) * 0.13;
         const ry = Math.PI / 2 - a; // leans along (cos a, sin a)
         const base = h(px, pz);
@@ -752,36 +759,47 @@ export class Terrain3D {
 
     // --- mines: bevelled dark rock studded with low-roughness gold crystals, or layered slate outcrops
     const mine = (cx: number, cz: number, x: number, y: number, gold: boolean, big: boolean, amt: number, span = 2) => {
-      const n = big ? (span === 3 ? 12 : 8) : 3, spread = big ? (span === 3 ? 1.1 : 0.6) : 0.2;
+      const n = big ? (span === 3 ? 12 : 8) : 4, spread = big ? (span === 3 ? 1.25 : 0.72) : 0.3;
       const rot = hash2(x + seed % 57, y) * TAU;
+      const Hm = mineH(hash2(x * 1.9 + 3, y * 2.7));         // main block: 1.2–1.8x villager
+      const Wm = big ? (span === 3 ? 1.25 : 1.05) : 0.78;      // footprint scale of the main block
       for (let i = 0; i < n; i++) {
-        const a = rot + i * 2.399, r = i === 0 ? 0 : spread * (0.55 + hash2(x + i, y) * 0.45);
+        const a = rot + i * 2.399, r = i === 0 ? 0 : spread * (0.6 + hash2(x + i, y) * 0.4);
         const px = cx + Math.cos(a) * r, pz = cz + Math.sin(a) * r;
-        const s = (big ? (i === 0 ? 0.34 : 0.24) : (i === 0 ? 0.30 : 0.21)) * (0.85 + hash2(x * 3 + i, y) * 0.3) * amt;
-        const base = h(px, pz) - 0.03 * s;
+        const kk = hash2(x * 3 + i, y);
+        const hr = i === 0 ? Hm : Hm * (0.3 + kk * 0.3) * (0.8 + amt * 0.2); // satellites shrink as the seam empties
+        const w = i === 0 ? Wm : Wm * (0.42 + kk * 0.22) * (big ? 1 : 0.85);
+        const base = h(px, pz) - 0.02;
         if (gold) {
-          boulders.push(item(px, base, pz, x, y, a, s, s * 1.1, s * 0.9));
+          boulders.push(item(px, base, pz, x, y, a, w, hr / 0.49, w * 0.9));
           boulderCol.push(new THREE.Color("#5b534b").multiplyScalar(0.85 + hash2(x, y + i) * 0.3));
-          const spikes = (big ? 3 : 2) + (i === 0 ? 2 : 0);
+          const spikes = (big ? 3 : 2) + (i === 0 ? 3 : 0);
           for (let j = 0; j < spikes; j++) {
-            const ca = a + j * 2.2 + 0.4, cr = s * (0.08 + 0.12 * hash2(j, i + x));
-            const cs = s * (1.5 + hash2(i + j, y) * 0.9);
-            crys.push(item(px + Math.cos(ca) * cr, base + s * 0.36, pz + Math.sin(ca) * cr, x, y, ca, cs, cs * (0.9 + hash2(x + j, y + i) * 0.6), cs, { tl: 0.18 + hash2(j, x + i) * 0.5 }));
+            const ca = a + j * 2.2 + 0.4, cr = w * 0.45 * (0.15 + 0.45 * hash2(j, i + x));
+            const cs = Math.max(0.5, hr * (1.0 + hash2(i + j, y) * 0.6));
+            const cy = base + hr * (0.45 + 0.4 * (1 - cr / (w * 0.45)));
+            crys.push(item(px + Math.cos(ca) * cr, cy, pz + Math.sin(ca) * cr, x, y, ca, cs, cs * (0.9 + hash2(x + j, y + i) * 0.6), cs, { tl: 0.18 + hash2(j, x + i) * 0.5 }));
           }
-        } else if (i % 3 !== 2) {
-          slabs.push(item(px, base, pz, x, y, a, s * 0.95, s * 0.8, s * 0.95));
-          slabs.push(item(px + 0.02 * s, base + s * 0.25, pz - 0.02 * s, x, y, a + 0.45, s * 0.72, s * 0.65, s * 0.7));
+        } else if (i === 0 || i % 3 !== 2) {
+          // core rock + stacked slate slabs reaching hr
+          if (i === 0) {
+            boulders.push(item(px, base, pz, x, y, a, w * 0.9, hr * 0.72 / 0.49, w * 0.85));
+            boulderCol.push(new THREE.Color("#cfcdc6").multiplyScalar(0.9 + hash2(x, y) * 0.15));
+          }
+          const s0 = i === 0 ? hr * 0.62 : hr * 0.55;
+          slabs.push(item(px, base, pz, x, y, a, w * 0.95, s0 / 0.35, w * 0.95));
+          slabs.push(item(px + 0.02 * w, base + (i === 0 ? hr * 0.62 : s0 * 0.9), pz - 0.02 * w, x, y, a + 0.45, w * 0.7, (hr * (i === 0 ? 0.38 : 0.45)) / 0.35, w * 0.68));
           for (let j = 0; j < 2; j++) slabCol.push(new THREE.Color("#e4e4e0").multiplyScalar(0.86 + hash2(i + j, x) * 0.24));
-          moss.push(item(px - 0.03 * s, base + s * 0.46, pz, x, y, a, s * 1.4, s, s * 1.2));
+          moss.push(item(px - 0.03 * w, base + hr * 0.96, pz, x, y, a, w * 1.6, w * 0.9, w * 1.4));
         } else {
-          boulders.push(item(px, base, pz, x, y, a, s * 0.9, s, s * 0.85));
+          boulders.push(item(px, base, pz, x, y, a, w * 0.9, hr / 0.49, w * 0.85));
           boulderCol.push(new THREE.Color("#d6d5d0").multiplyScalar(0.88 + hash2(x, i) * 0.2));
         }
       }
-      if (gold && !big) for (let j = 0; j < 2; j++) {
+      if (gold && !big) for (let j = 0; j < 3; j++) {
         // loose nuggets on the ground make small seams readable from far away
-        const a = rot + 1.2 + j * 2.6, px = cx + Math.cos(a) * 0.3, pz = cz + Math.sin(a) * 0.3;
-        crys.push(item(px, h(px, pz) - 0.01, pz, x, y, a, 0.7 * amt, 0.6 * amt, 0.7 * amt, { tl: 0.5 }));
+        const a = rot + 1.2 + j * 2.1, px = cx + Math.cos(a) * 0.36, pz = cz + Math.sin(a) * 0.36;
+        crys.push(item(px, h(px, pz) - 0.01, pz, x, y, a, 0.8 * amt, 0.7 * amt, 0.8 * amt, { tl: 0.5 }));
       }
     };
 
