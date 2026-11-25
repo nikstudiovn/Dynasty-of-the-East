@@ -1,11 +1,36 @@
 // Pixel Dynasty 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
 import * as THREE from "three";
-import { box, cyl, cone, sphere, geo, mat, mesh, shade, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, type Faction } from "./common";
-import { softMask } from "./surfaces";
+import { box, cyl, cone, sphere, geo, mat, mesh, shade, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, fxGuard, type Faction } from "./common";
 import type { FX3D } from "./fx3d";
 
 const SKIN = "#e8c39e", PANTS = "#3a2a1e", WOOD = "#7a4f2a", STEEL = "#cbd5e1", IRON = "#6b7280", GOLD = "#e8b53a", BAMBOO = "#d4b06a";
 const TAU = Math.PI * 2;
+
+let trailTexture: THREE.CanvasTexture | undefined;
+/** 64×64 arrow trail: ivory at the shaft fading to bronze and transparent at the tail, soft at the edges. */
+function trailMask(): THREE.CanvasTexture {
+  if (trailTexture) return trailTexture;
+  const canvas = Object.assign(document.createElement("canvas"), { width: 64, height: 64 });
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const along = ctx.createLinearGradient(0, 0, 0, 64);
+    along.addColorStop(0, "rgba(255,246,226,0.95)");
+    along.addColorStop(0.45, "rgba(232,190,120,0.55)");
+    along.addColorStop(1, "rgba(176,120,60,0)");
+    ctx.fillStyle = along;
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.globalCompositeOperation = "destination-in";
+    const across = ctx.createLinearGradient(0, 0, 64, 0);
+    across.addColorStop(0, "rgba(0,0,0,0)");
+    across.addColorStop(0.5, "rgba(0,0,0,1)");
+    across.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = across;
+    ctx.fillRect(0, 0, 64, 64);
+  }
+  trailTexture = new THREE.CanvasTexture(canvas);
+  trailTexture.colorSpace = THREE.SRGBColorSpace;
+  return trailTexture;
+}
 
 interface Rig {
   root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group;
@@ -455,12 +480,13 @@ export class Units3D {
       g.add(mesh(cone(0.02, 0.06, 4), mat(STEEL, { metal: 0.9 }), 0, 0.18, 0, false));
       g.add(mesh(box(0.04, 0.05, 0.004), mat("#f8fafc"), 0, -0.14, 0, false));
       g.children.forEach(c => { c.rotation.x = Math.PI / 2; c.position.z = c.position.y; c.position.y = 0; });
+      // thin ivory → bronze streak (arrow: archer, horse archer, watch tower; bolt: chu kho nu, citadel)
       const ribbon = new THREE.MeshBasicMaterial({
-        color: kind === "bolt" ? 0xffbf69 : 0xffeed8, map: softMask(), opacity: 0.52,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+        color: kind === "bolt" ? 0xffd9a0 : 0xffffff, map: trailMask(), opacity: 0.7,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false
       });
       ribbon.userData.sharedTexture = true;
-      const plane = geo("projectile-trail", () => new THREE.PlaneGeometry(0.069, 0.67).rotateX(Math.PI / 2));
+      const plane = geo("projectile-trail-thin", () => new THREE.PlaneGeometry(0.045, 0.72).rotateX(Math.PI / 2));
       const trail = mesh(plane, ribbon, 0, 0, -0.35, false);
       const edge = mesh(plane, ribbon, 0, 0, -0.35, false);
       edge.rotation.z = Math.PI / 2;
@@ -504,15 +530,21 @@ export class Units3D {
       else { this.tmp.set(x + (x - pr.lx), y + (y - pr.ly), z + (z - pr.lz)); if (this.tmp.distanceToSquared(pr.mesh.position) > 1e-8) pr.mesh.lookAt(this.tmp); }
       pr.lx = x; pr.ly = y; pr.lz = z; pr.tx = p.tx; pr.tz = p.ty;
       pr.mesh.visible = fogAt(x, z) === 2;
-      if (pr.mesh.visible && p.kind === "boulder" && t >= (pr.mesh.userData.trailAt ?? 0)) {
+      if (pr.mesh.visible && p.kind === "boulder" && this.fx.rich && t >= (pr.mesh.userData.trailAt ?? 0)) {
         pr.mesh.userData.trailAt = t + 0.065;
         this.fx.smoke.emit(x, y, z, 0, 0.07, 0, 0.33, 0.64, 0xb89d81, 0, 1.2);
       }
     }
     for (const [p, pr] of this.projs) {
       if (live.has(p)) continue;
-      if (pr.kind === "boulder" && fogAt(pr.tx, pr.tz) > 0) this.fx.impact(pr.tx, standHeight(pr.tx, pr.tz, state.grid), pr.tz, 1.7);
-      else if (fogAt(pr.tx, pr.tz) === 2) this.fx.glow.burst(pr.tx, standHeight(pr.tx, pr.tz, state.grid) + 0.3, pr.tz, 4, 0.8, 1, 0.25, 0.6, [0xfff1a8, 0xffffff], -4);
+      // the projectile is removed on the same frame the sim applies its damage, so impacts stay in sync
+      fxGuard("projectile-impact", () => {
+        const gy = standHeight(pr.tx, pr.tz, state.grid);
+        if (pr.kind === "boulder" && fogAt(pr.tx, pr.tz) > 0) {
+          this.tmp.set(pr.tx, gy, pr.tz);
+          this.fx.boulderImpact(pr.tx, gy, pr.tz, fogAt(pr.tx, pr.tz) === 2 && this.frustum.containsPoint(this.tmp));
+        } else if (pr.kind !== "boulder" && fogAt(pr.tx, pr.tz) === 2 && this.fx.rich) this.fx.glow.burst(pr.tx, gy + 0.3, pr.tz, 4, 0.8, 1, 0.25, 0.6, [0xfff1a8, 0xffffff], -4);
+      });
       pr.mesh.visible = false;
       pr.mesh.userData.inFlight = false;
       this.projs.delete(p);
@@ -670,11 +702,13 @@ export class Units3D {
     r.body.rotation.x = 0;
     r.armL.rotation.set(-sw * 0.5, 0, 0);
     r.armR.rotation.set(sw * 0.5, 0, 0);
-    if (moving && r.legs4.length && t >= r.dustT) {
-      r.dustT = t + 0.25;
+    // cavalry / horse archers / war elephants kick up low dust while running (medium / high)
+    if (moving && speed > 0.6 && r.legs4.length && this.fx.rich && t >= r.dustT) {
+      r.dustT = t + (r.type === "war_elephant" ? 0.3 : 0.22);
       const { x, y, z } = r.root.position;
-      this.fx.smoke.emit(x - Math.sin(r.yaw) * 0.28, y + 0.04, z - Math.cos(r.yaw) * 0.28,
-        0, 0.19, 0, 0.53, 0.70, 0xaa9272, 0, 1.1);
+      const back = r.type === "war_elephant" ? 0.42 : 0.28;
+      this.fx.smoke.emit(x - Math.sin(r.yaw) * back, y + 0.03, z - Math.cos(r.yaw) * back,
+        (Math.random() - 0.5) * 0.12, 0.1, (Math.random() - 0.5) * 0.12, 0.6, r.type === "war_elephant" ? 0.9 : 0.66, 0xb09a78, 0, 1.2);
     }
 
     switch (r.type) {

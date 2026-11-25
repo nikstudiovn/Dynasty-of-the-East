@@ -164,8 +164,21 @@ export class Scene3D {
     this.rim.target.updateMatrixWorld();
   }
 
+  private kickT = -1;
+  private kickAmp = 0;
+  /** One gentle camera pulse (a new impact restarts it; strength 1 ≈ 7 cm of sway at the default zoom). */
+  kick(strength: number): void {
+    if (this.quality === "low" || !(strength > 0)) return;
+    this.kickAmp = 0.07 * Math.min(1.5, strength) * Math.min(1.6, Math.max(0.6, this.dist / 18));
+    this.kickT = 0;
+    this.kicks++;
+  }
+  /** Number of camera pulses started (diagnostics). */
+  kicks = 0;
+
   setQuality(preset: QualityPreset): void {
     this.quality = preset === "auto" ? autoQuality() : preset;
+    if (this.quality === "low") this.kickT = -1;
     setSurfaceDetail(this.quality === "high");
     const { shadow, particles } = QUALITY[this.quality];
     const type = THREE.PCFSoftShadowMap;
@@ -265,10 +278,18 @@ export class Scene3D {
     this.yaw += (this.yawTarget - this.yaw) * (1 - Math.exp(-dt * 8));
     this.offsetDir(this.yaw, this.tmpV).multiplyScalar(this.dist);
     this.camera.position.copy(this.target).add(this.tmpV);
-    if (cam.shake) {
-      const s = cam.shake * 0.12;
-      this.camera.position.x += (Math.random() - 0.5) * s;
-      this.camera.position.z += (Math.random() - 0.5) * s;
+    // The legacy 2D `cam.shake` jitter is ignored in 3D: catapult impacts call kick() for one smooth,
+    // decaying pulse instead (medium / high only).
+    if (this.kickT >= 0) {
+      this.kickT += dt;
+      const envelope = Math.exp(-this.kickT * 6.5);
+      if (envelope < 0.02 || this.quality === "low") this.kickT = -1;
+      else {
+        const off = Math.sin(this.kickT * 34) * envelope * this.kickAmp;
+        this.camera.position.x += Math.cos(this.yaw) * off;
+        this.camera.position.z -= Math.sin(this.yaw) * off;
+        this.camera.position.y += off * 0.45;
+      }
     }
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();

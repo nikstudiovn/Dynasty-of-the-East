@@ -4,6 +4,7 @@ import "./ui/screens.css";
 import { initLobbyUI } from "./ui/lobbyScreen";
 import "./ui/sideRailHud.css";
 import { initSideRailHud } from "./ui/sideRailHud";;
+import { initCombatTextSetting } from "./ui/combatTextSetting";
 import * as skirmishAI from "./sim/skirmishAI";
 import * as steering from "./sim/steering";
 import * as pinch from "./input/pinchZoom";
@@ -37,7 +38,9 @@ import * as gameplayExtras from "./sim/gameplayExtras";
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initLobbyUI);
   document.addEventListener("DOMContentLoaded", initSideRailHud);;
+  document.addEventListener("DOMContentLoaded", initCombatTextSetting);
 } else {
   initLobbyUI();
   initSideRailHud();
+  initCombatTextSetting();
 }

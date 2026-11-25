@@ -301,6 +301,13 @@ export function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z
   return me;
 }
 
+// ---- Effect isolation -----------------------------------------------------------
+let fxWarnings = 0;
+/** Visual effects must never stop the match: run guarded, log the first few failures, then stay quiet. */
+export function fxGuard(where: string, fn: () => void): void {
+  try { fn(); } catch (err) { if (fxWarnings++ < 5) console.warn(`[PD3D] effect error in ${where}:`, err); }
+}
+
 // ---- Disposal -----------------------------------------------------------------
 /** Frees resources owned by the subtree, keeping renderer-wide caches alive. */
 export function disposeTree(root: THREE.Object3D): void {
