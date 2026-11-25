@@ -183,6 +183,20 @@ function humanoid(r: Rig, parent: THREE.Group, tunic: string, o: HumanOpts = {})
     const lapel = mesh(box(0.022, 0.15, 0.014), cloth("#ead9b5"), 0.012, 0.304, 0.062, false);
     lapel.rotation.z = -0.62;
     parent.add(lapel);
+  } else if (faction === "goryeo") {
+parent.add(mesh(sphere(0.068, 9, 6), dark, 0, 0.47, -0.006));
+parent.add(mesh(cyl(0.056, 0.056, 0.065, 10), cloth("#2e3542"), 0, 0.515, 0, false));
+if (civilian) parent.add(mesh(cyl(0.125, 0.125, 0.008, 14), cloth("#1e232c"), 0, 0.495, 0, false));
+else parent.add(mesh(cyl(0.088, 0.095, 0.014, 12), steel(PAL.steelDark), 0, 0.485, 0, false));
+parent.add(mesh(box(0.174, 0.018, 0.118), cloth("#4a627d"), 0, 0.252, 0, false));
+} else if (faction === "fuso") {
+parent.add(mesh(sphere(0.066, 9, 6), dark, 0, 0.468, -0.008));
+if (civilian) parent.add(mesh(cone(0.135, 0.055, 12), mat("#5a4d3a", { surface: "thatch", rough: 0.78 }), 0, 0.518, 0));
+else {
+parent.add(mesh(cone(0.118, 0.048, 12), steel("#262b38"), 0, 0.515, 0));
+parent.add(mesh(box(0.028, 0.012, 0.008), cloth("#c8ccd4"), 0, 0.512, 0.082, false));
+}
+parent.add(mesh(box(0.176, 0.022, 0.118), cloth("#2b3654"), 0, 0.248, 0, false));
   } else {
     // northern steppe villager: felt cap and fur collar
     const f = fur("#c9ab84");
@@ -601,13 +615,66 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       r.height = 0.7;
       break;
     }
+case "hwacha": {
+const charWood = woodM("#282b32"), slate = cloth("#45576b"), iron = steel(PAL.steelDark);
+for (const s of [-1, 1]) {
+const w = spokedWheel(0.16); w.position.set(s * 0.22, 0.16, 0); b.add(w); r.wheels.push(w);
+b.add(mesh(box(0.04, 0.04, 0.56), charWood, s * 0.16, 0.19, -0.08));
+}
+const axle = mesh(cyl(0.022, 0.022, 0.48, 8), iron, 0, 0.16, 0); axle.rotation.z = Math.PI / 2; b.add(axle);
+b.add(mesh(box(0.32, 0.035, 0.28), charWood, 0, 0.2, 0));
+b.add(mesh(box(0.34, 0.02, 0.04), slate, 0, 0.21, -0.34, false));
+const rack = new THREE.Group(); rack.position.set(0, 0.38, 0.02); rack.rotation.x = -0.36;
+rack.add(mesh(box(0.3, 0.22, 0.26), charWood, 0, 0, 0));
+rack.add(mesh(box(0.312, 0.232, 0.05), slate, 0, 0, 0.08, false));
+rack.add(mesh(box(0.316, 0.024, 0.27), iron, 0, 0.11, 0, false));
+const shaftM = pbr("mat_bamboo", PAL.bamboo), tipM = steel(PAL.steel), emberM = mat("#e05a2b", { rough: 0.45 });
+for (let row = 0; row < 3; row++) for (let col = 0; col < 5; col++) {
+const ax = (col - 2) * 0.052, ay = (row - 1) * 0.055;
+const sh = mesh(cyl(0.006, 0.006, 0.34, 5), shaftM, ax, ay, 0.08, false); sh.rotation.x = Math.PI / 2; rack.add(sh);
+const tp = mesh(cone(0.011, 0.045, 5), tipM, ax, ay, 0.26, false); tp.rotation.x = Math.PI / 2; rack.add(tp);
+rack.add(mesh(box(0.014, 0.014, 0.025), emberM, ax, ay, 0.22, false));
+}
+b.add(rack); r.arm = rack;
+flag(b, -0.18, 0.2, -0.24, team, 0.36);
+r.height = 0.75;
+break;
+}
+case "samurai": {
+humanoid(r, b, team, { armor: "plate", head: "none", faction: "fuso" });
+const indigo = cloth("#243356"), charM = steel("#232730"), silver = steel(PAL.steel);
+b.add(mesh(box(0.2, 0.18, 0.135), indigo, 0, 0.34, 0));
+b.add(mesh(box(0.21, 0.04, 0.14), charM, 0, 0.28, 0, false));
+for (const s of [-1, 1]) {
+const sode = mesh(box(0.03, 0.11, 0.11), indigo, s * 0.13, 0.37, 0); sode.rotation.z = s * -0.18; b.add(sode);
+b.add(mesh(box(0.034, 0.02, 0.114), charM, s * 0.132, 0.33, 0, false));
+}
+b.add(mesh(sphere(0.082, 10, 6), charM, 0, 0.49, 0));
+const shikoro = mesh(cyl(0.085, 0.115, 0.06, 10), indigo, 0, 0.455, -0.015, false); b.add(shikoro);
+b.add(mesh(box(0.175, 0.016, 0.035), silver, 0, 0.48, 0.068, false));
+for (const s of [-1, 1]) {
+const horn = mesh(box(0.016, 0.11, 0.01), silver, s * 0.045, 0.57, 0.075, false); horn.rotation.z = s * -0.45; b.add(horn);
+}
+if (r.arm) {
+const katana = new THREE.Group();
+katana.add(mesh(cyl(0.013, 0.013, 0.18, 6), charM, 0, 0, 0.04, false));
+katana.children[0].rotation.x = Math.PI / 2;
+katana.add(mesh(cyl(0.028, 0.028, 0.012, 8), bronze(), 0, 0, 0.13, false));
+katana.children[1].rotation.x = Math.PI / 2;
+katana.add(mesh(box(0.012, 0.026, 0.56), silver, 0, 0.01, 0.41));
+katana.position.set(0, -0.02, 0.06); r.arm.add(katana);
+}
+b.scale.setScalar(1.08);
+r.height = 0.67;
+break;
+}
     default: {
       humanoid(r, b, team);
       r.height = 0.6;
     }
   }
   const naval = NAVAL_TYPES.has(type);
-  const heavy = type === "cavalry" || type === "horse_archer" || type === "catapult" || type === "war_elephant";
+  const heavy = type === "cavalry" || type === "horse_archer" || type === "catapult" || type === "war_elephant" || type === "hwacha";
   const scale = naval ? NAVAL_SCALE : heavy ? MOUNT_SCALE : HUMAN_SCALE;
   r.body.scale.multiplyScalar(scale);
   r.height *= scale;
