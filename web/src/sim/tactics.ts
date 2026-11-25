@@ -7,7 +7,7 @@ export interface RallyPoint { x: number; y: number; tx: number; ty: number; kind
 const RALLY_TYPES = new Set(["town_center", "barracks", "archery_range", "stable", "siege_workshop", "imperial_citadel"]);
 export const canRally = (type: string): boolean => RALLY_TYPES.has(type);
 
-export const isMilitary = (u: any): boolean => u.type !== "villager";
+export const isMilitary = (u: any): boolean => u.type !== "villager" && u.type !== "healer";
 export const stanceOf = (u: any): Stance => (u.stance === "stand_ground" ? "stand_ground" : "aggressive");
 
 export function setRally(b: any, tx: number, ty: number, kind: RallyKind, animalId?: number): void {

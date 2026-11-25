@@ -5,6 +5,7 @@ export const BUILD_TIMES_SEC: Record<string, number> = {
   wall: 6,
   gate: 8,
   barracks: 14,
+  temple: 14,
   archery_range: 14,
   watch_tower: 12,
   blacksmith: 14,

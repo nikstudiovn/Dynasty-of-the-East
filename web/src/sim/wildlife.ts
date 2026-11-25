@@ -28,7 +28,7 @@ export const HUNT_FOOD_MULT = 1.5;
 type Blocked = (tx: number, ty: number, team?: string) => boolean;
 const TAU = Math.PI * 2;
 
-function mkAnimal(id: number, type: AnimalType, x: number, y: number, hx: number, hy: number): Animal {
+export function mkAnimal(id: number, type: AnimalType, x: number, y: number, hx: number, hy: number): Animal {
   const d = ANIMAL_DEFS[type];
   return { id, type, x, y, hp: d.hp, maxHp: d.hp, food: d.food, dead: false, deadT: 0, heading: Math.random() * TAU, wanderT: Math.random() * 3, fleeT: 0, homeX: hx, homeY: hy, aggroId: null, aggroT: 0, atkCd: 0 };
 }
