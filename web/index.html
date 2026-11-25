@@ -1771,7 +1771,33 @@ const updateBattleHud = initBattleHud();
     if (selUnits.length > 0) {
       const hasVil = selUnits.some(u => u.type === "villager");
       title.textContent = `Đang chọn ${selUnits.length} đơn vị${hasVil ? " (chạm tài nguyên hoặc xây nhà)" : " (chạm địch đánh / kéo khung chọn cụm)"}`;
-      if (hasVil) {
+        const addCancelBtn = (id, label, sub, onClick) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.id = id;
+      btn.className = "act-btn act-btn--cancel";
+      btn.innerHTML = `<span>${label}</span><span class="act-cost">${sub}</span>`;
+      btn.addEventListener("click", () => { ensureAudio(); sfxClick(); onClick(); });
+      wrap.appendChild(btn);
+    };
+    addCancelBtn("btn-cancel-select", "✕ Hủy chọn", "Bỏ chọn quân", () => {
+      state.selectedIds = [];
+      state.selectedBuildingId = null;
+      state.buildMode = null;
+      state.attackMove = false;
+      canvas.classList.remove("build-mode");
+      setBoxSelectMode(false);
+      updateTacticBtns();
+      renderCommandDock();
+    });
+    if (state.buildMode) {
+      addCancelBtn("btn-cancel-build", "✕ Hủy đặt nhà", "Giữ chọn dân", () => {
+        state.buildMode = null;
+        canvas.classList.remove("build-mode");
+        renderCommandDock();
+      });
+    } 
+ if (hasVil) {
         for (const key of ["house", "depot", "farm", "barracks", "archery_range", "watch_tower", "wall", "gate", "market", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
           const d = BLDG_DEFS[key];
           const okAge = state.age >= d.age;
