@@ -102,6 +102,7 @@ function refreshLoadSaveButton(): void {
   if (!loadSaveBtn) return;
   loadSaveBtn.classList.add("dote-btn", "dote-btn--save", "dote-menu-row", "dote-menu-row--save");
   const save = readLocalSaveSummary();
+  loadSaveBtn.disabled = !save;
   if (save) {
     loadSaveBtn.innerHTML = `
       <span>Chơi tiếp</span>
