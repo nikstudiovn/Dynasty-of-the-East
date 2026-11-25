@@ -187,7 +187,7 @@ export function terrainHeight(x: number, z: number): number {
 }
 
 export type Faction = "dai_viet" | "trung_nguyen" | "bac_cuong" | "goryeo" | "fuso";
-const factions: Faction[] = ["dai_viet", "trung_nguyen", "bac_cuong, "goryeo", "fuso""];
+const factions: Faction[] = ["dai_viet", "trung_nguyen", "bac_cuong, "goryeo", "fuso"];
 export function renderFaction(entity: any, state: any): Faction {
   const explicit = entity.factionId ?? entity.faction?.id ?? entity.faction;
   if (factions.includes(explicit)) return explicit;
