@@ -130,7 +130,7 @@ export function canAssignFarmWorker(farm: any, currentWorkersCount: number): boo
 
 export function replantFarm(state: any, farm: any, isAuto = false): boolean {
   if (!farm || farm.depleted !== true) return false;
-  if (isAuto && !farm.autoReplant) return false;
+  if (isAuto && !(farm.autoReseed ?? farm.autoReplant)) return false;
   const baseWood = farm.woodCost ?? farm.buildCost?.wood ?? 60;
   const woodCost = Math.ceil(baseWood * FARM_REPLANT_WOOD_RATIO);
   const res = state?.resources;
@@ -141,7 +141,20 @@ export function replantFarm(state: any, farm: any, isAuto = false): boolean {
   farm.depleted = false;
   farm.built = true;
   farm.footprint = farm.footprint ?? FARM_FOOTPRINT;
-  farm.food = farm.maxFood ?? 250;
-  farm.autoReplant = Boolean(farm.autoReplant);
+  const cap = farm.maxCrop ?? farm.maxFood ?? 300;
+  farm.cropAmount = cap;
+  farm.food = cap;
+  const autoFlag = Boolean(farm.autoReseed ?? farm.autoReplant);
+  farm.autoReseed = autoFlag;
+  farm.autoReplant = autoFlag;
   return true;
+}
+export function stepBuildingRepair(b: any, repairersCount: number, dt: number, speedMult = 1): number {
+  if (!b || !b.built || (b.maxHp ?? 0) <= 0 || (b.hp ?? 0) >= b.maxHp) return 0;
+  if (repairersCount <= 0 || dt <= 0) return 0;
+  const mult = (1 + 0.55 * Math.max(0, repairersCount - 1)) * Math.max(0.1, speedMult);
+  const duration = Math.max(0.1, b.buildDuration ?? getBuildDuration(b.type));
+  const prevHp = b.hp ?? 0;
+  b.hp = Math.min(b.maxHp, prevHp + (b.maxHp / duration) * 0.85 * mult * dt);
+  return b.hp - prevHp;
 }
