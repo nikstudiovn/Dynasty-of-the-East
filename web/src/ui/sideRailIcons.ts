@@ -6,7 +6,7 @@ export type SideRailIconKey =
   | "age_up" | "house" | "depot" | "farm" | "barracks" | "archery_range" | "watch_tower"
   | "wall" | "gate" | "market" | "blacksmith" | "stable" | "siege_workshop" | "imperial_citadel"
   | "villager" | "sword" | "spear" | "archer" | "crossbow" | "cavalry" | "elephant"
-  | "horse_archer" | "siege" | "unique" | "upgrade_atk" | "upgrade_def" | "trade" | "rally"
+  | "horse_archer" | "siege" | "unique" | "upgrade_atk" | "upgrade_def" | "trade" | "rally" | "repair" | "reseed" | "auto_reseed"
   | "temple" | "healer" | "dock" | "fishing_boat" | "galley" | "fire_ship" | "collapse" | "expand" | "left_hand" | "default_cmd";
 
 const K = {
@@ -85,6 +85,9 @@ const ICON_BODY: Record<SideRailIconKey, string> = {
   collapse: `<path d="M9 6l6 6-6 6" fill="none" stroke="${K.goldLight}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
   expand: `<path d="M15 6l-6 6 6 6" fill="none" stroke="${K.goldLight}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`,
   left_hand: `<path d="M6 12h12M10 8l-4 4 4 4" fill="none" stroke="${K.goldLight}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  repair: outline("M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"),
+    reseed: outline("M12 20V10m0 0C12 6 15 4 19 4c0 4-3 6-7 6zm0 4C12 10 9 8 5 8c0 4 3 6 7 6z"),
+    auto_reseed: outline("M3 12a9 9 0 0 1 15-6.7L21 8m0-5v5h-5M21 12a9 9 0 0 1-15 6.7L3 16m0 5v-5h5"),
   default_cmd: `<circle cx="12" cy="12" r="7" fill="${K.crimsonDark}" stroke="${K.gold}" stroke-width="1.5"/><circle cx="12" cy="12" r="2.5" fill="${K.goldLight}"/>`,
 };
 
@@ -96,6 +99,9 @@ export function getIconSvg(key: SideRailIconKey, size: 16 | 24 = 24): string {
 export function resolveCommandIconKey(label: string): SideRailIconKey {
   const text = label.trim().toLowerCase();
   if (text === "rút lui") return "focus_tc";
+  if (text.includes("sửa")) return "repair";
+  if (text.includes("tự trồng") || text.includes("tái canh")) return "auto_reseed";
+  if (text.includes("trồng lại")) return "reseed";
   if (text.endsWith("doanh trại")) return "barracks";
   if (text.endsWith("vọng lâu")) return "watch_tower";
   if (text.endsWith("từ đường")) return "temple";
