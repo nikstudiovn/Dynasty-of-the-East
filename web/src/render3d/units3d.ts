@@ -1,7 +1,8 @@
 // Dynasty of the East 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
 import type { ModelRegistry, ModelVisual } from "./modelRegistry";
+import { NAVAL_TYPES } from "../sim/naval";
 import * as THREE from "three";
-import { box, cyl, cone, sphere, geo, mat, mesh, shade, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, fxGuard, type Faction } from "./common";
+import { box, cyl, cone, sphere, geo, mat, mesh, shade, WATER_LEVEL, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, fxGuard, type Faction } from "./common";
 import type { FX3D } from "./fx3d";
 
 const SKIN = "#e8c39e", PANTS = "#3a2a1e", WOOD = "#7a4f2a", STEEL = "#cbd5e1", IRON = "#6b7280", GOLD = "#e8b53a", BAMBOO = "#d4b06a";
@@ -179,6 +180,36 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       for (const k of ["axe", "pick", "sickle", "hammer", "spear"]) { r.tools[k] = hand(r.armR, tool(k)); r.tools[k].visible = false; }
       for (const k of ["wood", "food", "gold", "stone"]) { r.carry[k] = carryBundle(k); b.add(r.carry[k]); }
       r.height = 0.6;
+      break;
+    }
+    case "fishing_boat":
+    case "galley":
+    case "fire_ship": {
+      const fishing = type === "fishing_boat";
+      const width = fishing ? 0.44 : 0.70;
+      const length = fishing ? 0.85 : 1.25;
+      const wood = mat("#6c4530", { surface: "teak" });
+      const trim = mat(shade(team, -0.12), { surface: "lacquer" });
+      const hull = mesh(cyl(0.5, 0.39, 0.17, 8), wood, 0, 0.07, 0);
+      hull.scale.set(width, 1, length);
+      b.add(hull, mesh(box(width * 0.75, 0.03, length * 0.72), trim, 0, 0.16, 0));
+      b.add(mesh(cyl(0.023, 0.028, 0.66, 6), wood, 0, 0.46, 0.04));
+      const sail = mesh(box(width * 0.85, 0.38, 0.045), mat(team, { surface: "silk" }), 0, 0.55, 0.04);
+      sail.rotation.z = -0.1;
+      b.add(sail);
+      r.tools.sail = sail;
+      if (type === "galley") {
+        for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+          const oar = mesh(box(0.36, 0.024, 0.042), wood, side * width * 0.54, 0.13, (i - 1) * 0.22);
+          oar.rotation.z = -side * 0.24;
+          b.add(oar);
+        }
+      }
+      if (type === "fire_ship") {
+        b.add(mesh(cyl(0.13, 0.1, 0.09, 8), mat("#713e23", { metal: 0.4, emissive: "#893209" }), 0, 0.21, length * 0.28));
+        b.add(mesh(cone(0.07, 0.15, 6), mat("#ffac50", { emissive: "#ac3d0b" }), 0, 0.30, length * 0.28));
+      }
+      r.height = 0.81;
       break;
     }
     case "healer": {
@@ -587,7 +618,8 @@ export class Units3D {
       r.u = u;
       const vis = !u.garrisoned && (u.team === "player" || fogAt(u.x, u.y) === 2);
       r.root.visible = vis;
-      const gy = standHeight(u.x, u.y, state.grid);
+      const naval = NAVAL_TYPES.has(u.type);
+      const gy = naval ? WATER_LEVEL : standHeight(u.x, u.y, state.grid);
       if (!r.init) { r.root.position.set(u.x, gy, u.y); r.px = u.x; r.pz = u.y; r.init = true; }
       const kpos = 1 - Math.exp(-dt * 22);
       r.root.position.x += (u.x - r.root.position.x) * kpos;
@@ -639,7 +671,17 @@ export class Units3D {
         const elapsed = r.lastPose === 0 ? dt : Math.min(0.12, t - r.lastPose);
         r.lastPose = t;
         r.nextPose = t + (dist > 1600 ? 0.063 : dist > 500 ? 0.033 : 0);
-        this.animate(r, u, state, t, elapsed, moving, speed, target);
+        if (naval) {
+          const underBridge = state.grid[Math.floor(u.y)]?.[Math.floor(u.x)]?.terrain === "bridge";
+          const sail = r.tools.sail;
+          if (sail) sail.scale.y = underBridge ? 0.18 : 1;
+          r.body.position.y = Math.sin(t * 3 + u.x) * 0.022;
+          r.body.rotation.z = Math.sin(t * 2 + u.y) * 0.035;
+          if (moving && t >= r.dustT) {
+            this.fx.ripple(u.x - Math.sin(r.yaw) * 0.46, WATER_LEVEL + 0.02, u.y - Math.cos(r.yaw) * 0.46);
+            r.dustT = t + 0.55;
+          }
+        } else this.animate(r, u, state, t, elapsed, moving, speed, target);
         const pose = u.hp <= 0 ? "die" : moving ? (speed > 2.35 ? "run" : "walk")
           : u.task === "attack" || u.task === "hunt" ? "attack"
           : u.task === "build" ? "build" : u.task === "gather" ? "gather" : "idle";

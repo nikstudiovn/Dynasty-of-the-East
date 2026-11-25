@@ -8,7 +8,7 @@ import { Units3D } from "./units3d";
 import { Fog3D } from "./fog3d";
 import { FX3D } from "./fx3d";
 import { World3D } from "./world3d";
-import { Env3D, MAP_N, setMapSize, isoToTile, tileToIso, clamp, standHeight, retainRenderAssets, releaseRenderAssets, fxGuard } from "./common";
+import { Env3D, MAP_N, WATER_LEVEL, cyl, cone, mat, mesh, setMapSize, isoToTile, tileToIso, clamp, standHeight, retainRenderAssets, releaseRenderAssets, fxGuard } from "./common";
 import { ensurePbrTextures, disposePbrMaterials } from "./pbrMaterials";
 import { FloatingText, FLOAT_COLORS, onFloatingTextChange } from "./floatingText";
 
@@ -81,6 +81,25 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   let fog = new Fog3D();
   let world = new World3D();
   const floating = new FloatingText();
+  const monuments = new THREE.Group();
+  s3.scene.add(monuments);
+  let fishSites: { x: number; y: number }[] = [];
+  function setMapDecor(state: any): void {
+    monuments.clear();
+    fishSites = [];
+    for (const shrine of state.shrines ?? []) {
+      const altar = new THREE.Group();
+      altar.position.set(shrine.x, standHeight(shrine.x, shrine.y, state.grid), shrine.y);
+      const stone = mat("#827661", { surface: "stone" });
+      altar.add(mesh(cyl(0.64, 0.72, 0.11, 8), stone, 0, 0.055, 0));
+      altar.add(mesh(cyl(0.33, 0.46, 0.29, 8), stone, 0, 0.20, 0));
+      altar.add(mesh(cone(0.18, 0.45, 4), mat("#d3a05c", { metal: 0.45 }), 0, 0.55, 0));
+      monuments.add(altar);
+    }
+    state.grid?.forEach((row: any[], y: number) => row.forEach((cell, x) => {
+      if (cell?.fish > 0) fishSites.push({ x, y });
+    }));
+  }
   onFloatingTextChange(on => { if (!on) floating.clear(); });
   fx.setQuality(s3.quality);
   s3.scene.add(world.group, terrain.group, buildings.group, units.group, fx.group, fog.mesh);
@@ -105,6 +124,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   let dpr = s3.pixelRatio;
   let disposed = false;
   let lastState: any = null;
+  let decoratedState: any = null;
   let time = 0;
 
   const local = (cx: number, cy: number) => { const r = canvas.getBoundingClientRect(); return { x: cx - r.left, y: cy - r.top }; };
@@ -122,6 +142,16 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (state) {
+      octx.strokeStyle = "rgba(180,232,223,0.82)";
+      octx.lineWidth = 1;
+      for (const { x, y } of fishSites) {
+        if (state.fog[y]?.[x] !== 2 || state.grid[y]?.[x]?.fish <= 0) continue;
+        const p = s3.project(x + 0.5, WATER_LEVEL + 0.02, y + 0.5);
+        if (!p.visible || p.x < 0 || p.y < 0 || p.x > W || p.y > H) continue;
+        octx.beginPath();
+        octx.ellipse(p.x, p.y, 3 + 2 * Math.pow(Math.sin(time * 1.7 + x), 2), 2, 0, 0, Math.PI * 2);
+        octx.stroke();
+      }
       for (const shrine of state.shrines ?? []) {
         const p = s3.project(shrine.x, standHeight(shrine.x, shrine.y, state.grid) + 0.3, shrine.y);
         if (!p.visible || p.x < 0 || p.y < 0 || p.x > W || p.y > H) continue;
@@ -193,7 +223,13 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         if (lastState) { buildings.clear(); units.clear(); fx.clear(); floating.clear(); }
         lastState = state;
       }
-      if (state && state.grid && state.fog) ensureMap(state);
+      if (state && state.grid && state.fog) {
+        ensureMap(state);
+        if (state !== decoratedState || (state.shrines?.length ?? 0) !== monuments.children.length) {
+          setMapDecor(state);
+          decoratedState = state;
+        }
+      }
       cam.zoom = clamp(cam.zoom, MIN_ZOOM, MAX_ZOOM);
       s3.update(cam, d);
       if (state && state.grid && state.fog) {
@@ -242,6 +278,9 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       s3.dispose();
       octx.clearRect(0, 0, s3.width, s3.height);
       lastState = null;
+      decoratedState = null;
+      monuments.clear();
+      fishSites = [];
     },
 
     screenToTile(clientX: number, clientY: number) {

@@ -1,3 +1,5 @@
+import { NAVAL_TYPES } from "./naval";
+
 export const POPULATION_LIMIT = 75;
 export const FARM_CAPACITY = 390;
 export type Shrine = { x: number; y: number; owner: string | null; contender: string | null; capture: number; income: number };
@@ -35,7 +37,7 @@ export function stepShrines(shrines: Shrine[], units: readonly Combatant[], dt: 
     let contender: string | null = null;
     for (const unit of units) {
       if (unit.hp <= 0 || unit.garrisoned || unit.type === "villager" || unit.type === "healer" ||
-          unit.type === "fishing_boat" || Math.hypot(unit.x - shrine.x, unit.y - shrine.y) > 3.5) continue;
+          NAVAL_TYPES.has(unit.type) || Math.hypot(unit.x - shrine.x, unit.y - shrine.y) > 3.5) continue;
       const faction = unit.team === "player" ? "player" : `ai:${unit.aiIndex ?? 0}`;
       if (contender && contender !== faction) { contender = null; break; }
       contender = faction;

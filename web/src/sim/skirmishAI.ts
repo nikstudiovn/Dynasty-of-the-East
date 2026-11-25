@@ -1,3 +1,4 @@
+import { NAVAL_TYPES } from "./naval";
 import { POPULATION_LIMIT, type Shrine } from "./expansion";
 import type { PathPt } from "./pathfinding";
 import type { FactionId, ResourceKey, ResourcePool } from "./types";
@@ -150,7 +151,7 @@ function construction(state: Match, rules: Rules, base: Building, buildings: Bui
         for (let x = tx; x < tx + def.size; x++) {
           const cell = state.grid[y]?.[x];
           if (!cell || cell.res || cell.terrain === "bridge" || rules.blocked(x, y) ||
-              buildings.some(b => b.type === "farm" && b.tx === x && b.ty === y)) { valid = false; break; }
+              buildings.some(b => b.type === "farm" && x >= b.tx && x < b.tx + b.size && y >= b.ty && y < b.ty + b.size)) { valid = false; break; }
         }
       }
       if (!valid) continue;
@@ -262,7 +263,7 @@ export function step(state: Match, rules: Rules) {
   const buildings = state.buildings.filter(b => own(b, index) && b.hp > 0);
   const units = state.units.filter(u => own(u, index) && u.hp > 0 && !u.garrisoned);
   const workers = units.filter(u => u.type === "villager");
-  const army = units.filter(u => u.type !== "villager");
+  const army = units.filter(u => u.type !== "villager" && u.type !== "healer" && !NAVAL_TYPES.has(u.type));
   const playerUnits = state.units.filter(u => u.team === "player" && u.hp > 0 && !u.garrisoned);
   const observers = [
     ...units.map(u => ({ pos: u, vision: rules.unitDefs[u.type].vision })),
