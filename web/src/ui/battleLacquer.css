@@ -1,4 +1,4 @@
-/* Battle HUD uses the same typography and bronze accents as the lobby. */
+/* Battle HUD uses the same typography and silver accents as the lobby. */
 #game-wrap {
   --battle-left: max(8px, calc(env(safe-area-inset-left, 0px) + 6px));
   --battle-right: max(8px, calc(env(safe-area-inset-right, 0px) + 6px));
@@ -7,11 +7,11 @@
   --battle-controls-top: calc(var(--top-hud-bottom, 48px) + 6px);
   --battle-map-height: 74px;
   --battle-map-width: 106px;
-  --battle-lacquer: linear-gradient(155deg, rgba(40, 34, 26, .96), rgba(16, 14, 13, .94) 57%);
-  --battle-button: linear-gradient(165deg, #3a3024, #1d1916 55%, #161411);
-  --battle-border: #856337;
-  --battle-gold: #f4d69a;
-  --battle-shadow: inset 0 1px rgba(252, 217, 158, .16), 0 3px 9px #0a0808a6;
+  --battle-lacquer: linear-gradient(155deg, rgba(35, 35, 35, .96), rgba(14, 14, 14, .94) 57%);
+  --battle-button: linear-gradient(165deg, #313131, #1a1a1a 55%, #141414);
+  --battle-border: #676767;
+  --battle-gold: #d8d8d8;
+  --battle-shadow: inset 0 1px rgba(220, 220, 220, .16), 0 3px 9px #080808a6;
 }
 
 #game-wrap .top-hud {
@@ -51,12 +51,12 @@
 #game-wrap [data-battle-icon] svg { display: block; }
 #game-wrap :is(#relic-countdown, .battle-timer, #dote-herbal-badge) {
   padding: 2px 5px;
-  border: 1px solid #856337a0;
+  border: 1px solid #676767a0;
   border-radius: 4px;
-  background: #171410;
+  background: #141414;
   color: var(--battle-gold);
 }
-#game-wrap #dote-herbal-badge { color: #a7e0bb; }
+#game-wrap #dote-herbal-badge { color: #d1d1d1; }
 #game-wrap :is(#dote-herbal-badge, #relic-countdown, #hud-settings, #dote-pause-settings,
   #btn-pause-music, #btn-pause-sound)[hidden] { display: none !important; }
 
@@ -81,16 +81,16 @@
 #game-wrap :is(.icon-btn, .dote-rail-btn, .act-btn, .dote-drawer-tab):is(.active, .selected, .dote-active, [aria-pressed="true"]),
 #game-wrap .dote-rail-drawer #cmd-buttons .act-btn.selected,
 #game-wrap #pause-modal #btn-pause-resume {
-  border-color: #eac17a;
-  background: linear-gradient(165deg, #65502b, #332719 75%);
-  color: #fff0cb;
+  border-color: #c5c5c5;
+  background: linear-gradient(165deg, #525252, #292929 75%);
+  color: #f1f1f1;
 }
 #game-wrap .dote-rail-drawer #cmd-buttons .act-btn:disabled {
   opacity: .66;
-  border-color: #594b38;
-  color: #d2c3aa;
+  border-color: #4d4d4d;
+  color: #c4c4c4;
 }
-#game-wrap #btn-faction-ability:disabled { opacity: .85; color: #bacee9; }
+#game-wrap #btn-faction-ability:disabled { opacity: .85; color: #cccccc; }
 #game-wrap :is(button, [role="button"]):focus-visible {
   outline: 2px solid var(--battle-gold);
   outline-offset: 2px;
@@ -140,8 +140,8 @@ body.dote-left-handed #game-wrap .dote-rail-drawer {
 }
 #game-wrap .dote-rail-scroll { pointer-events: auto; }
 #game-wrap [data-dote-more] {
-  -webkit-mask-image: linear-gradient(#000 calc(100% - 13px), #0006);
-  mask-image: linear-gradient(#000 calc(100% - 13px), #0006);
+  -webkit-mask-image: linear-gradient(#000000 calc(100% - 13px), #00000066);
+  mask-image: linear-gradient(#000000 calc(100% - 13px), #00000066);
 }
 #game-wrap .dote-sel-pill {
   bottom: var(--battle-bottom);
@@ -161,7 +161,7 @@ body.dote-left-handed #game-wrap .dote-rail-drawer {
   bottom: var(--battle-bottom);
   min-width: 72px;
   padding-inline: 9px;
-  border-color: #af7762;
+  border-color: #818181;
 }
 #game-wrap .dote-rail-handle { right: var(--battle-right); bottom: var(--battle-bottom); }
 body.dote-left-handed #game-wrap .dote-rail-handle { right: auto; left: var(--battle-left); }
@@ -183,7 +183,7 @@ body.dote-side-rail-active #game-wrap .battle-alerts {
 }
 #game-wrap .dote-pause-actions > button { min-width: 0; white-space: normal; }
 #game-wrap .dote-pause-quick-settings {
-  background: #171512;
+  background: #151515;
   border-color: var(--battle-border) !important;
 }
 #game-wrap .dote-pause-audio {
@@ -221,4 +221,10 @@ body.dote-side-rail-active #game-wrap .battle-alerts {
   margin: 0 0 4px;
   color: var(--battle-gold);
   font: 750 clamp(17px, 2.5vw, 22px)/1.2 var(--dote-font-ui);
+}
+
+/* Fade the drawer in without sweeping over the adjacent command rail. */
+#game-wrap .dote-rail-drawer {
+  transform: none;
+  transition: opacity 140ms ease;
 }

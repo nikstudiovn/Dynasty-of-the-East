@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Dynasty of the East — Warm Stone Gray Menu
+   Dynasty of the East — Charcoal and silver menu
    - Fixes HUD overlap (z-index + body.dote-menu-open hides side-rail & battle HUD)
    - Centered 1-column Main Menu (Chơi tiếp / Chơi mới / Chơi online / Cài đặt)
    - Dedicated sub-pages: Chơi mới, Chơi online, Cài đặt
@@ -8,25 +8,25 @@
    ========================================================================== */
 
 :root {
-  --dote-ink: #191816;
-  --dote-panel: #252321;
-  --dote-surface: #2D2B28;
-  --dote-wood: #393530;
-  --dote-wood-hover: #48433D;
+  --dote-ink: #181818;
+  --dote-panel: #232323;
+  --dote-surface: #2b2b2b;
+  --dote-wood: #353535;
+  --dote-wood-hover: #444444;
 
-  --dote-border: rgba(184, 156, 110, 0.42);
-  --dote-border-strong: rgba(214, 171, 99, 0.86);
-  --dote-text: #F1E8D8;
-  --dote-muted: #C2B6A4;
+  --dote-border: rgba(159, 159, 159, 0.42);
+  --dote-border-strong: #b7b7b7;
+  --dote-text: #e9e9e9;
+  --dote-muted: #b7b7b7;
 
-  --dote-lac-dark: #6D1D18;
-  --dote-lac: #932E28;
-  --dote-lac-hover: #A63029;
-  --dote-gold: #D9A441;
-  --dote-gold-light: #F5D78E;
-  --dote-jade: #1F6A50;
-  --dote-jade-hover: #288062;
-  --dote-slate: #2D4E7A;
+  --dote-lac-dark: #343434;
+  --dote-lac: #545454;
+  --dote-lac-hover: #626262;
+  --dote-gold: #a8a8a8;
+  --dote-gold-light: #d8d8d8;
+  --dote-jade: #585858;
+  --dote-jade-hover: #6b6b6b;
+  --dote-slate: #4a4a4a;
 
   --dote-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Inter", "Noto Sans", sans-serif;
 }
@@ -64,7 +64,7 @@ body.dote-menu-open .minimap-box {
     max(14px, env(safe-area-inset-right))
     max(10px, env(safe-area-inset-bottom))
     max(14px, env(safe-area-inset-left));
-  background: rgba(25, 24, 22, 0.82);
+  background: rgba(24, 24, 24, 0.82);
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   font-family: var(--dote-font-ui);
@@ -90,7 +90,7 @@ body.dote-menu-open .minimap-box {
 }
 
 #modal > .modal-card:not(.dote-modal-subpage):not(.dote-modal-endgame) {
-  background-color: rgba(37, 35, 33, 0.58);
+  background-color: rgba(35, 35, 35, 0.58);
   background-image: none;
 }
 
@@ -99,7 +99,7 @@ body.dote-menu-open .minimap-box {
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  background: #282522;
+  background: #252525;
 }
 
 .dote-modal-subpage ~ .dote-menu-battlefield,
@@ -109,6 +109,7 @@ body.dote-menu-open .minimap-box {
 }
 
 .dote-menu-battlefield__view {
+  filter: grayscale(1) brightness(0.76);
   position: absolute;
   inset: -5% -10%;
   background: url("../assets/menu-battlefield.webp") center 58% / cover no-repeat;
@@ -125,21 +126,21 @@ body.dote-menu-open .minimap-box {
 
 .dote-menu-battlefield__view::before {
   background:
-    radial-gradient(ellipse at 17% 65%, #b7b0a24a, transparent 33%),
-    radial-gradient(ellipse at 76% 52%, #b7a99c48, transparent 38%);
+    radial-gradient(ellipse at 17% 65%, #b0b0b04a, transparent 33%),
+    radial-gradient(ellipse at 76% 52%, #ababab48, transparent 38%);
   animation: dote-battlefield-smoke 11s ease-in-out infinite alternate;
 }
 
 .dote-menu-battlefield__view::after {
   background:
-    radial-gradient(ellipse at 15% 80%, #e2663338, transparent 16%),
-    radial-gradient(ellipse at 85% 73%, #ff99413d, transparent 19%);
+    radial-gradient(ellipse at 15% 80%, #7d7d7d38, transparent 16%),
+    radial-gradient(ellipse at 85% 73%, #a8a8a83d, transparent 19%);
   animation: dote-battlefield-fire 3.2s ease-in-out infinite alternate;
 }
 
 .dote-menu-battlefield::after {
-  background: linear-gradient(0deg, #171514b8, transparent 45%),
-    radial-gradient(ellipse at center, #18171614 45%, #18171691);
+  background: linear-gradient(0deg, #151515b8, transparent 45%),
+    radial-gradient(ellipse at center, #17171714 45%, #17171791);
 }
 
 @keyframes dote-battlefield-pan {
@@ -182,7 +183,7 @@ body.dote-menu-open .minimap-box {
   border: 1px solid var(--dote-border);
   outline: none;
   box-shadow:
-    inset 0 1px 0 rgba(245, 215, 142, 0.12),
+    inset 0 1px 0 rgba(216, 216, 216, 0.12),
     0 18px 42px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
@@ -303,8 +304,8 @@ body.dote-menu-open .minimap-box {
 
 #btn-start {
   background: var(--dote-lac) !important;
-  border-color: rgba(245, 215, 142, 0.52) !important;
-  color: #FFF8EC !important;
+  border-color: rgba(216, 216, 216, 0.52) !important;
+  color: #f9f9f9 !important;
 }
 
 #btn-start:hover:not(:disabled) {
@@ -519,11 +520,11 @@ body.dote-menu-open .minimap-box {
 }
 
 .dote-faction-card[data-val="trung_nguyen"].active {
-  border-left-color: #2F8F6B !important;
+  border-left-color: #787878 !important;
 }
 
 .dote-faction-card[data-val="bac_cuong"].active {
-  border-left-color: #4B7BB8 !important;
+  border-left-color: #757575 !important;
 }
 
 .dote-crest {
@@ -567,8 +568,8 @@ body.dote-menu-open .minimap-box {
   display: inline-block;
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(217, 164, 65, 0.14);
-  border: 1px solid rgba(217, 164, 65, 0.3);
+  background: rgba(168, 168, 168, 0.14);
+  border: 1px solid rgba(168, 168, 168, 0.3);
   color: var(--dote-gold-light);
   font-size: 11px;
   font-weight: 600;
