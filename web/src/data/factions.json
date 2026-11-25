@@ -103,6 +103,35 @@
         "stableTrainSpeedMultiplier": 1.2,
         "cavalrySpeedMultiplier": 1.1
       }
+    },
+    {
+      "id": "goryeo",
+      "nameKey": "faction.goryeo",
+      "bannerColors": [
+        "#2563EB",
+        "#F8FAFC"
+      ],
+      "uniqueUnitId": "hwacha",
+      "bonuses": {
+        "buildingHpMultiplier": 1.15,
+        "buildRepairSpeedMultiplier": 1.15,
+        "warshipHpMultiplier": 1.15,
+        "warshipArmorBonus": 1
+      }
+    },
+    {
+      "id": "fuso",
+      "nameKey": "faction.fuso",
+      "bannerColors": [
+        "#DC2626",
+        "#FFFFFF"
+      ],
+      "uniqueUnitId": "samurai",
+      "bonuses": {
+        "fishingShipGatherMultiplier": 1.2,
+        "meleeInfantryDamageMultiplier": 1.12,
+        "meleeInfantryAttackSpeedMultiplier": 1.1
+      }
     }
   ]
 }

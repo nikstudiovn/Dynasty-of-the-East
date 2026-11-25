@@ -2,8 +2,8 @@
  * High-resolution Retina metallic vector SVG motifs for "Dynasty of the East".
  * Multi-color bevel/sheen gradients on smooth vector paths (100% offline).
  */
-
-export type FactionKey = "dai_viet" | "trung_nguyen" | "bac_cuong";
+export type FactionKey = "dai_viet" | "trung_nguyen" | "bac_cuong" | "goryeo" | "fuso";
+// export type FactionKey = "dai_viet" | "trung_nguyen" | "bac_cuong"; | "goryeo" | "fuso"
 export type RankGrade = "S" | "A" | "B" | "C";
 
 export const MOTIF_DONG_SON_DRUM = `<svg class="dote-svg-vector" viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
@@ -82,7 +82,9 @@ export const FACTION_CRESTS: Record<FactionKey, string> = {
     <path d="M18 35 L19 25 L14 23 L15 19 L21 15 L23 11 L26 14 L31 15 L33 21 L29 24 L29 35 Z" fill="url(#doteBcSilver)" stroke="#15110f" stroke-width="1"/>
     <path d="M26 14 Q32 16 33 23" fill="none" stroke="#e4dccc" stroke-width="2" stroke-linecap="round"/>
     <circle cx="21" cy="18" r="1.2" fill="#15110f"/>
-  </svg>`,
+  </svg> 
+  `,  goryeo: `<svg class="dote-svg-vector" viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><defs><linearGradient id="doteGrBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2f6f68"/><stop offset="100%" stop-color="#173834"/></linearGradient><linearGradient id="doteGrGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#efe7d7"/><stop offset="100%" stop-color="#7eb5ac"/></linearGradient></defs><polygon points="24,4 41,12 38,33 24,44 10,33 7,12" fill="url(#doteGrBg)" stroke="url(#doteGrGold)" stroke-width="2.4"/><path d="M16 32 V18 H20 V21 H22 V16 H26 V21 H28 V18 H32 V32 Z" fill="url(#doteGrGold)"/><path d="M24 11 L27 16 H21 Z" fill="#efe7d7"/><rect x="15" y="32" width="18" height="3" rx="1" fill="#e4dccc"/></svg>`,
+    fuso: `<svg class="dote-svg-vector" viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><defs><linearGradient id="doteFsBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6b2226"/><stop offset="100%" stop-color="#2a0f12"/></linearGradient><linearGradient id="doteFsGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#efe7d7"/><stop offset="100%" stop-color="#d9a441"/></linearGradient></defs><circle cx="24" cy="24" r="19" fill="url(#doteFsBg)" stroke="url(#doteFsGold)" stroke-width="2.4"/><circle cx="24" cy="22" r="8" fill="#c9433d" stroke="#efe7d7" stroke-width="1.2"/><path d="M13 35 L35 13 M35 35 L13 13" stroke="url(#doteFsGold)" stroke-width="2.8" stroke-linecap="round"/><rect x="19" y="34" width="10" height="3" rx="1" fill="#efe7d7"/></svg>`,
 };
 
 export const RANK_MEDALS: Record<RankGrade, string> = {

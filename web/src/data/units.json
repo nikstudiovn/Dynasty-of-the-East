@@ -280,6 +280,58 @@
         "building": 3.0,
         "ranged": 1.4
       }
+    },
+    {
+      "id": "hwacha",
+      "nameKey": "unit.hwacha",
+      "role": "siege",
+      "unlockAge": 3,
+      "trainedAt": "siege_workshop",
+      "factionOnly": "goryeo",
+      "hp": 110,
+      "attack": 32,
+      "splashRadius": 1.8,
+      "range": 7,
+      "meleeArmor": 0,
+      "pierceArmor": 4,
+      "speed": 0.9,
+      "trainTimeSec": 20,
+      "cost": {
+        "food": 0,
+        "wood": 120,
+        "gold": 90,
+        "stone": 0
+      },
+      "bonuses": {
+        "infantry": 1.4,
+        "ranged": 1.3,
+        "building": 1.5
+      }
+    },
+    {
+      "id": "samurai",
+      "nameKey": "unit.samurai",
+      "role": "infantry",
+      "unlockAge": 3,
+      "trainedAt": "barracks",
+      "factionOnly": "fuso",
+      "hp": 125,
+      "attack": 16,
+      "range": 1,
+      "meleeArmor": 3,
+      "pierceArmor": 2,
+      "speed": 1.35,
+      "trainTimeSec": 16,
+      "cost": {
+        "food": 75,
+        "wood": 0,
+        "gold": 45,
+        "stone": 0
+      },
+      "bonuses": {
+        "infantry": 1.25,
+        "building": 1.2
+      }
     }
   ]
 }

@@ -7,7 +7,7 @@ export interface ResourcePool {
   stone: number;
 }
 
-export type FactionId = "dai_viet" | "trung_nguyen" | "bac_cuong";
+export type FactionId = "dai_viet" | "trung_nguyen" | "bac_cuong" | "goryeo" | "fuso";
 
 export type CommandAction =
   | "MOVE"
