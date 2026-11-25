@@ -1,3 +1,4 @@
+import { POPULATION_LIMIT, type Shrine } from "./expansion";
 import type { PathPt } from "./pathfinding";
 import type { FactionId, ResourceKey, ResourcePool } from "./types";
 
@@ -14,7 +15,7 @@ const pressure = {
   hard: { opening: 125, interval: 85, group: 11, reserve: 3, workers: 19 }
 };
 
-type Order = "scout" | "raid" | "assault" | "defend" | "retreat";
+type Order = "capture" | "scout" | "raid" | "assault" | "defend" | "retreat";
 type Plan = "raid" | "assault" | "siege";
 type Team = "player" | "enemy";
 type Tile = { tx: number; ty: number };
@@ -42,6 +43,7 @@ interface Brain {
 }
 interface Match {
   difficulty: string;
+  shrines?: Shrine[];
   mapSize: number;
   mapSeed?: number;
   grid: { terrain: string; res: ResourceKey | null; resAmt: number }[][];
@@ -188,7 +190,7 @@ function gather(state: Match, rules: Rules, base: Building, buildings: Building[
   const occupancy = new Map<number, number>();
   const tileKey = ({ tx, ty }: Tile) => ty * state.mapSize + tx;
   const cellResource = (tile: Tile) => state.grid[tile.ty]?.[tile.tx]?.res;
-  const farms = buildings.filter(b => b.type === "farm" && ready(b));
+  const farms = buildings.filter(b => b.type === "farm" && ready(b) && (b as Building & { cropAmount?: number }).cropAmount !== 0);
   for (const u of workers) {
     if (!u.targetTile || (u.task !== "gather" && u.task !== "return")) continue;
     const r = cellResource(u.targetTile) ?? (farms.some(b => b.tx === u.targetTile?.tx && b.ty === u.targetTile.ty) ? "food" : null);
@@ -283,7 +285,9 @@ export function step(state: Match, rules: Rules) {
   const exposed = visibleUnits.filter(u => u.type === "villager" &&
     !visibleBuildings.some(b => rules.buildingDefs[b.type].atk && distance(point(b), u) < 6));
   const plan = pickStrategy(brain, state.mapSeed ?? 0, state.aiWave ?? 0, exposed.length, forts, invaders.length);
-  const rally = { x: home.x + (home.x < state.mapSize / 2 ? 3.5 : -3.5), y: home.y + (home.y < state.mapSize / 2 ? 2.5 : -2.5) };
+  const nearbyTower = buildings.find(b => b.type === "watch_tower" && ready(b));
+  const retreatHome = nearbyTower ? point(nearbyTower) : home;
+  const rally = { x: retreatHome.x + (home.x < state.mapSize / 2 ? 3.5 : -3.5), y: retreatHome.y + (retreatHome.y < state.mapSize / 2 ? 2.5 : -2.5) };
 
   for (const u of units) {
     if (u.wave) { u.wave = false; u.task = "idle"; u.path = []; u.targetEntityId = null; }
@@ -305,8 +309,7 @@ export function step(state: Match, rules: Rules) {
   for (const u of army) {
     if (u.aiOrder === "retreat") continue;
     const nearby = visibleUnits.filter(o => o.type !== "villager" && distance(u, o) < 5);
-    const allied = army.filter(o => distance(o, u) < 5).length;
-    if (u.hp < u.maxHp * 0.45 && nearby.length >= allied && distance(u, home) > 5 &&
+    if (u.hp < u.maxHp * 0.25 && nearby.length > 0 && distance(u, home) > 5 &&
         move(rules, u, rally, "retreat", now + 13)) continue;
     if (threat && (distance(u, home) < 14 || u.aiOrder === "scout")) {
       const target = invaders.reduce((best, o) => distance(u, o) < distance(u, best) ? o : best, threat);
@@ -331,7 +334,7 @@ export function step(state: Match, rules: Rules) {
     rules.notify(`Phe AI ${brain.idx} đã tiến lên Đời ${brain.age}!`);
   }
 
-  const cap = Math.min(70, buildings.filter(ready).reduce((sum, b) => sum + rules.buildingDefs[b.type].pop, 0));
+  const cap = Math.min(POPULATION_LIMIT, buildings.filter(ready).reduce((sum, b) => sum + rules.buildingDefs[b.type].pop, 0));
   let population = units.length + buildings.reduce((sum, b) => sum + (b.trainQueue?.length ?? 0), 0);
   const has = (type: string) => buildings.some(b => b.type === type);
   const special = Object.keys(production).find(type => rules.unitDefs[type].factionOnly === brain.factionId);
@@ -368,7 +371,7 @@ export function step(state: Match, rules: Rules) {
     }
   } else if (!foundation) {
     const structure = !has("barracks") ? "barracks"
-      : population >= cap - 1 && cap < 70 ? "house"
+      : population >= cap - 1 && cap < POPULATION_LIMIT ? "house"
       : threat && brain.age >= 2 && !has("watch_tower") ? "watch_tower"
       : missingWorkshop && !saveForAge ? "siege_workshop"
       : !saveForAge ? priority.map(type => production[type]).find(type => !has(type))
@@ -386,6 +389,11 @@ export function step(state: Match, rules: Rules) {
   gather(state, rules, base, buildings, workers, bank, now, saveForAge ? nextAge.cost : undefined);
 
   const available = army.filter(u => !u.aiOrder && u.task !== "attack" && u.hp > u.maxHp * 0.45);
+  const shrine = state.shrines?.find(site => site.owner !== `ai:${index}`);
+  if (shrine && !threat && brain.age >= 2 && available.length >= pace.reserve + 2 &&
+      !army.some(u => u.aiOrder === "capture")) {
+    for (const u of available.slice(0, 2)) move(rules, u, shrine, "capture", now + 75);
+  }
   brain.nextAttack ??= pace.opening + index * 20;
   const edge = state.mapSize >= 96 ? 13.5 : state.mapSize >= 64 ? 11.5 : 10.5;
   const far = state.mapSize - edge;
@@ -412,13 +420,14 @@ export function step(state: Match, rules: Rules) {
   const squad = available.filter(u => !u.aiOrder).sort((a, b) =>
     plan === "raid" ? priorityForRaid(a) - priorityForRaid(b) : 0);
   let sent = 0;
-  for (const u of squad.slice(0, Math.min(count - pace.reserve, groupLimit))) {
+  const attackGroup = squad.slice(0, Math.min(count - pace.reserve, groupLimit));
+  for (const [slot, u] of attackGroup.entries()) {
     // Fast raiders approach the economy from the side when there is a walkable approach.
     const aim = target ? targetPoint(target) : objective;
-    if (order === "raid" && rules.unitDefs[u.type].role === "cavalry" && distance(u, aim) > 14) {
+    if ((brain.age >= 3 || order === "raid" && rules.unitDefs[u.type].role === "cavalry") && distance(u, aim) > 14) {
       const dx = aim.x - home.x, dy = aim.y - home.y;
       const len = Math.hypot(dx, dy) || 1;
-      const side = brain.idx % 2 === 0 ? -1 : 1;
+      const side = (brain.idx + slot) % 2 === 0 ? -1 : 1;
       const flank = { x: aim.x - (dx + dy * side * 2) / len * 4, y: aim.y - (dy - dx * side * 2) / len * 4 };
       if (move(rules, u, flank, order, now + 100)) { sent++; continue; }
     }

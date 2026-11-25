@@ -334,7 +334,7 @@ export function generateValley(
       for (let dx = 0; dx < 2; dx++) {
         const c = grid[ty + dy][tx + dx];
         c.res = res;
-        c.resAmt = resAmt;
+        c.resAmt = Math.round(resAmt * 1.52);
         c.resVariant = resVariant;
         c.resFootprint = 2;
         if (treasureGuarded) c.treasureGuarded = true;
@@ -359,7 +359,7 @@ export function generateValley(
       if (canPlace1x1(tx, ty)) {
         const c = grid[ty][tx];
         c.res = res;
-        c.resAmt = amt;
+        c.resAmt = Math.round(amt * 1.52);
         c.resVariant = variant;
         c.resFootprint = 1;
       }

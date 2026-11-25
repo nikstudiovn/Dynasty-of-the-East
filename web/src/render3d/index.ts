@@ -121,6 +121,20 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (state) {
+      for (const shrine of state.shrines ?? []) {
+        const p = s3.project(shrine.x, standHeight(shrine.x, shrine.y, state.grid) + 0.3, shrine.y);
+        if (!p.visible || p.x < 0 || p.y < 0 || p.x > W || p.y > H) continue;
+        octx.save();
+        octx.fillStyle = shrine.owner === "player" ? "#a8e4ac" : shrine.owner ? "#ff9b84" : "#f9db94";
+        octx.font = "bold 12px system-ui";
+        octx.textAlign = "center";
+        octx.strokeStyle = "#1b100c";
+        octx.lineWidth = 3;
+        const label = shrine.capture > 0 ? `Cổ Tự · ${Math.ceil(10 - shrine.capture)}s` : "◇ Cổ Tự";
+        octx.strokeText(label, p.x, p.y);
+        octx.fillText(label, p.x, p.y);
+        octx.restore();
+      }
       // building HP bars
       for (const e of buildings.entries()) {
         const b = e.b;

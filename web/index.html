@@ -463,7 +463,7 @@
   <!-- BOTTOM HUD -->
   <div class="bottom-hud">
     <div class="minimap-box">
-      <canvas id="minimapCanvas" width="132" height="88"></canvas>
+      <span id="relic-countdown" hidden style="position:absolute;z-index:1;color:#ffe19a;background:#211610;padding:3px;white-space:nowrap"></span><canvas id="minimapCanvas" width="132" height="88"></canvas>
     </div>
 
     <div class="cmd-dock">
@@ -549,6 +549,7 @@
   
 <script type="module">
 import "./src/ui/hudTheme.css";
+import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
 import { initBattleHud } from "./src/ui/battleHud";
 
 const updateBattleHud = initBattleHud();
@@ -603,8 +604,8 @@ const updateBattleHud = initBattleHud();
   const AGES = [
     { age: 1, name: "Đời 1 · Khai Hoang", cost: { food: 0, wood: 0, gold: 0, stone: 0 } },
     { age: 2, name: "Đời 2 · Phong Kiến", cost: { food: 250, wood: 0, gold: 0, stone: 0 } },
-    { age: 3, name: "Đời 3 · Vương Triều", cost: { food: 400, wood: 0, gold: 200, stone: 0 } },
-    { age: 4, name: "Đời 4 · Đế Quốc", cost: { food: 600, wood: 0, gold: 400, stone: 200 } }
+    { age: 3, name: "Đời 3 · Vương Triều", cost: { food: 560, wood: 0, gold: 280, stone: 0 } },
+    { age: 4, name: "Đời 4 · Đế Quốc", cost: { food: 840, wood: 0, gold: 560, stone: 280 } }
   ];
 
   const UNIT_DEFS = {
@@ -622,20 +623,20 @@ const updateBattleHud = initBattleHud();
   const TRAIN_TIMES = { villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
 
   const BLDG_DEFS = {
-    town_center: { name: "Đình Làng", size: 2, hp: 1400, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
+    town_center: { name: "Đình Làng", size: 2, hp: 1960, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
     house: { name: "Nhà Ngói", size: 1, hp: 400, vision: 4, cost: { food: 0, wood: 35, gold: 0, stone: 0 }, pop: 10, age: 1 },
     depot: { name: "Kho Lẫm", size: 1, hp: 450, vision: 4, cost: { food: 0, wood: 65, gold: 0, stone: 0 }, pop: 0, age: 1 },
-    farm: { name: "Ruộng Lúa", size: 1, hp: 300, vision: 3, cost: { food: 0, wood: 45, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    farm: { name: "Ruộng Lúa", size: 2, hp: 300, vision: 3, cost: { food: 0, wood: 45, gold: 0, stone: 0 }, pop: 0, age: 1 },
     barracks: { name: "Doanh Trại", size: 2, hp: 850, vision: 5, cost: { food: 0, wood: 120, gold: 0, stone: 0 }, pop: 0, age: 1 },
     archery_range: { name: "Trường Bắn", size: 2, hp: 800, vision: 5, cost: { food: 0, wood: 130, gold: 0, stone: 0 }, pop: 0, age: 2 },
-    watch_tower: { name: "Vọng Lâu", size: 1, hp: 750, vision: 9, atk: 10, range: 7, burst: 1, cost: { food: 0, wood: 40, gold: 0, stone: 90 }, pop: 0, age: 2 },
+    watch_tower: { name: "Vọng Lâu", size: 1, hp: 1050, vision: 9, atk: 10, range: 7, burst: 1, cost: { food: 0, wood: 40, gold: 0, stone: 90 }, pop: 0, age: 2 },
     blacksmith: { name: "Lò Rèn Cổ", size: 2, hp: 900, vision: 5, cost: { food: 0, wood: 110, gold: 0, stone: 0 }, pop: 0, age: 2 },
     stable: { name: "Trại Ngựa/Voi", size: 2, hp: 950, vision: 5, cost: { food: 0, wood: 150, gold: 0, stone: 0 }, pop: 0, age: 3 },
     siege_workshop: { name: "Xưởng Khí Giới", size: 2, hp: 1000, vision: 5, cost: { food: 0, wood: 180, gold: 0, stone: 0 }, pop: 0, age: 3 },
-    wall: { name: "Tường Thành", size: 1, hp: 650, vision: 2, cost: { food: 0, wood: 0, gold: 0, stone: 20 }, pop: 0, age: 2 },
-    gate: { name: "Cổng Thành", size: 1, hp: 850, vision: 3, cost: { food: 0, wood: 30, gold: 0, stone: 20 }, pop: 0, age: 2 },
+    wall: { name: "Tường Thành", size: 1, hp: 910, vision: 2, cost: { food: 0, wood: 0, gold: 0, stone: 20 }, pop: 0, age: 2 },
+    gate: { name: "Cổng Thành", size: 1, hp: 1190, vision: 3, cost: { food: 0, wood: 30, gold: 0, stone: 20 }, pop: 0, age: 2 },
     market: { name: "Nhà Chợ", size: 2, hp: 850, vision: 5, cost: { food: 0, wood: 120, gold: 0, stone: 0 }, pop: 0, age: 2 },
-    imperial_citadel: { name: "Hoàng Thành", size: 2, hp: 3200, vision: 11, atk: 16, range: 8.5, burst: 3, cost: { food: 0, wood: 0, gold: 0, stone: 450 }, pop: 10, age: 4 }
+    imperial_citadel: { name: "Hoàng Thành", size: 2, hp: 4480, vision: 11, atk: 16, range: 8.5, burst: 3, cost: { food: 0, wood: 0, gold: 0, stone: 450 }, pop: 10, age: 4 }
   };
 
   const setup = { faction: "dai_viet", aiCount: 1, difficulty: "normal", mapSize: 48, mapType: "river_valley" };
@@ -813,6 +814,14 @@ const updateBattleHud = initBattleHud();
     state.attackMove = false;
     state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(grid, setup.mapSize, mapSeed, [pb].concat(aiCorners.slice(0, setup.aiCount)), () => nextId++) : [];
 
+    state.shrines = placeShrines(state.mapSize, state.grid);
+    state.relic = null;
+    for (const shrine of state.shrines) {
+      const candidates = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      const spot = candidates.find(([dx, dy]) => !isTileBlocked(Math.floor(shrine.x + dx), Math.floor(shrine.y + dy)));
+      if (spot && window.DOTEWild) state.animals.push(window.DOTEWild.mkAnimal(nextId++, "lion",
+        shrine.x + spot[0], shrine.y + spot[1], shrine.x, shrine.y));
+    }
     state.selectedBuildingId = ptc.id;
     cam.x = (pb.tx - pb.ty) * (TILE_W / 2);
     cam.y = (pb.tx + pb.ty + 5) * (TILE_H / 2);
@@ -827,6 +836,7 @@ const updateBattleHud = initBattleHud();
   function spawnBuilding(team, type, tx, ty, aiIndex = 0, underConstruction = false) {
     const def = BLDG_DEFS[type];
     const b = { id: nextId++, team, aiIndex, type, tx, ty, size: def.size, hp: underConstruction ? Math.max(10, Math.round(def.hp * 0.1)) : def.hp, maxHp: def.hp, atkCooldown: 0, progress: underConstruction ? 0 : 1, trainQueue: [] };
+    if (type === "farm") { b.cropAmount = FARM_CAPACITY; b.maxFood = FARM_CAPACITY; }
     state.buildings.push(b);
     for (let dy = 0; dy < def.size; dy++) {
       for (let dx = 0; dx < def.size; dx++) {
@@ -902,7 +912,7 @@ const updateBattleHud = initBattleHud();
 
   function getPopStats(team) {
     const pop = state.units.filter(u => u.team === team).length;
-    const cap = Math.min(70, state.buildings.filter(b => b.team === team).reduce((s, b) => s + (BLDG_DEFS[b.type].pop || 0), 0));
+    const cap = Math.min(POPULATION_LIMIT, state.buildings.filter(b => b.team === team).reduce((s, b) => s + (BLDG_DEFS[b.type].pop || 0), 0));
     return { pop, cap };
   }
 
@@ -1019,18 +1029,7 @@ const updateBattleHud = initBattleHud();
 
   function applyDamage(attacker, target, isBldg, baseDmg) {
     const def = attacker && UNIT_DEFS[attacker.type] ? UNIT_DEFS[attacker.type] : null;
-    let dmg = baseDmg;
-    if (def) {
-      if (isBldg && def.bonusBuilding) dmg = Math.round(dmg * def.bonusBuilding);
-      if (!isBldg) {
-        const tRole = UNIT_DEFS[target.type].role;
-        if (tRole === "elephant" && def.bonusElephant) dmg = Math.round(dmg * def.bonusElephant);
-        if (tRole === "cavalry" && def.bonusCav) dmg = Math.round(dmg * def.bonusCav);
-        if (tRole === "infantry" && def.bonusInf) dmg = Math.round(dmg * def.bonusInf);
-        if (tRole === "ranged" && def.bonusRanged) dmg = Math.round(dmg * def.bonusRanged);
-        if (tRole === "siege" && def.bonusSiege) dmg = Math.round(dmg * def.bonusSiege);
-      }
-    }
+    let dmg = Math.round(baseDmg * counterMultiplier(attacker?.type, target.type, isBldg, def?.bonusBuilding));
     // Blacksmith Armor mitigation for player units
     if (!isBldg && target.team === "player") {
       dmg = Math.max(2, dmg - state.upgrades.armor * 2);
@@ -1255,11 +1254,11 @@ const updateBattleHud = initBattleHud();
     if (u.type === "villager" && u.task === "gather" && u.targetTile) {
         const { tx, ty } = u.targetTile;
         const cell = state.grid[ty]?.[tx];
-        const farmBldg = state.buildings.find(b => b.type === "farm" && b.tx === tx && b.ty === ty &&
+        const farmBldg = state.buildings.find(b => b.type === "farm" && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size &&
           b.team === u.team && b.hp > 0 && (b.progress ?? 1) >= 1 &&
           (u.team !== "enemy" || b.aiIndex === u.aiIndex));
         const resType = farmBldg ? "food" : cell?.res;
-        const hasRes = farmBldg || (cell && cell.resAmt > 0);
+        const hasRes = farmBldg ? (farmBldg.cropAmount ?? FARM_CAPACITY) > 0 : (cell && cell.resAmt > 0);
         if (!hasRes) {
           if (u.team === "enemy") {
             const drop = u.carryAmt > 0 && findDropoff(u.team, u.x, u.y, u.aiIndex);
@@ -1282,7 +1281,12 @@ const updateBattleHud = initBattleHud();
           if (u.gatherTick >= 0.78) {
             u.gatherTick = 0;
             u.carryType = resType;
-            u.carryAmt += 5;
+            const amount = farmBldg ? Math.min(5, farmBldg.cropAmount ?? FARM_CAPACITY) : 5;
+            u.carryAmt += amount;
+            if (farmBldg) {
+              farmBldg.cropAmount = (farmBldg.cropAmount ?? FARM_CAPACITY) - amount;
+              farmBldg.depleted = farmBldg.cropAmount <= 0;
+            }
             if (!farmBldg && cell) {
               cell.resAmt -= 5;
               if (cell.resAmt <= 0) { cell.res = null; cell.resAmt = 0; }
@@ -1399,15 +1403,27 @@ const updateBattleHud = initBattleHud();
     if (enemyTcs.length === 0) endGame(true);
     else if (!playerTc) endGame(false);
 
-    if (!state.gameOver) window.DOTEAI.step(state, aiRules);
+    if (!state.gameOver) {
+      const owner = stepShrines(state.shrines ??= placeShrines(state.mapSize, state.grid), state.units, dt, faction => {
+        if (faction === "player") state.resources.gold += 12;
+        else window.DOTEAI.budget(state, Number(faction.slice(3))).gold += 12;
+      });
+      if (!owner) state.relic = null;
+      else {
+        if (state.relic?.owner !== owner) state.relic = { owner, remaining: 300 };
+        state.relic.remaining -= dt;
+        if (state.relic.remaining <= 0) endGame(owner === "player", true);
+      }
+      if (!state.gameOver) window.DOTEAI.step(state, aiRules);
+    }
   }
 
-  function endGame(victory) {
+  function endGame(victory, relic = false) {
     state.gameOver = true;
     const modal = document.getElementById("modal");
     document.getElementById("setup-panel").style.display = "none";
     document.getElementById("modal-title").textContent = victory ? "THỐNG NHẤT THIÊN HẠ!" : "ĐÌNH LÀNG THẤT THỦ";
-    document.getElementById("modal-sub").textContent = victory
+    document.getElementById("modal-sub").textContent = relic ? (victory ? "Bạn đã giữ toàn bộ Cổ Tự đủ 5 phút!" : "Địch đã giữ toàn bộ Cổ Tự đủ 5 phút.") : victory
       ? `Phe ${state.faction.name} đã đánh bại toàn bộ ${state.aiCount} phe AI!`
       : "Đình Làng đã bị hạ. Hãy dựng Vọng Lâu và nâng cấp Lò Rèn sớm!";
     const stats = state.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }; const score = stats.enemiesKilled * 120 + stats.buildingsBuilt * 80 + stats.resourcesGathered + state.age * 500; const mins = String(Math.floor(stats.elapsedSec / 60)).padStart(2, "0"); const secs = String(Math.floor(stats.elapsedSec % 60)).padStart(2, "0"); document.getElementById("modal-tips").innerHTML = `<strong>Tổng kết trận đấu · ${AGES[state.age - 1].name}</strong><table style="width:100%;margin-top:6px;border-collapse:collapse;font-size:12px;"><tr><td style="padding:2px 0;opacity:0.85;">Điểm tổng kết</td><td style="text-align:right;font-weight:700;color:#FBBF24;">${score.toLocaleString()}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Thời gian</td><td style="text-align:right;font-weight:600;">${mins}:${secs}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Quân địch tiêu diệt</td><td style="text-align:right;font-weight:600;">${stats.enemiesKilled}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Quân đã chiêu mộ</td><td style="text-align:right;font-weight:600;">${stats.unitsTrained}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Công trình đã xây</td><td style="text-align:right;font-weight:600;">${stats.buildingsBuilt}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Tổng tài nguyên khai thác</td><td style="text-align:right;font-weight:600;">${stats.resourcesGathered}</td></tr><tr><td style="padding:2px 0;opacity:0.85;">Cấp Lò Rèn</td><td style="text-align:right;font-weight:600;">Công +${state.upgrades.attack * 2} · Giáp +${state.upgrades.armor * 2}</td></tr></table>`; /*
@@ -1653,6 +1669,14 @@ const updateBattleHud = initBattleHud();
       mctx.fillStyle = u.team === "player" ? "#FACC15" : "#93C5FD";
       mctx.fillRect(u.x * sx - 1, u.y * sy - 1, 2.5, 2.5);
     }
+    const relic = document.getElementById("relic-countdown");
+    const remaining = Math.max(0, Math.ceil(state.relic?.remaining ?? 0));
+    relic.hidden = !state.relic;
+    if (state.relic) relic.textContent = `Thánh Tích · ${state.relic.owner === "player" ? "Ta" : "AI"} · ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
+    for (const shrine of state.shrines ?? []) {
+      mctx.fillStyle = shrine.owner === "player" ? "#9de19b" : shrine.owner ? "#f28b7c" : "#f9db94";
+      mctx.fillRect(shrine.x * sx - 2, shrine.y * sy - 2, 4, 4);
+    }
     updateBattleHud(state, cam, R3D, BLDG_DEFS, selectBuildingFromHud);
   }
 
@@ -1875,7 +1899,8 @@ const updateBattleHud = initBattleHud();
   function canPlaceBuilding(tx, ty, size) {
     for (let dy = 0; dy < size; dy++) {
       for (let dx = 0; dx < size; dx++) {
-        if (isTileBlocked(tx + dx, ty + dy)) return false;
+        if (isTileBlocked(tx + dx, ty + dy) || (state.shrines ?? []).some(shrine =>
+          Math.floor(shrine.x) === tx + dx && Math.floor(shrine.y) === ty + dy)) return false;
         if (state.grid[ty + dy][tx + dx].terrain === "bridge") return false;
         if ((state.fog[ty + dy]?.[tx + dx] ?? 0) === 0) return false;
       }
@@ -2310,7 +2335,7 @@ const updateBattleHud = initBattleHud();
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
-function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
  nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id), ...state.animals.map(a => a.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
