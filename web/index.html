@@ -632,6 +632,9 @@ const updateBattleHud = initBattleHud();
     catapult: { name: "Pháo Thạch", hp: 130, atk: 38, range: 7.8, vision: 8, speed: 1.2, cost: { food: 0, wood: 140, gold: 110, stone: 0 }, age: 3, role: "siege", proj: "boulder", splash: 2.1, bonusBuilding: 2.5 }
   };
 
+  let dockClockAcc = 0;
+  const AGE_RESEARCH_SEC = { 2: 45, 3: 60, 4: 75 };
+  const fmtClock = (s) => { const t = Math.max(0, Math.ceil(s)); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
   const TRAIN_TIMES = { fishing_boat: 8, galley: 11, fire_ship: 12, healer: 9, villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
 
   const BLDG_DEFS = {
@@ -791,7 +794,7 @@ const updateBattleHud = initBattleHud();
       grid,
       fog,
       resources: window.DOTEValley ? window.DOTEValley.startingResources(setup.mapSize) : { food: 200, wood: 200, gold: 50, stone: 100 },
-      age: 1, stats: { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 },
+      age: 1, ageResearch: null, stats: { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 },
       upgrades: { attack: 0, armor: 0 }, // Blacksmith upgrades 0..3
       buildings: [],
       units: [],
@@ -1119,6 +1122,11 @@ const updateBattleHud = initBattleHud();
 
   function stepSimulation(dt) {
     if (!state.running || state.gameOver) return; if (state.stats) state.stats.elapsedSec += dt;
+    tickAgeResearch(dt);
+    if (state.selectedBuildingId != null) {
+      const sb = state.buildings.find(b => b.id === state.selectedBuildingId);
+      if (sb && sb.type === "town_center" && (state.ageResearch || sb.trainQueue?.length)) { dockClockAcc += dt; if (dockClockAcc >= 1) { dockClockAcc = 0; renderCommandDock(); } }
+    }
 
     fogTick += dt;
     if (fogTick >= 0.25) { fogTick = 0; recomputeFog(); }
@@ -1934,10 +1942,14 @@ const updateBattleHud = initBattleHud();
 
       if (selBldg.type === "town_center") {
         addBtn("Sinh Dân Làng", "50 Thực", pop < cap && canAfford(UNIT_DEFS.villager.cost), false, () => trainFrom(selBldg, "villager"));
+        const qh = selBldg.trainQueue?.[0];
+        if (qh) addBtn(`Dân làng · ${fmtClock(qh.remaining)}`, `${selBldg.trainQueue.length} trong hàng`, false, false, () => {});
         if (state.age < 4) {
           const next = AGES[state.age];
           const c = adjustedCost(next.cost, state.faction.ageCostMult);
-          addBtn(`Lên ${next.name.split(" · ")[1]}`, formatCost(c), canAfford(c), false, () => advanceAge());
+          const ar = state.ageResearch;
+          if (ar) addBtn(`Lên Đời ${ar.target} · ${fmtClock(ar.remaining)}`, ar.buildingId === selBldg.id ? "Đang nghiên cứu" : "Đình khác đang nghiên cứu", false, false, () => {});
+          else addBtn(`Lên ${next.name.split(" · ")[1]}`, `${formatCost(c)} · ${AGE_RESEARCH_SEC[next.age]}s`, canAfford(c), false, () => advanceAge(selBldg));
         }
       } else if (selBldg.type === "barracks") {
         addBtn("Đao Binh", "50T 15V", pop < cap && canAfford(UNIT_DEFS.swordsman.cost), false, () => trainFrom(selBldg, "swordsman"));
@@ -2090,15 +2102,48 @@ const updateBattleHud = initBattleHud();
     renderCommandDock();
   }
 
-  function advanceAge() {
+  // Age-up is a timed research (45/60/75 s) that runs beside villager training.
+  // One research per faction; cost is paid once when the command is accepted.
+  function sanitizeAgeResearch(r, age) {
+    if (!r || typeof r !== "object") return null;
+    const target = Number(r.target), remaining = Number(r.remaining), total = Number(r.total);
+    if (target !== age + 1 || target < 2 || target > 4 || !Number.isFinite(remaining) || !Number.isFinite(total) || total <= 0) return null;
+    return { target, remaining: Math.max(0, Math.min(remaining, total)), total, buildingId: r.buildingId ?? null, cost: r.cost && typeof r.cost === "object" ? r.cost : null };
+  }
+  function ageResearchHost(r) {
+    const tc = state.buildings.find(b => b.id === r.buildingId);
+    return tc && tc.team === "player" && tc.type === "town_center" && tc.hp > 0 && (tc.progress ?? 1) >= 1 ? tc : null;
+  }
+  function tickAgeResearch(dt) {
+    const r = state.ageResearch;
+    if (!r) return;
+    try {
+      if (r.target !== state.age + 1) { state.ageResearch = null; return; }
+      if (!ageResearchHost(r)) {
+        if (r.cost) for (const k of Object.keys(r.cost)) state.resources[k] += r.cost[k] || 0;
+        state.ageResearch = null; showToast("Đình Làng bị phá — hủy nghiên cứu lên đời, hoàn lại tài nguyên."); updateHud(); renderCommandDock(); return;
+      }
+      r.remaining -= dt;
+      if (r.remaining > 0) return;
+      state.ageResearch = null; // clear first so completion can only apply once
+      state.age = r.target;
+      sfxAgeUp(); showToast("Đã tiến lên " + AGES[state.age - 1].name + "!");
+      updateHud(); renderCommandDock();
+    } catch (e) { state.ageResearch = null; }
+  }
+  function advanceAge(tc) {
     if (state.age >= 4) return;
+    if (state.ageResearch) { showToast("Đang có nghiên cứu lên đời — chờ hoàn tất!"); return; }
+    tc = tc || state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0 && (b.progress ?? 1) >= 1);
+    if (!tc || (tc.progress ?? 1) < 1) { showToast("Cần một Đình Làng đã hoàn thành!"); return; }
     const next = AGES[state.age];
     const cost = adjustedCost(next.cost, state.faction.ageCostMult);
     if (!canAfford(cost)) { showToast("Chưa đủ tài nguyên lên đời!"); return; }
     spend(cost);
-    state.age += 1;
-    sfxAgeUp();
-    showToast(`Đã tiến lên ${next.name}!`);
+    const total = AGE_RESEARCH_SEC[next.age];
+    state.ageResearch = { target: next.age, remaining: total, total, buildingId: tc.id, cost: { ...cost } };
+    sfxClick();
+    showToast("Bắt đầu nghiên cứu " + next.name + " (" + total + "s)");
     updateHud();
     renderCommandDock();
   }
@@ -2560,7 +2605,7 @@ const updateBattleHud = initBattleHud();
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
-function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, herbalMedicine: state.herbalMedicine, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], herbalMedicine: !!d.herbalMedicine, shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, ageResearch: state.ageResearch ?? null, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, herbalMedicine: state.herbalMedicine, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, ageResearch: sanitizeAgeResearch(d.ageResearch, d.age || 1), resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], herbalMedicine: !!d.herbalMedicine, shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
  nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id), ...state.animals.map(a => a.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();

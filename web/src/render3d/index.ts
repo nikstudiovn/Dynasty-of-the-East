@@ -136,6 +136,24 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     octx.fillRect(x - w / 2, y, w * clamp(k, 0, 1), 3);
   }
 
+  function drawProgressBar(x: number, y: number, w: number, k: number, label: string, color: string, small: boolean): void {
+    const h = small ? 9 : 12;
+    octx.fillStyle = "rgba(10, 8, 6, 0.88)";
+    octx.fillRect(x - w / 2 - 1, y - 1, w + 2, h + 2);
+    octx.fillStyle = color;
+    octx.fillRect(x - w / 2, y, w * clamp(k, 0, 1), h);
+    octx.font = `bold ${small ? 8 : 10}px system-ui`;
+    octx.textAlign = "center";
+    octx.textBaseline = "middle";
+    octx.lineWidth = 2.5;
+    octx.strokeStyle = "#1b100c";
+    octx.strokeText(label, x, y + h / 2 + 0.5);
+    octx.fillStyle = "#fdf3d6";
+    octx.fillText(label, x, y + h / 2 + 0.5);
+    octx.textBaseline = "alphabetic";
+  }
+  const clock = (s: number) => { const t = Math.max(0, Math.ceil(s)); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+
   function drawOverlay(state: any): void {
     const W = s3.width, H = s3.height;
     octx.setTransform(1, 0, 0, 1, 0, 0);
@@ -174,6 +192,24 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         if (!p.visible || p.x < -40 || p.y < -40 || p.x > W + 40 || p.y > H + 40) continue;
         drawBar(p.x, p.y, (b.size || 1) * 22, b.hp / b.maxHp, b.team === "player");
       }
+      // Town Center progress: age research always, villager training only while selected.
+      try {
+        const research = state.ageResearch;
+        const small = H < 520 || W < 520;
+        for (const e of buildings.entries()) {
+          const b = e.b;
+          if (!e.group.visible || b.team !== "player" || b.type !== "town_center" || (b.progress ?? 1) < 1) continue;
+          const bars: { k: number; label: string; color: string }[] = [];
+          if (research && research.buildingId === b.id) bars.push({ k: 1 - research.remaining / research.total, label: `Lên Đời ${research.target} · ${clock(research.remaining)}`, color: "#c9902f" });
+          const head = b.trainQueue?.[0];
+          if (head && state.selectedBuildingId === b.id) bars.push({ k: 1 - head.remaining / head.total, label: `Dân làng · ${clock(head.remaining)}`, color: "#4fae8c" });
+          if (!bars.length) continue;
+          const p = s3.project(e.group.position.x, e.group.position.y + e.parts.top * e.group.scale.y + 0.15, e.group.position.z);
+          if (!p.visible || p.x < -60 || p.y < -60 || p.x > W + 60 || p.y > H + 60) continue;
+          const bw = small ? 78 : 104, step = small ? 11 : 14;
+          bars.forEach((bar, i) => drawProgressBar(p.x, p.y - 8 - (i + 1) * step, bw, bar.k, bar.label, bar.color, small));
+        }
+      } catch { /* overlay must not stop the frame */ }
       // unit HP bars
       for (const r of units.allRigs()) {
         const u = r.u;

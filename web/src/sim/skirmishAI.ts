@@ -10,6 +10,7 @@ const production: Record<string, string> = {
   cavalry: "stable", horse_archer: "stable", war_elephant: "stable", catapult: "siege_workshop"
 };
 const minimumAgeTime = [0, 145, 350, 620];
+const ageResearchSeconds = [0, 0, 45, 60, 75];
 const pressure = {
   easy: { opening: 210, interval: 155, group: 5, reserve: 3, workers: 13 },
   normal: { opening: 165, interval: 115, group: 8, reserve: 3, workers: 16 },
@@ -34,6 +35,7 @@ type Intel = PathPt & { seenAt: number };
 interface Brain {
   idx: number;
   age: number;
+  research?: { target: number; done: number };
   factionId?: FactionId;
   bank?: ResourcePool;
   nextAttack?: number;
@@ -326,13 +328,18 @@ export function step(state: Match, rules: Rules) {
     }
   }
 
-  const nextAge = rules.ages[brain.age];
+  if (brain.research && (brain.research.target !== brain.age + 1 || !Number.isFinite(brain.research.done))) brain.research = undefined;
+  if (brain.research && now >= brain.research.done) {
+    brain.age = brain.research.target;
+    brain.research = undefined;
+    rules.notify(`Phe AI ${brain.idx} đã tiến lên Đời ${brain.age}!`);
+  }
+  const nextAge = brain.research ? undefined : rules.ages[brain.age];
   const saveForAge = nextAge && now + 30 >= minimumAgeTime[brain.age] && workers.length >= 6 &&
     (brain.age !== 1 || buildings.some(b => b.type === "barracks" && ready(b))) && !threat;
   if (saveForAge && now >= minimumAgeTime[brain.age] && afford(bank, nextAge.cost)) {
     pay(bank, nextAge.cost);
-    brain.age++;
-    rules.notify(`Phe AI ${brain.idx} đã tiến lên Đời ${brain.age}!`);
+    brain.research = { target: brain.age + 1, done: now + ageResearchSeconds[brain.age + 1] };
   }
 
   const cap = Math.min(POPULATION_LIMIT, buildings.filter(ready).reduce((sum, b) => sum + rules.buildingDefs[b.type].pop, 0));
