@@ -20,19 +20,19 @@ import * as construction from "./sim/construction";
 import * as gameplayExtras from "./sim/gameplayExtras";
 
 (window as any).PDAI = skirmishAI;
-(window as any).PDSim = steering;
-(window as any).PDInput = pinch;
-(window as any).PD3D = render3d;
-(window as any).PDValley = valley;
-(window as any).PDPath = pathfinding;
-(window as any).PDTactics = tactics;
-(window as any).PDWild = wildlife;
-(window as any).PDNative = nativeBridge;
-(window as any).PDI18n = i18n;
-(window as any).PDServerHealth = serverHealth;
-(window as any).PDSelect = touchSelect;
-(window as any).PDBuild = construction;
-(window as any).PDGameplay = gameplayExtras;
+(window as any).DOTESim = steering;
+(window as any).DOTEInput = pinch;
+(window as any).DOTE3D = render3d;
+(window as any).DOTEValley = valley;
+(window as any).DOTEPath = pathfinding;
+(window as any).DOTETactics = tactics;
+(window as any).DOTEWild = wildlife;
+(window as any).DOTENative = nativeBridge;
+(window as any).DOTEI18n = i18n;
+(window as any).DOTEServerHealth = serverHealth;
+(window as any).DOTESelect = touchSelect;
+(window as any).DOTEBuild = construction;
+(window as any).DOTEGameplay = gameplayExtras;
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initLobbyUI);
