@@ -1,4 +1,5 @@
 // Dynasty of the East — pooled VFX (smoke, flames, slash arcs, dust, craters, shockwaves).
+import { fcx, fcy, fw, fh, fmax } from "../sim/footprint";
 // All particles live in one preallocated pool (MAX_PARTICLES). Nothing is allocated per frame.
 
 export const MAX_PARTICLES = 160;
@@ -81,8 +82,8 @@ export function reset(): void {
 /** Melee hit: a 0.18s slash arc over the target (swordsman / spearman / cavalry only). */
 export function onHit(attacker: any, target: any, isBldg: boolean): void {
   if (!attacker || !MELEE[attacker.type] || !target) return;
-  const tx = isBldg ? target.tx + target.size / 2 : target.x;
-  const ty = isBldg ? target.ty + target.size / 2 : target.y;
+  const tx = isBldg ? fcx(target) : target.x;
+  const ty = isBldg ? fcy(target) : target.y;
   const ax = isoX(attacker.x, attacker.y), ay = isoY(attacker.x, attacker.y);
   const wx = isoX(tx, ty), wy = isoY(tx, ty) + TILE_H / 2;
   const ang = Math.atan2(wy - ay, wx - ax);
@@ -140,9 +141,9 @@ function emitEnvironment(state: any) {
     if (b.hp <= 0 || !visible(state, b.tx, b.ty)) continue;
     const r = b.hp / b.maxHp;
     if (r >= 0.5) continue;
-    const cx = isoX(b.tx + (b.size - 1) / 2, b.ty + (b.size - 1) / 2);
-    const cy = isoY(b.tx + (b.size - 1) / 2, b.ty + (b.size - 1) / 2) + TILE_H / 2 - b.size * 14;
-    const jx = (Math.random() - 0.5) * b.size * 22;
+    const cx = isoX(b.tx + (fw(b) - 1) / 2, b.ty + (fh(b) - 1) / 2);
+    const cy = isoY(b.tx + (fw(b) - 1) / 2, b.ty + (fh(b) - 1) / 2) + TILE_H / 2 - fmax(b) * 14;
+    const jx = (Math.random() - 0.5) * fmax(b) * 22;
     if (Math.random() < 0.55) spawn(K.Smoke, cx + jx, cy, 3 + Math.random() * 4, -14 - Math.random() * 8, 1.4 + Math.random() * 0.6, 4, 0, false);
     if (r < 0.25) {
       spawn(K.Flame, cx + jx, cy + 6, 0, -22 - Math.random() * 10, 0.5 + Math.random() * 0.25, 4, 0, false);

@@ -1,4 +1,5 @@
 // Dynasty of the East — atmosphere: ink-wash fog edges, warm building glow, ambient wind.
+import { fw, fh, fmax } from "../sim/footprint";
 
 const TILE_W = 52;
 const TILE_H = 26;
@@ -116,9 +117,9 @@ export function drawGlows(ctx: CanvasRenderingContext2D, state: any, nowMs: numb
     if (b.progress !== undefined && b.progress < 1) continue;
     const f = state.fog[Math.min(state.fog.length - 1, b.ty)]?.[Math.min(state.fog.length - 1, b.tx)] ?? 0;
     if (f === 0 || (b.team !== "player" && f !== 2)) continue;
-    const mx = b.tx + (b.size - 1) / 2, my = b.ty + (b.size - 1) / 2;
+    const mx = b.tx + (fw(b) - 1) / 2, my = b.ty + (fh(b) - 1) / 2;
     const cx = (mx - my) * (TILE_W / 2), cy = (mx + my) * (TILE_H / 2) + TILE_H / 2;
-    const gw = (b.size === 2 ? 190 : 130) * (b.type === "imperial_citadel" ? 1.2 : 1);
+    const gw = (fmax(b) >= 2 ? 190 : 130) * (b.type === "imperial_citadel" ? 1.2 : 1);
     const gh = gw / 2;
     ctx.globalAlpha = (f === 1 ? 0.5 : 1) * flick;
     ctx.drawImage(glow, cx - gw / 2, cy - gh / 2 - 8, gw, gh);
