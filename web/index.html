@@ -482,6 +482,7 @@
   </div>
 
   <!-- SETUP / RESULT MODAL -->
+  <button type="button" id="btn-dote-cancel" class="dote-cancel-btn" aria-label="Hủy" hidden>✕ Hủy</button>
   <div id="modal">
     <div class="modal-card">
       <h1 id="modal-title">DYNASTY OF THE EAST</h1>
@@ -1703,7 +1704,8 @@ const updateBattleHud = initBattleHud();
   }
 
   function drawSelectionPortrait(selBldg, selUnit) { const cvs = document.getElementById("sel-portrait"); if (!cvs) return; const p = cvs.getContext("2d"); const dpr = Math.min(window.devicePixelRatio || 1, 2); cvs.width = 48 * dpr; cvs.height = 48 * dpr; p.setTransform(dpr, 0, 0, dpr, 0, 0); p.clearRect(0, 0, 48, 48); p.fillStyle = "#1A0F0A"; p.fillRect(0, 0, 48, 48); p.strokeStyle = "rgba(250, 204, 21, 0.28)"; p.strokeRect(1.5, 1.5, 45, 45); p.save(); p.imageSmoothingEnabled = true; p.translate(3, 3); p.scale(42 / 36, 42 / 36); const tc = (selBldg && selBldg.team !== "player") || (selUnit && selUnit.team !== "player") ? "#3B82F6" : "#DC2626"; if (selBldg) { const t = selBldg.type; p.fillStyle = "#1A120E"; if (t === "town_center" || t === "imperial_citadel") { p.fillRect(6, 16, 24, 15); p.fillRect(3, 12, 30, 7); p.fillRect(7, 8, 22, 6); p.fillRect(15, 3, 6, 7); } else if (t === "watch_tower") { p.fillRect(10, 9, 16, 22); p.fillRect(8, 6, 20, 6); } else if (t === "farm") { p.fillRect(4, 17, 28, 14); p.fillRect(6, 13, 7, 14); p.fillRect(14, 11, 8, 16); p.fillRect(23, 14, 7, 13); } else if (t === "blacksmith") { p.fillRect(6, 14, 24, 17); p.fillRect(14, 8, 8, 8); } else { p.fillRect(6, 16, 24, 15); p.fillRect(4, 11, 28, 8); } p.fillStyle = "#4A2C1D"; p.fillRect(7, 17, 22, 13); p.fillStyle = "#8B5E3C"; p.fillRect(9, 19, 18, 9); if (t === "town_center" || t === "imperial_citadel") { p.fillStyle = tc; p.fillRect(4, 13, 28, 5); p.fillRect(8, 9, 20, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 4, 4, 5); p.fillRect(14, 22, 8, 8); } else if (t === "watch_tower") { p.fillStyle = "#64748B"; p.fillRect(11, 10, 14, 20); p.fillStyle = tc; p.fillRect(9, 7, 18, 4); p.fillStyle = "#FACC15"; p.fillRect(16, 13, 4, 5); } else if (t === "farm") { p.fillStyle = "#78350F"; p.fillRect(5, 18, 26, 12); p.fillStyle = "#EAB308"; p.fillRect(7, 14, 5, 12); p.fillRect(15, 12, 6, 14); p.fillRect(24, 15, 5, 11); } else if (t === "blacksmith") { p.fillStyle = "#475569"; p.fillRect(7, 15, 22, 15); p.fillStyle = "#F97316"; p.fillRect(13, 21, 10, 7); p.fillStyle = "#FACC15"; p.fillRect(15, 9, 6, 6); } else { p.fillStyle = tc; p.fillRect(5, 12, 26, 6); p.fillStyle = "#FACC15"; p.fillRect(15, 21, 6, 9); } } else if (selUnit) { const u = selUnit.type; p.fillStyle = "#1A120E"; p.fillRect(12, 8, 12, 11); p.fillRect(9, 17, 18, 14); if (u === "villager") { p.fillRect(8, 5, 20, 6); p.fillRect(12, 3, 12, 4); } else if (u === "war_elephant") { p.fillRect(6, 12, 24, 18); p.fillRect(4, 21, 7, 6); p.fillRect(25, 21, 7, 6); p.fillRect(11, 7, 14, 7); } else if (u === "catapult") { p.fillRect(5, 21, 26, 8); p.fillRect(14, 8, 7, 16); p.fillRect(12, 5, 10, 7); } else if (u === "cavalry" || u === "horse_archer") { p.fillRect(7, 17, 22, 14); p.fillRect(11, 7, 14, 12); p.fillRect(13, 4, 10, 5); } else if (u === "archer" || u === "chuko_nu") { p.fillRect(25, 9, 5, 18); p.fillRect(11, 5, 14, 6); } else { p.fillRect(8, 4, 16, 7); p.fillRect(9, 8, 18, 20); p.fillRect(25, 7, 5, 18); } p.fillStyle = "#FDE68A"; p.fillRect(13, 9, 10, 9); p.fillStyle = tc; p.fillRect(10, 18, 16, 12); if (u === "villager") { p.fillStyle = "#EAB308"; p.fillRect(9, 6, 18, 4); p.fillRect(13, 4, 10, 2); } else if (u === "war_elephant") { p.fillStyle = "#64748B"; p.fillRect(7, 13, 22, 16); p.fillStyle = "#E2E8F0"; p.fillRect(5, 22, 5, 4); p.fillRect(26, 22, 5, 4); p.fillStyle = "#FACC15"; p.fillRect(12, 8, 12, 5); } else if (u === "catapult") { p.fillStyle = "#78350F"; p.fillRect(6, 22, 24, 6); p.fillRect(15, 9, 5, 14); p.fillStyle = "#94A3B8"; p.fillRect(13, 6, 8, 5); } else if (u === "cavalry" || u === "horse_archer") { p.fillStyle = "#92400E"; p.fillRect(8, 18, 20, 12); p.fillStyle = tc; p.fillRect(12, 8, 12, 10); p.fillStyle = "#FACC15"; p.fillRect(14, 5, 8, 3); } else if (u === "archer" || u === "chuko_nu") { p.fillStyle = "#15803D"; p.fillRect(10, 18, 16, 12); p.fillStyle = "#FACC15"; p.fillRect(26, 10, 3, 16); p.fillStyle = tc; p.fillRect(12, 6, 12, 4); } else { p.fillStyle = tc; p.fillRect(11, 5, 14, 5); p.fillStyle = "#FACC15"; p.fillRect(9, 9, 18, 2); p.fillRect(26, 8, 3, 16); } } else { p.fillStyle = tc; p.fillRect(10, 9, 16, 18); p.fillStyle = "#FACC15"; p.fillRect(14, 13, 8, 10); } p.restore(); } function renderCommandDock() { try { updateTacticBtns(); } catch (e) {}
-    const wrap = document.getElementById("cmd-buttons");
+  updateDoteCancelBtn();
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    const wrap = document.getElementById("cmd-buttons");
     const title = document.getElementById("sel-title");
     wrap.innerHTML = "";
 
@@ -1782,32 +1784,7 @@ const updateBattleHud = initBattleHud();
     if (selUnits.length > 0) {
       const hasVil = selUnits.some(u => u.type === "villager");
       title.textContent = `Đang chọn ${selUnits.length} đơn vị${hasVil ? " (chạm tài nguyên hoặc xây nhà)" : " (chạm địch đánh / kéo khung chọn cụm)"}`;
-        const addCancelBtn = (id, label, sub, onClick) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.id = id;
-      btn.className = "act-btn act-btn--cancel";
-      btn.innerHTML = `<span>${label}</span><span class="act-cost">${sub}</span>`;
-      btn.addEventListener("click", () => { ensureAudio(); sfxClick(); onClick(); });
-      wrap.appendChild(btn);
-    };
-    addCancelBtn("btn-cancel-select", "✕ Hủy chọn", "Bỏ chọn quân", () => {
-      state.selectedIds = [];
-      state.selectedBuildingId = null;
-      state.buildMode = null;
-      state.attackMove = false;
-      canvas.classList.remove("build-mode");
-      setBoxSelectMode(false);
-      updateTacticBtns();
-      renderCommandDock();
-    });
-    if (state.buildMode) {
-      addCancelBtn("btn-cancel-build", "✕ Hủy đặt nhà", "Giữ chọn dân", () => {
-        state.buildMode = null;
-        canvas.classList.remove("build-mode");
-        renderCommandDock();
-      });
-    } 
+
  if (hasVil) {
         for (const key of ["house", "depot", "farm", "barracks", "archery_range", "watch_tower", "wall", "gate", "market", "blacksmith", "stable", "siege_workshop", "imperial_citadel"]) {
           const d = BLDG_DEFS[key];
@@ -1830,7 +1807,9 @@ const updateBattleHud = initBattleHud();
     }
     title.textContent = "Chạm Đình Làng, Dân Làng hoặc bật Kéo chọn để quét cụm quân";
   }
-
+    function updateDoteCancelBtn() { const btn = document.getElementById("btn-dote-cancel"); if (!btn) return; const show = Boolean(state && state.running && !state.gameOver && (state.buildMode || state.selectedIds.length > 0)); btn.hidden = !show; if (show) btn.setAttribute("aria-label", state.buildMode ? "Hủy đặt công trình" : "Hủy chọn đơn vị"); }
+ const doteCancelBtn = document.getElementById("btn-dote-cancel");
+ if (doteCancelBtn) { doteCancelBtn.addEventListener("pointerdown", e => { e.stopPropagation(); }); doteCancelBtn.addEventListener("click", e => { e.stopPropagation(); if (!state || !canControlBattle()) return; ensureAudio(); sfxClick(); if (state.buildMode) { state.buildMode = null; canvas.classList.remove("build-mode"); renderCommandDock(); } else if (state.selectedIds.length > 0) { state.selectedIds = []; state.attackMove = false; setBoxSelectMode(false); updateTacticBtns(); renderCommandDock(); } }); } 
   function selectedArmy() { return state ? state.units.filter(u => state.selectedIds.includes(u.id) && u.type !== "villager") : []; }
   function updateTacticBtns() {
     const am = document.getElementById("btn-attack-move"), st = document.getElementById("btn-stance");
@@ -2230,13 +2209,7 @@ const updateBattleHud = initBattleHud();
   window.addEventListener("blur", cancelCanvasGesture);
   document.addEventListener("visibilitychange", () => { if (document.hidden) cancelCanvasGesture(); });
 
-  miniCanvas.addEventListener("pointerdown", e => {
-    if (!canControlBattle() || !e.isPrimary || e.button !== 0) return;
-    const r = miniCanvas.getBoundingClientRect();
-    const tx = Math.max(0, Math.min(state.mapSize, ((e.clientX - r.left) / r.width) * state.mapSize));
-    const ty = Math.max(0, Math.min(state.mapSize, ((e.clientY - r.top) / r.height) * state.mapSize));
-    cam.x = (tx - ty) * (TILE_W / 2); cam.y = (tx + ty) * (TILE_H / 2);
-  });
+
 
   document.getElementById("btn-box-select").addEventListener("click", () => {
     ensureAudio();
