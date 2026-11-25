@@ -447,6 +447,7 @@
         <button class="icon-btn" id="btn-quality" title="Chuyển mức chất lượng đồ họa 3D">Đồ họa: Tự động</button>
         <button class="icon-btn" id="btn-music" title="Bật/Tắt nhạc nền Á Đông">Nhạc: Bật</button>
         <button class="icon-btn" id="btn-sound" title="Bật/Tắt âm thanh">Âm: Bật</button>
+        <button class="icon-btn" id="btn-combat-text" title="Bật/Tắt số sát thương và tài nguyên nổi">Số chiến đấu: Bật</button>
         <button class="icon-btn" id="btn-save" title="Lưu ván đấu vào bộ nhớ máy">Lưu</button>
         <button class="icon-btn" id="btn-restart" title="Cài đặt &amp; Chơi lại">Chơi lại</button>
       </div>
@@ -544,7 +545,7 @@
     </div>
   </div>
 </div>
-  <div id="pause-modal" style="display:none"><div class="pd-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="pd-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="pd-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button></div></div></div>
+  <div id="pause-modal" style="display:none"><div class="pd-pause-card"><h2>Tạm Dừng Trận Đấu</h2><div class="pd-pause-actions"><button type="button" class="primary-btn" id="btn-pause-resume">Tiếp tục</button><button type="button" class="icon-btn" id="btn-pause-save">Lưu trận</button><button type="button" class="icon-btn" id="btn-pause-restart">Chơi lại</button><button type="button" class="icon-btn" id="btn-pause-home">Về Menu Chính</button></div><div class="pd-pause-quick-settings"><button type="button" class="icon-btn" id="btn-pause-music">Nhạc: Bật</button><button type="button" class="icon-btn" id="btn-pause-sound">Âm: Bật</button><button type="button" class="icon-btn" id="btn-pause-quality">Đồ họa: Tự động</button><button type="button" class="icon-btn" id="btn-pause-atmosphere">Trời: Tự động</button><button type="button" class="icon-btn" id="btn-pause-combat-text">Số chiến đấu: Bật</button></div></div></div>
   
 <script type="module">
 import "./src/ui/hudTheme.css";
@@ -890,6 +891,11 @@ const updateBattleHud = initBattleHud();
     }
   }
 
+  // Visual-only hook into the 3D renderer, called after a gameplay step is resolved. Never throws.
+  function visualFx(type, data) {
+    try { if (R3D && R3D.visualEvent) R3D.visualEvent(type, data); } catch (e) { /* effects must not stop the match */ }
+  }
+
   function addFloat(x, y, text, color = "#F5B841") {
     state.floats.push({ x, y, text, color, life: 1.05 });
   }
@@ -1034,6 +1040,7 @@ const updateBattleHud = initBattleHud();
     const tx = isBldg ? target.tx + target.size / 2 : target.x;
     const ty = isBldg ? target.ty + target.size / 2 : target.y;
     addFloat(tx, ty - 0.5, `-${dmg}`, "#EF4444");
+    visualFx("hit", { x: tx, y: ty, dmg, targetId: target.id, isBldg, team: target.team, melee: Boolean(def && !def.proj) });
     if (window.PDGfx) window.PDGfx.vfx.onHit(attacker, target, isBldg);
 
     if (def && def.splash) {
@@ -1055,7 +1062,7 @@ const updateBattleHud = initBattleHud();
       findDropoff: (team, x, y) => findDropoff(team, x, y),
       foodMult: () => state.faction.foodWoodMult,
       atk: () => 10 + state.upgrades.attack * 2, // hunting spear
-      onHit: (a, u, dmg, killed) => { addFloat(a.x, a.y - 0.5, `-${dmg}`, "#F59E0B"); sfxHit(); if (killed) showToast(`Đã hạ ${window.PDWild.ANIMAL_DEFS[a.type].name} — thu hoạch thịt!`); }
+      onHit: (a, u, dmg, killed) => { addFloat(a.x, a.y - 0.5, `-${dmg}`, "#F59E0B"); visualFx("hit", { x: a.x, y: a.y, dmg, targetId: null, melee: true }); sfxHit(); if (killed) showToast(`Đã hạ ${window.PDWild.ANIMAL_DEFS[a.type].name} — thu hoạch thịt!`); }
     };
     return _huntCtx;
   }
@@ -1290,6 +1297,7 @@ const updateBattleHud = initBattleHud();
         if (u.team === "player" && u.carryType && u.carryAmt > 0) {
           state.resources[u.carryType] += u.carryAmt; if (state.stats) state.stats.resourcesGathered += u.carryAmt;
           addFloat(u.x, u.y - 0.6, `+${u.carryAmt}`, "#F5B841");
+          visualFx("deposit", { x: u.x, y: u.y, amount: u.carryAmt, res: u.carryType });
           updateHud();
         }
         if (u.team === "enemy" && u.carryType && u.carryAmt > 0) {
@@ -1315,7 +1323,7 @@ const updateBattleHud = initBattleHud();
         window.PDWild.stepHunter(huntCtx(), u, dt);
       } else if (u.type === "villager" && u.task === "garrison") {
         const tc = state.buildings.find(b => b.team === "player" && b.type === "town_center" && b.hp > 0);
-        if (tc && Math.hypot(tc.tx + 1 - u.x, tc.ty + 1 - u.y) < 2.2) { if (state.garrisonedCount < 10) { u.garrisoned = true; u.task = "idle"; state.garrisonedCount += 1; addFloat(tc.tx + 1, tc.ty, "Trú ẩn", "#60A5FA"); updateHud(); } else { u.task = "idle"; } } else if (tc) { u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } else { u.task = "idle"; } }
+        if (tc && Math.hypot(tc.tx + 1 - u.x, tc.ty + 1 - u.y) < 2.2) { if (state.garrisonedCount < 10) { u.garrisoned = true; u.task = "idle"; state.garrisonedCount += 1; addFloat(tc.tx + 1, tc.ty, "Trú ẩn", "#60A5FA"); visualFx("text", { x: tc.tx + 1, y: tc.ty, text: "Trú ẩn", color: "#7FB3E6" }); updateHud(); } else { u.task = "idle"; } } else if (tc) { u.path = findPath(u.x, u.y, tc.tx + 1, tc.ty + 1); } else { u.task = "idle"; } }
 
       if (u.task === "attack" && u.targetEntityId) {
         const entity = combatTargets.get(u.targetEntityId);
@@ -2046,6 +2054,7 @@ const updateBattleHud = initBattleHud();
         u.task = "attack"; u.targetEntityId = enemyTarget.id; u.manualAtk = true; u.amDest = null;
         u.path = findPath(u.x, u.y, tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + 1, tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + 1);
       }
+      visualFx("command", { x: tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + tappedEnemyBldg.size / 2, y: tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + tappedEnemyBldg.size / 2, kind: "attack" });
       sfxClick(); showToast("Đã ra lệnh tấn công!"); return;
     }
 
@@ -2060,6 +2069,7 @@ const updateBattleHud = initBattleHud();
           u.task = "attack_move"; u.targetEntityId = null; u.manualAtk = false; u.amDest = { x: dx, y: dy };
           u.path = findPath(u.x, u.y, dx, dy, "player");
         }
+        visualFx("command", { x: tx + 0.5, y: ty + 0.5, kind: "attack" });
         sfxClick(); showToast("Đánh tiến! Quân sẽ giao chiến mọi địch gặp trên đường.");
         return;
       }
@@ -2117,6 +2127,7 @@ const updateBattleHud = initBattleHud();
           const slot = slots && slots.get(u.id);
           u.task = "move"; u.targetEntityId = null; u.amDest = null; u.path = slot ? findPath(u.x, u.y, slot.x, slot.y) : findPath(u.x, u.y, tx, ty);
         }
+        if (movers.length > 0) visualFx("command", { x: tx + 0.5, y: ty + 0.5, kind: "move" });
         sfxClick();
       }
     }
@@ -2357,12 +2368,29 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
   function resize() { const wrap = document.getElementById("game-wrap"); const w = wrap ? wrap.clientWidth : (window.visualViewport?.width || window.innerWidth); const h = wrap ? wrap.clientHeight : (window.visualViewport?.height || window.innerHeight); canvas.width = Math.round(w) || window.innerWidth; canvas.height = Math.round(h) || window.innerHeight; if (R3D) R3D.resize(canvas.width, canvas.height); }
     let paused = false; const pauseModal = document.getElementById("pause-modal"); function isOnlineMode() { return Boolean(state?.isOnline || state?.online || window.PDOnline?.isConnected); } function syncPauseQuickSettings() { [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { const src = document.getElementById(s), dst = document.getElementById(d); if (src && dst) dst.textContent = src.textContent; }); } function setPaused(next) { const target = Boolean(next); if (target && !state) return; paused = target; if (pauseModal) pauseModal.style.display = paused ? "flex" : "none"; if (paused) syncPauseQuickSettings(); else lastTime = performance.now(); } document.getElementById("btn-pause")?.addEventListener("click", () => { if (state) setPaused(!paused); }); document.getElementById("btn-pause-resume")?.addEventListener("click", () => setPaused(false)); document.getElementById("btn-pause-save")?.addEventListener("click", () => { document.getElementById("btn-save")?.click(); }); document.getElementById("btn-pause-restart")?.addEventListener("click", () => { if (!confirm("Khởi động lại trận đấu hiện tại?")) return; setPaused(false); initGame(); document.getElementById("modal")?.classList.add("hidden"); sfxAgeUp(); startBGM(); }); document.getElementById("btn-pause-home")?.addEventListener("click", () => { setPaused(false); state = null; document.getElementById("btn-restart")?.click(); }); [["btn-music", "btn-pause-music"], ["btn-sound", "btn-pause-sound"], ["btn-quality", "btn-pause-quality"], ["btn-atmosphere", "btn-pause-atmosphere"]].forEach(([s, d]) => { document.getElementById(d)?.addEventListener("click", () => { document.getElementById(s)?.click(); syncPauseQuickSettings(); }); document.getElementById(s)?.addEventListener("click", () => syncPauseQuickSettings()); }); document.addEventListener("keydown", e => { if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return; if ((e.key === "Escape" || e.code === "KeyP") && state && document.getElementById("modal")?.classList.contains("hidden")) { if (e.key === "Escape" && settingsButton?.getAttribute("aria-expanded") === "true") return; e.preventDefault(); setPaused(!paused); } }); document.addEventListener("visibilitychange", () => { if (document.hidden && state && !paused && !isOnlineMode() && document.getElementById("modal")?.classList.contains("hidden")) setPaused(true); });
   
+  let frameFailed = false;
   function loop(ts) {
     const dt = Math.min(0.05, (ts - lastTime) / 1000 || 0.016);
     lastTime = ts;
     frameDt = dt;
-    if (state) { if (!paused || isOnlineMode()) stepSimulation(dt); const GFX = window.PDGfx; if (GFX) { GFX.vfx.update(dt, state, cam); GFX.villager.update(dt, state); GFX.atmosphere.update(dt, canvas.width, canvas.height); } render(); }
-    rafId = requestAnimationFrame(loop);
+    try {
+      if (state) {
+        if (!paused || isOnlineMode()) stepSimulation(dt);
+        const gfx = window.PDGfx;
+        if (gfx) {
+          gfx.vfx.update(dt, state, cam);
+          gfx.villager.update(dt, state);
+          gfx.atmosphere.update(dt, canvas.width, canvas.height);
+        }
+        render();
+      }
+      frameFailed = false;
+    } catch (error) {
+      if (!frameFailed) console.error("Game frame failed", error);
+      frameFailed = true;
+    } finally {
+      rafId = requestAnimationFrame(loop);
+    }
   }
 
   window.addEventListener("resize", resize); window.addEventListener("orientationchange", () => { resize(); setTimeout(resize, 150); }); window.visualViewport?.addEventListener("resize", resize);

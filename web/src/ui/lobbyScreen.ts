@@ -1,3 +1,4 @@
+import { createLobbyCombatTextButton } from "./combatTextSetting";
 import {
   FACTION_CRESTS,
   MOTIF_DONG_SON_DRUM,
@@ -492,6 +493,7 @@ export function enhanceModal(modalCard: HTMLElement): void {
     buildSettingProxyButton("btn-sound", "Âm: Bật"),
     buildSettingProxyButton("btn-quality", "Đồ họa: Tự động"),
     buildSettingProxyButton("btn-atmosphere", "Trời: Tự động"),
+    createLobbyCombatTextButton(),
   );
   settingsCard.appendChild(settingsList);
   settingsLeft.appendChild(settingsCard);

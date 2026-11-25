@@ -2,7 +2,7 @@
 import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D, MAP_N, contactShadow, disposeTree, renderFaction, type Faction, smoothstep } from "./common";
+import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D, MAP_N, contactShadow, disposeTree, renderFaction, type Faction, smoothstep, fxGuard } from "./common";
 import { paddyMaterial, RICE_COLORS, riceTuftGeometry } from "./terrain3d";
 import { applyWind } from "./wind3d";
 import { softMask } from "./surfaces";
@@ -716,7 +716,7 @@ function scaffold(size: number, height: number): THREE.Group {
   return group;
 }
 
-interface Entry { model?: ModelVisual; group: THREE.Group; rising: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
+interface Entry { model?: ModelVisual; fxState?: "none" | "smoke" | "fire"; dustBursts?: number; group: THREE.Group; rising: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
 
 function linkMask(state: any, b: any): number {
   let m = 0;
@@ -769,6 +769,17 @@ export class Buildings3D {
   /** Building ids -> current entry (used by the overlay for HP bars). */
   entries(): IterableIterator<Entry> { return this.map.values(); }
 
+  /** Diagnostics: construction / damage state per building. */
+  stats(): Array<Record<string, unknown>> {
+    return [...this.map.values()].map(e => ({
+      id: e.b.id, type: e.b.type, building: (e.b.progress ?? 1) < 1, rising: +e.rising.scale.y.toFixed(3), scaffold: Boolean(e.scaffold),
+      scorch: e.scorch.visible, fx: e.fxState ?? "none", dustBursts: e.dustBursts ?? 0
+    }));
+  }
+
+  /** Root of a building's model (hit flash target). */
+  rootFor(id: number): THREE.Object3D | undefined { return this.map.get(id)?.group; }
+
   private remove(entry: Entry): void {
     entry.model?.dispose();
     entry.ring.removeFromParent();
@@ -794,6 +805,7 @@ export class Buildings3D {
 
   update(state: any, env: Env3D, t: number, dt: number, scene: Scene3D): void {
     const seen = new Set<number>();
+    this.fx.torchBegin();
     for (const b of state.buildings) {
       seen.add(b.id);
       const color = env.teamColor(b);
@@ -841,17 +853,25 @@ export class Buildings3D {
       e.group.position.set(cx, gy, cz);
       const fogv = state.fog[Math.min(MAP_N - 1, b.ty)]?.[Math.min(MAP_N - 1, b.tx)] ?? 0;
       e.group.visible = b.team === "player" || fogv !== 0;
-      const building = b.progress !== undefined && b.progress < 1;
+      // Construction and damage are separate states: a site under construction never smokes or burns,
+      // even though its hit points start at ~10 % of the maximum.
+      const building = (b.progress ?? 1) < 1;
+      const hpk = b.maxHp > 0 ? b.hp / b.maxHp : 1;
       e.base.position.set(cx, gy + 0.038, cz);
       e.base.visible = e.group.visible && b.type !== "farm";
       e.scorch.position.set(cx + 0.18 * size, gy + 0.046, cz - 0.12 * size);
-      e.scorch.visible = e.group.visible && b.hp < b.maxHp * 0.4;
+      e.scorch.visible = e.group.visible && !building && hpk < 0.5;
       if (building && !e.scaffold) {
         e.scaffold = scaffold(size, e.parts.top);
         this.group.add(e.scaffold);
       }
+      if (e.scaffold && !building) {
+        // finished: the bamboo scaffold is removed for good
+        disposeTree(e.scaffold);
+        e.scaffold = undefined;
+      }
       if (e.scaffold) {
-        e.scaffold.visible = building && e.group.visible;
+        e.scaffold.visible = e.group.visible;
         e.scaffold.position.set(cx, gy, cz);
       }
       const progress = building ? Math.max(0, Math.min(1, b.progress)) : 1;
@@ -868,11 +888,16 @@ export class Buildings3D {
       e.model?.update(dt, building ? "build" : "idle", scene.quality !== "low");
 
       if (building) {
-        e.dustT -= dt;
-        if (e.dustT <= 0) {
-          e.dustT = 0.28;
-          this.fx.smoke.burst(cx + (Math.random() - 0.5) * size, gy + 0.10, cz, 2, 0.29, 0.17, 0.63, 0.75, [0xb49b75], 0, 0.65);
-        }
+        // beige soil dust hugging the ground, only while a villager is actually working on this site
+        fxGuard("build-dust", () => {
+          e!.dustT -= dt;
+          if (e!.dustT > 0) return;
+          e!.dustT = 0.3;
+          const working = state.units.some((u: any) => u.hp > 0 && u.team === b.team && u.type === "villager" && u.task === "build" &&
+            u.buildTargetId === b.id && Math.hypot(u.x - cx, u.y - cz) <= 2.3 + size / 2);
+          if (working) e!.dustBursts = (e!.dustBursts ?? 0) + 1;
+          if (working) this.fx.smoke.burst(cx + (Math.random() - 0.5) * size * 0.9, gy + 0.05, cz + (Math.random() - 0.5) * size * 0.9, 2, 0.32, 0.08, 0.6, 0.6, [0xc8b28a, 0xb8a27c], 0, 0.7);
+        });
       }
       // auto-opening gate doors: swing wide while a friendly unit is passing
       if (e.parts.doors) {
@@ -910,24 +935,33 @@ export class Buildings3D {
       }
       for (const s of e.parts.spin) if ((s as THREE.Mesh).geometry?.type === "TorusGeometry") s.rotation.z = Math.sin(t * 0.8) * 0.4;
 
-      // damage VFX: smoke < 50% HP, fire < 25% HP
-      const hpk = b.hp / b.maxHp;
-      const top = gy + e.parts.top * (b.type === "farm" ? 1 : e.rising.scale.y);
-      if (hpk < 0.5) {
-        e.smokeT -= dt;
-        if (e.smokeT <= 0) {
-          e.smokeT = hpk < 0.25 ? 0.07 : 0.14;
-          const ox = (Math.random() - 0.5) * size * 0.6, oz = (Math.random() - 0.5) * size * 0.6;
-          this.fx.smoke.emit(cx + ox, top - 0.1, cz + oz, (Math.random() - 0.5) * 0.15 + 0.12, 0.55 + Math.random() * 0.3, (Math.random() - 0.5) * 0.15, 2.2, 1.6 + Math.random(), Math.random() < 0.5 ? 0x2a2420 : 0x3d3631, 0.08, 2.2);
+      // damage VFX (finished buildings only): dark grey smoke < 50 % HP, plus fire and orange embers < 25 % HP
+      e.fxState = !building && hpk < 0.25 ? "fire" : !building && hpk < 0.5 ? "smoke" : "none";
+      if (!building) fxGuard("damage-fx", () => {
+        const top = gy + e!.parts.top;
+        if (hpk < 0.5) {
+          e!.smokeT -= dt;
+          if (e!.smokeT <= 0) {
+            e!.smokeT = hpk < 0.25 ? 0.07 : 0.14;
+            const ox = (Math.random() - 0.5) * size * 0.6, oz = (Math.random() - 0.5) * size * 0.6;
+            this.fx.smoke.emit(cx + ox, top - 0.1, cz + oz, (Math.random() - 0.5) * 0.15 + 0.12, 0.55 + Math.random() * 0.3, (Math.random() - 0.5) * 0.15, 2.2, 1.6 + Math.random(), Math.random() < 0.5 ? 0x3a3937 : 0x4a4744, 0.08, 2.2);
+          }
         }
-      }
-      if (hpk < 0.25) {
-        e.fireT -= dt;
-        if (e.fireT <= 0) {
-          e.fireT = 0.04;
-          const ox = (Math.random() - 0.5) * size * 0.7, oz = (Math.random() - 0.5) * size * 0.7;
-          this.fx.glow.emit(cx + ox, gy + 0.2 + Math.random() * (top - gy) * 0.7, cz + oz, (Math.random() - 0.5) * 0.3, 0.9 + Math.random() * 0.6, (Math.random() - 0.5) * 0.3, 0.55, 1.2 + Math.random() * 1.2, [0xff5a00, 0xff9a1a, 0xffd34a][Math.floor(Math.random() * 3)], 0.6);
+        if (hpk < 0.25) {
+          e!.fireT -= dt;
+          if (e!.fireT <= 0) {
+            e!.fireT = 0.04;
+            const ox = (Math.random() - 0.5) * size * 0.7, oz = (Math.random() - 0.5) * size * 0.7;
+            this.fx.glow.emit(cx + ox, gy + 0.2 + Math.random() * (top - gy) * 0.7, cz + oz, (Math.random() - 0.5) * 0.3, 0.9 + Math.random() * 0.6, (Math.random() - 0.5) * 0.3, 0.55, 1.2 + Math.random() * 1.2, [0xff5a00, 0xff9a1a, 0xffd34a][Math.floor(Math.random() * 3)], 0.6);
+            if (Math.random() < 0.35) this.fx.glow.emit(cx + ox * 0.6, top - 0.15, cz + oz * 0.6, (Math.random() - 0.5) * 0.5, 1.4 + Math.random() * 0.8, (Math.random() - 0.5) * 0.5, 1.4, 0.32, 0xff8a2a, 0.35);
+          }
         }
+      });
+      // warm torch sprites (batched) on finished Đình Làng / Vọng Lâu / Hoàng Thành
+      if (!building && (b.type === "town_center" || b.type === "watch_tower" || b.type === "imperial_citadel")) {
+        if (b.type === "watch_tower") for (const s of [-1, 1]) this.fx.torch(cx + s * 0.22, gy + 1.52, cz + 0.22, b.id + s);
+        else if (b.type === "town_center") for (const s of [-1, 1]) this.fx.torch(cx + s * size * 0.36, gy + 0.56, cz + size * 0.42, b.id + s);
+        else { const w = size * 0.47; for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) this.fx.torch(cx + sx * w, gy + 0.64, cz + sz * w, b.id + sx * 3 + sz); }
       }
     }
     // rally flags: visible for the selected player production building
@@ -942,10 +976,16 @@ export class Buildings3D {
       f.update(t, scene.quality !== "low");
     }
     for (const [id, f] of this.rally) if (!rseen.has(id)) { this.group.remove(f.group); f.dispose(); this.rally.delete(id); }
+    this.fx.torchEnd(scene.weather.lanternBoost);
     for (const [id, e] of this.map) {
       if (seen.has(id)) continue;
-      // collapse burst when a building is destroyed
-      if (e.group.visible) this.fx.debris.burst(e.group.position.x, e.group.position.y + 0.3, e.group.position.z, 24, 1.8, 3, 1.2, 2.2, [0x6b665e, 0x8f8a80, 0x5a3a22], -8);
+      // one-shot collapse when a building is destroyed; a site under construction collapses with only
+      // the part that was already raised (no lingering damage fire either way)
+      if (e.group.visible) fxGuard("collapse", () => {
+        const raised = Math.max(0.15, e.rising.scale.y);
+        this.fx.debris.burst(e.group.position.x, e.group.position.y + 0.3 * raised, e.group.position.z, Math.round(24 * raised), 1.8, 3 * raised, 1.2, 2.2, [0x6b665e, 0x8f8a80, 0x5a3a22], -8);
+        this.fx.smoke.burst(e.group.position.x, e.group.position.y + 0.1, e.group.position.z, Math.round(6 * raised) + 1, 0.8, 0.3, 1.1, 0.9, [0xb8a27c, 0x8f857a], 0, 1.3);
+      });
       this.remove(e);
       this.map.delete(id);
     }

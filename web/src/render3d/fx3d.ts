@@ -1,9 +1,36 @@
-// Pixel Dynasty 3D — pooled instanced particles, shockwave rings and scorch decals (zero per-frame allocation).
+// Pixel Dynasty 3D — pooled instanced particles, shockwave rings and scorch decals (zero per-frame allocation),
+// plus the Chặng 3 combat layer: per-target hit flash, command ripples, impact dust rings, batched torch
+// sprites and a camera-kick request. Every new effect is quality-gated (low keeps only the cheap ones).
 import * as THREE from "three";
 import { disposeTree } from "./common";
 import { softMask } from "./surfaces";
 
-interface PoolOpts { capacity: number; style: "chip" | "smoke" | "spark"; size: number; }
+export type FxQuality = "low" | "medium" | "high";
+
+let sparkTexture: THREE.CanvasTexture | undefined;
+/** 64×64 hot-core particle sprite generated locally (offline) — shared by sparks, embers and torches. */
+export function sparkMask(): THREE.CanvasTexture {
+  if (sparkTexture) return sparkTexture;
+  const size = 64;
+  const canvas: HTMLCanvasElement | OffscreenCanvas = typeof OffscreenCanvas === "function"
+    ? new OffscreenCanvas(size, size)
+    : Object.assign(document.createElement("canvas"), { width: size, height: size });
+  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (ctx) {
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.18, "rgba(255,250,235,0.92)");
+    g.addColorStop(0.45, "rgba(255,220,170,0.38)");
+    g.addColorStop(1, "rgba(255,200,140,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+  }
+  sparkTexture = new THREE.CanvasTexture(canvas);
+  sparkTexture.colorSpace = THREE.SRGBColorSpace;
+  return sparkTexture;
+}
+
+interface PoolOpts { capacity: number; style: "chip" | "smoke" | "spark"; size: number; map?: THREE.Texture; }
 
 class ParticlePool {
   readonly mesh: THREE.InstancedMesh;
@@ -33,7 +60,7 @@ class ParticlePool {
     const billboard = o.style !== "chip";
     const g = billboard ? new THREE.PlaneGeometry(o.size, o.size) : new THREE.TetrahedronGeometry(o.size, 0);
     const m = billboard
-      ? new THREE.MeshBasicMaterial({ map: softMask(), color: 0xffffff, transparent: true,
+      ? new THREE.MeshBasicMaterial({ map: o.map ?? softMask(), color: 0xffffff, transparent: true,
           blending: o.style === "spark" ? THREE.AdditiveBlending : THREE.NormalBlending, depthWrite: false })
       : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.87, flatShading: true });
     if (billboard) {
@@ -113,6 +140,8 @@ class ParticlePool {
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 
+  get active(): number { return this.alive; }
+
   clear(): void {
     for (let i = 0; i < this.n; i++) { this.life[i] = 0; this.mesh.setMatrixAt(i, this.m4.makeScale(0, 0, 0)); }
     this.alive = 0;
@@ -122,13 +151,33 @@ class ParticlePool {
 }
 
 interface Ring { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; life: number; max: number; scale: number; }
+interface Flash { root: THREE.Object3D | null; until: number; swapped: Array<[THREE.Mesh, THREE.Material]>; }
+
+const TORCH_CAP = 96;
+const FLASH_TIME = 0.08;
 
 export class FX3D {
   readonly group = new THREE.Group();
   readonly debris = new ParticlePool({ capacity: 260, style: "chip", size: 0.060 });
   readonly smoke = new ParticlePool({ capacity: 128, style: "smoke", size: 0.26 });
-  /** Additive glow: fire, sparks, embers, muzzle flashes. */
-  readonly glow = new ParticlePool({ capacity: 210, style: "spark", size: 0.076 });
+  /** Shared additive pool (≤ 220): fire, melee sparks, embers, muzzle flashes — 64×64 canvas sprite. */
+  readonly glow = new ParticlePool({ capacity: 220, style: "spark", size: 0.076, map: sparkMask() });
+  quality: FxQuality = "high";
+  /** medium / high: sparks, fire smoke, dust, torches and camera kicks are allowed. */
+  get rich(): boolean { return this.quality !== "low"; }
+  private time = 0;
+  private shakePending = 0;
+  private readonly commands: Ring[] = [];
+  private commandHead = 0;
+  private readonly dust: Ring[] = [];
+  private dustHead = 0;
+  private readonly flashes: Flash[] = Array.from({ length: 24 }, () => ({ root: null, until: 0, swapped: [] }));
+  private readonly flashMats = new Map<THREE.Material, THREE.Material>();
+  private readonly torchPos = new Float32Array(TORCH_CAP * 3);
+  private readonly torchCol = new Float32Array(TORCH_CAP * 3);
+  private readonly torchGeo = new THREE.BufferGeometry();
+  private readonly torches: THREE.Points;
+  private torchCount = 0;
   private readonly rings: Ring[] = [];
   private readonly accents: Ring[] = [];
   private accentHead = 0;
@@ -138,6 +187,32 @@ export class FX3D {
 
   constructor() {
     this.group.add(this.debris.mesh, this.glow.mesh, this.smoke.mesh);
+    // command ripples: bronze-gold for a valid move, vermilion for attack / attack-move
+    const cg = new THREE.RingGeometry(0.8, 1, 48); cg.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 6; i++) {
+      const m = new THREE.MeshBasicMaterial({ color: 0xc9a04a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false });
+      const me = new THREE.Mesh(cg, m); me.visible = false; me.renderOrder = 6;
+      this.commands.push({ mesh: me, mat: m, life: 0, max: 0.6, scale: 1 }); this.group.add(me);
+    }
+    // catapult impact dust rings (beige, normal blending)
+    const dg2 = new THREE.RingGeometry(0.55, 1, 40); dg2.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.MeshBasicMaterial({ color: 0xb8a07c, map: softMask(), transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+      m.userData.sharedTexture = true;
+      const me = new THREE.Mesh(dg2, m); me.visible = false; me.renderOrder = 3;
+      this.dust.push({ mesh: me, mat: m, life: 0, max: 0.9, scale: 2.4 }); this.group.add(me);
+    }
+    // warm torch flames for Đình Làng / Vọng Lâu / Hoàng Thành: one batched Points draw call
+    this.torchGeo.setAttribute("position", new THREE.BufferAttribute(this.torchPos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.torchGeo.setAttribute("color", new THREE.BufferAttribute(this.torchCol, 3).setUsage(THREE.DynamicDrawUsage));
+    this.torchGeo.setDrawRange(0, 0);
+    const tm = new THREE.PointsMaterial({ size: 0.62, map: sparkMask(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true, toneMapped: false });
+    tm.userData.sharedTexture = true;
+    this.torches = new THREE.Points(this.torchGeo, tm);
+    this.torches.frustumCulled = false;
+    this.torches.renderOrder = 6;
+    this.torches.visible = false;
+    this.group.add(this.torches);
     const rg = new THREE.RingGeometry(0.7, 1, 40); rg.rotateX(-Math.PI / 2);
     for (let i = 0; i < 8; i++) {
       const m = new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
@@ -187,7 +262,124 @@ export class FX3D {
     r.mesh.visible = true;
   }
 
-  dispose(): void { disposeTree(this.group); }
+  dispose(): void {
+    this.restoreAllFlashes();
+    for (const m of this.flashMats.values()) m.dispose();
+    this.flashMats.clear();
+    disposeTree(this.group);
+  }
+
+  setQuality(q: FxQuality): void {
+    if (q === this.quality) return;
+    this.quality = q;
+    // effects that low no longer allows must not linger on screen after a mid-match switch
+    if (!this.rich) this.clearRichEffects();
+  }
+
+  private clearRichEffects(): void {
+    this.glow.clear(); this.smoke.clear();
+    for (const d of this.dust) { d.life = 0; d.mesh.visible = false; }
+    this.torchCount = 0; this.torchGeo.setDrawRange(0, 0); this.torches.visible = false;
+    this.shakePending = 0;
+  }
+
+  /** Command ripple at a valid order target (move = gold, attack / attack-move = vermilion). */
+  command(x: number, y: number, z: number, attack: boolean): void {
+    const r = this.commands[this.commandHead];
+    this.commandHead = (this.commandHead + 1) % this.commands.length;
+    r.life = r.max;
+    r.mat.color.setHex(attack ? 0xc2402a : 0xc9a04a);
+    r.mesh.position.set(x, y + 0.035, z);
+    r.mesh.visible = true;
+  }
+
+  /** Brief warm flash on one target only: its meshes swap to private flash clones for ~80 ms. */
+  flash(root: THREE.Object3D | null | undefined): void {
+    if (!root || !root.visible) return;
+    let slot = this.flashes.find(f => f.root === root);
+    if (!slot) {
+      slot = this.flashes.reduce((a, b) => (a.until < b.until ? a : b));
+      this.restore(slot);
+      slot.root = root;
+      root.traverse(o => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || (mesh as THREE.InstancedMesh).isInstancedMesh || mesh.userData.wind || Array.isArray(mesh.material)) return;
+        const m = mesh.material as THREE.MeshStandardMaterial;
+        if (!m.isMeshStandardMaterial || m.transparent) return;
+        let f = this.flashMats.get(m);
+        if (!f) {
+          const c = m.clone();
+          c.emissive = new THREE.Color(0xfff0d6);
+          c.emissiveIntensity = 0.55;
+          c.userData.sharedTexture = true;
+          this.flashMats.set(m, c);
+          f = c;
+        }
+        slot!.swapped.push([mesh, m]);
+        mesh.material = f;
+      });
+    }
+    slot.until = this.time + FLASH_TIME;
+    this.flashTotal++;
+  }
+  /** Flashes started since creation (diagnostics). */
+  flashTotal = 0;
+
+  private restore(f: Flash): void {
+    for (const [mesh, original] of f.swapped) if (this.flashMats.get(original) === mesh.material) mesh.material = original;
+    f.swapped.length = 0;
+    f.root = null;
+    f.until = 0;
+  }
+
+  private restoreAllFlashes(): void { for (const f of this.flashes) if (f.root) this.restore(f); }
+
+  /** Orange melee sparks (medium / high). */
+  meleeSparks(x: number, y: number, z: number): void {
+    if (!this.rich) return;
+    this.glow.burst(x, y, z, 7, 1.6, 1.4, 0.32, 0.5, [0xff7a1a, 0xffb347, 0xffe2a0], -7);
+  }
+
+  /** Catapult stone landing: existing shockwave + scorch, plus a beige dust ring and one gentle camera kick. */
+  boulderImpact(x: number, y: number, z: number, nearCamera: boolean): void {
+    this.impact(x, y, z, 1.7);
+    if (!this.rich) return;
+    const d = this.dust[this.dustHead]; this.dustHead = (this.dustHead + 1) % this.dust.length;
+    d.life = d.max; d.mesh.position.set(x, y + 0.05, z); d.mesh.visible = true;
+    this.smoke.burst(x, y + 0.08, z, 6, 0.9, 0.25, 0.9, 0.7, [0xb8a07c, 0x9c8a6c], 0, 1.4);
+    if (nearCamera) this.shakePending = Math.max(this.shakePending, 1);
+  }
+
+  /** Read-only counters for diagnostics / on-device profiling. */
+  stats(): Record<string, number> {
+    return {
+      debris: this.debris.active, smoke: this.smoke.active, glow: this.glow.active,
+      commandRings: this.commands.filter(r => r.life > 0).length, dustRings: this.dust.filter(r => r.life > 0).length,
+      torches: this.torches.visible ? this.torchCount : 0, flashes: this.flashes.filter(f => f.root).length,
+      flashMaterials: this.flashMats.size, flashTotal: this.flashTotal
+    };
+  }
+
+  /** One camera-kick request per impact frame (consumed by the renderer). */
+  consumeShake(): number { const s = this.shakePending; this.shakePending = 0; return s; }
+
+  /** Torch sprites are re-collected every frame by the building layer. */
+  torchBegin(): void { this.torchCount = 0; }
+  torch(x: number, y: number, z: number, seed: number): void {
+    if (!this.rich || this.torchCount >= TORCH_CAP) return;
+    const i = this.torchCount++ * 3;
+    const flicker = 0.78 + 0.22 * Math.sin(this.time * 13 + seed * 7.1) * Math.sin(this.time * 7.3 + seed);
+    this.torchPos[i] = x; this.torchPos[i + 1] = y + Math.sin(this.time * 9 + seed) * 0.012; this.torchPos[i + 2] = z;
+    this.torchCol[i] = flicker; this.torchCol[i + 1] = 0.55 * flicker; this.torchCol[i + 2] = 0.2 * flicker;
+  }
+  torchEnd(night: number): void {
+    this.torchGeo.setDrawRange(0, this.torchCount);
+    this.torches.visible = this.torchCount > 0;
+    if (!this.torches.visible) return;
+    (this.torches.material as THREE.PointsMaterial).opacity = 0.22 + 0.78 * Math.min(1, night);
+    (this.torchGeo.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+    (this.torchGeo.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
+  }
 
   /** Catapult boulder impact: expanding fiery shockwave + scorched decal + embers. */
   impact(x: number, y: number, z: number, radius = 2.1): void {
@@ -203,6 +395,24 @@ export class FX3D {
   }
 
   update(dt: number): void {
+    this.time += dt;
+    for (const f of this.flashes) if (f.root && this.time >= f.until) this.restore(f);
+    for (const r of this.commands) {
+      if (r.life <= 0) continue;
+      r.life -= dt;
+      if (r.life <= 0) { r.mesh.visible = false; continue; }
+      const k = 1 - r.life / r.max;
+      r.mesh.scale.setScalar(0.18 + 0.62 * (1 - (1 - k) * (1 - k)));
+      r.mat.opacity = 0.92 * (1 - k);
+    }
+    for (const d of this.dust) {
+      if (d.life <= 0) continue;
+      d.life -= dt;
+      if (d.life <= 0) { d.mesh.visible = false; continue; }
+      const k = 1 - d.life / d.max;
+      d.mesh.scale.setScalar(0.3 + k * d.scale);
+      d.mat.opacity = 0.5 * (1 - k) * (1 - k);
+    }
     this.debris.update(dt);
     this.glow.update(dt);
     this.smoke.update(dt);
@@ -235,6 +445,11 @@ export class FX3D {
   }
 
   clear(): void {
+    this.restoreAllFlashes();
+    for (const r of this.commands) { r.life = 0; r.mesh.visible = false; }
+    for (const d of this.dust) { d.life = 0; d.mesh.visible = false; }
+    this.torchCount = 0; this.torchGeo.setDrawRange(0, 0); this.torches.visible = false;
+    this.shakePending = 0;
     this.debris.clear(); this.glow.clear(); this.smoke.clear();
     for (const r of this.accents) { r.life = 0; r.mesh.visible = false; }
     for (const r of this.rings) { r.life = 0; r.mesh.visible = false; }
