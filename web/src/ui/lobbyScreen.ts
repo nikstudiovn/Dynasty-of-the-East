@@ -1,19 +1,15 @@
 import {
   FACTION_CRESTS,
-  MOTIF_CORNER_CLOUD,
-  MOTIF_DIVIDER_LOTUS,
   MOTIF_DONG_SON_DRUM,
-  MOTIF_LANTERN,
-  PIXEL_ICONS,
   RANK_MEDALS,
   type FactionKey,
   type RankGrade,
 } from "./pixelMotifs";
+
 interface FactionMeta {
   name: string;
   chip: string;
   stat: string;
-  lore: string;
   svg: string;
 }
 
@@ -22,43 +18,42 @@ const FACTION_META: Record<FactionKey, FactionMeta> = {
     name: "Đại Việt",
     chip: "Tượng Binh",
     stat: "+15% Lúa & Tre",
-    lore: "Đình Làng vững chãi, Tượng Binh thiện chiến, kinh tế lúa nước & tre dồi dào.",
     svg: FACTION_CRESTS.dai_viet,
   },
   trung_nguyen: {
     name: "Trung Nguyên",
     chip: "Nỏ Liên Châu",
     stat: "-15% Lên đời",
-    lore: "Nỏ Liên Châu bắn loạt dày đặc, tiết kiệm tài nguyên khi Phục Hưng & Lên 4 Đời.",
     svg: FACTION_CRESTS.trung_nguyen,
   },
   bac_cuong: {
     name: "Bắc Cương",
     chip: "Thiết Kỵ Xạ",
     stat: "Kỵ +10% tốc độ",
-    lore: "Thiết Kỵ Xạ cơ động cao, Ưu Tiên đột kích cánh và kiểm soát bãi tài nguyên sớm.",
     svg: FACTION_CRESTS.bac_cuong,
   },
 };
 
-const QUICK_GUIDE_CARDS: Array<{ title: string; desc: string }> = [
+const QUICK_GUIDE_ITEMS: Array<{ title: string; desc: string }> = [
   {
-    title: "1. Khai thác & Xây dựng",
-    desc: "Chạm nông dân rồi chạm Lúa, Tre, Đá hoặc Vàng; đặt nhiều móng để xây nối tiếp.",
+    title: "Khai thác & Xây dựng",
+    desc: "Chạm nông dân rồi chạm Lúa, Tre, Đá, Vàng; đặt nhiều móng để xây nối tiếp.",
   },
   {
-    title: "2. Chọn nhanh & Đạo 1–3",
-    desc: "Chạm đúp chọn quân cùng loại trong 6 ô; nhấn đúp giữ để kéo khung chọn cụm.",
+    title: "Chọn nhanh & Đạo 1–3",
+    desc: "Chạm đúp chọn quân cùng loại trong 6 ô; nhấn đúp giữ để kéo khung chọn.",
   },
   {
-    title: "3. Camera 3D Cảm ứng",
-    desc: "Chụm/mở 2 ngón thu phóng chiến trường; kéo góc nhìn để quan sát địa hình.",
+    title: "Camera 3D cảm ứng",
+    desc: "Chụm/mở 2 ngón để thu phóng; chạm nút Xoay để đổi góc nhìn chiến trường.",
   },
   {
-    title: "4. Chuông Báo & 4 Đời",
-    desc: "Rung Chuông Báo đưa dân vào Đình Làng khi bị tập kích; tích tài nguyên Lên 4 Đời.",
+    title: "Chuông Báo & Lên 4 Đời",
+    desc: "Rung Chuông Báo đưa dân vào Đình Làng khi bị đánh; tích tài nguyên Lên 4 Đời.",
   },
 ];
+
+type MenuPage = "home" | "solo" | "online" | "settings";
 
 interface SaveSummary {
   factionName: string;
@@ -84,76 +79,67 @@ function readLocalSaveSummary(): SaveSummary | null {
   }
 }
 
+function syncMenuOpenClass(): void {
+  try {
+    const modal = document.getElementById("modal");
+    const pause = document.getElementById("pause-modal");
+    const modalVisible = Boolean(
+      modal && !modal.classList.contains("hidden") && window.getComputedStyle(modal).display !== "none",
+    );
+    const pauseVisible = Boolean(
+      pause && !pause.hidden && window.getComputedStyle(pause).display !== "none",
+    );
+    document.body.classList.toggle("pd-menu-open", modalVisible || pauseVisible);
+  } catch {
+    /* ignore */
+  }
+}
+
 function refreshLoadSaveButton(): void {
   const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
   if (!loadSaveBtn) return;
-  loadSaveBtn.classList.add("pd-btn", "pd-home-btn", "pd-btn--save");
+  loadSaveBtn.classList.add("pd-btn", "pd-btn--save", "pd-menu-row", "pd-menu-row--save");
   const save = readLocalSaveSummary();
   if (save) {
     loadSaveBtn.innerHTML = `
-      ${PIXEL_ICONS.save}
-      <span class="pd-home-btn-text">
-        <span class="pd-home-btn-title">Tiếp tục ván</span>
-        <span class="pd-home-btn-sub">${save.factionName} · Đời ${save.age} · ${save.timeText}</span>
-      </span>
+      <span>Chơi tiếp</span>
+      <span class="pd-menu-row-sub">${save.factionName} · Đời ${save.age} · ${save.timeText}</span>
     `;
-  }
-}
-function attachPanelOrnaments(panel: HTMLElement): void {
-  if (panel.dataset.pdOrnamented === "1") return;
-  panel.dataset.pdOrnamented = "1";
-  panel.classList.add("pd-panel");
-
-  const corners: Array<string> = ["tl", "tr", "bl", "br"];
-  for (const pos of corners) {
-    const c = document.createElement("span");
-    c.className = `pd-corner pd-corner--${pos}`;
-    c.setAttribute("aria-hidden", "true");
-    c.innerHTML = MOTIF_CORNER_CLOUD;
-    panel.appendChild(c);
+  } else {
+    loadSaveBtn.textContent = "Chơi tiếp";
   }
 }
 
-function attachAmbientLanterns(panel: HTMLElement): void {
-  if (panel.querySelector(".pd-lantern")) return;
-  for (const side of ["l", "r"] as const) {
-    const l = document.createElement("span");
-    l.className = `pd-lantern pd-lantern--${side}`;
-    l.setAttribute("aria-hidden", "true");
-    l.innerHTML = MOTIF_LANTERN;
-    panel.appendChild(l);
-  }
-}
-
-function upgradeTitleBanner(modalCard: HTMLElement): void {
-  if (modalCard.querySelector(".pd-title-bar")) return;
+function upgradeBrandHeader(modalCard: HTMLElement): void {
+  if (modalCard.querySelector(".pd-brand-header")) return;
   const titleEl = document.getElementById("modal-title");
   if (!titleEl || !modalCard.contains(titleEl)) return;
 
+  if (/sprint/i.test(titleEl.textContent || "")) {
+    titleEl.textContent = "PIXEL DYNASTY";
+  }
+
   const subEl = document.getElementById("modal-sub");
-  const bar = document.createElement("div");
-  bar.className = "pd-title-bar";
+  if (subEl && /sprint|nhạc ngũ cung/i.test(subEl.textContent || "")) {
+    subEl.textContent = "Triều Đại Pixel";
+  }
+
+  const header = document.createElement("div");
+  header.className = "pd-brand-header";
+
+  const row = document.createElement("div");
+  row.className = "pd-brand-row";
 
   const drum = document.createElement("span");
   drum.setAttribute("aria-hidden", "true");
   drum.innerHTML = MOTIF_DONG_SON_DRUM;
 
-  const textWrap = document.createElement("div");
-  textWrap.style.minWidth = "0";
-  titleEl.insertAdjacentElement("beforebegin", bar);
-  textWrap.appendChild(titleEl);
+  titleEl.insertAdjacentElement("beforebegin", header);
+  row.append(drum, titleEl);
+  header.appendChild(row);
   if (subEl && modalCard.contains(subEl)) {
-    textWrap.appendChild(subEl);
+    header.appendChild(subEl);
   }
-
-  bar.appendChild(drum);
-  bar.appendChild(textWrap);
-
-  const divider = document.createElement("div");
-  divider.className = "pd-divider";
-  divider.setAttribute("aria-hidden", "true");
-  divider.innerHTML = MOTIF_DIVIDER_LOTUS;
-  bar.insertAdjacentElement("afterend", divider);
 }
 
 function upgradeFactionButtons(): void {
@@ -192,19 +178,28 @@ function findDirectChild(root: HTMLElement, id: string): HTMLElement | null {
   return cur;
 }
 
-function getSelectedFaction(): FactionKey {
-  const active = document.querySelector<HTMLElement>("#opt-faction .opt-btn.active");
-  const val = (active?.dataset.val || "dai_viet") as FactionKey;
-  return FACTION_META[val] ? val : "dai_viet";
+function getActiveOptLabel(containerId: string, fallback: string): string {
+  const active = document.querySelector<HTMLElement>(`#${containerId} .opt-btn.active`);
+  if (!active) return fallback;
+  const name = active.querySelector(".pd-faction-name")?.textContent?.trim();
+  if (name) return name;
+  const firstNode = Array.from(active.childNodes).find((n) => n.nodeType === Node.TEXT_NODE);
+  return firstNode?.textContent?.trim() || active.textContent?.trim() || fallback;
 }
 
-function buildLobbySettingButton(targetId: string, fallbackLabel: string): HTMLButtonElement {
+function buildSettingProxyButton(targetId: string, fallbackLabel: string): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "pd-btn pd-btn--ghost";
   const sync = (): void => {
     const src = document.getElementById(targetId);
-    btn.textContent = src?.textContent?.trim() || fallbackLabel;
+    const txt = src?.textContent?.trim() || fallbackLabel;
+    const parts = txt.split(":");
+    if (parts.length >= 2) {
+      btn.innerHTML = `<span>${parts[0].trim()}</span><span style="color:var(--pd-gold-light)">${parts.slice(1).join(":").trim()}</span>`;
+    } else {
+      btn.textContent = txt;
+    }
   };
   sync();
   btn.addEventListener("click", () => {
@@ -225,8 +220,6 @@ function enhancePauseModal(): void {
   if (!card || card.dataset.pdEnhanced === "1") return;
   card.dataset.pdEnhanced = "1";
 
-  attachPanelOrnaments(card);
-
   const actions = card.querySelector<HTMLElement>(".pd-pause-actions");
   const quick = card.querySelector<HTMLElement>(".pd-pause-quick-settings");
 
@@ -240,10 +233,10 @@ function enhancePauseModal(): void {
     quick.insertAdjacentElement("afterbegin", quickLabel);
 
     actions.insertAdjacentElement("beforebegin", body);
-    body.appendChild(actions);
-    body.appendChild(quick);
+    body.append(actions, quick);
   }
 }
+
 export function enhanceModal(modalCard: HTMLElement): void {
   const setupPanel =
     modalCard.querySelector<HTMLElement>("#setup-panel") ??
@@ -251,212 +244,99 @@ export function enhanceModal(modalCard: HTMLElement): void {
   if (!setupPanel || setupPanel.dataset.pdTwoTier === "1") return;
   setupPanel.dataset.pdTwoTier = "1";
 
-  attachPanelOrnaments(modalCard);
-  attachAmbientLanterns(modalCard);
-  upgradeTitleBanner(modalCard);
+  upgradeBrandHeader(modalCard);
 
   const factionGroup = findDirectChild(setupPanel, "opt-faction");
   const modeGroup = findDirectChild(setupPanel, "opt-mode");
+  const diffGroup = findDirectChild(setupPanel, "opt-diff");
   const mapSizeGroup = findDirectChild(setupPanel, "opt-map-size");
   const mapTypeGroup = findDirectChild(setupPanel, "opt-map-type");
-  const diffGroup = findDirectChild(setupPanel, "opt-diff");
   const startBtn = document.getElementById("btn-start") as HTMLButtonElement | null;
   const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
 
-  const homeLayout = document.createElement("div");
-  homeLayout.className = "pd-home-layout";
+  const homeMenu = document.createElement("div");
+  homeMenu.className = "pd-home-menu";
 
-  const homeLeft = document.createElement("div");
-  homeLeft.className = "pd-home-left";
+  const soloPage = document.createElement("div");
+  soloPage.className = "pd-page pd-page-solo";
 
-  const homeActions = document.createElement("div");
-  homeActions.className = "pd-home-actions";
+  const onlinePage = document.createElement("div");
+  onlinePage.className = "pd-page pd-page-online";
 
-  const homeRight = document.createElement("div");
-  homeRight.className = "pd-home-right";
+  const settingsPage = document.createElement("div");
+  settingsPage.className = "pd-page pd-page-settings";
 
-  const setupTier = document.createElement("div");
-  setupTier.className = "pd-setup-tier";
+  const footerSummary = document.createElement("span");
+  footerSummary.className = "pd-footer-summary";
 
-  const setTier = (tier: "home" | "setup"): void => {
-    homeLayout.hidden = tier !== "home";
-    setupTier.hidden = tier !== "setup";
-    modalCard.classList.toggle("pd-modal-setup", tier === "setup");
+  const updateSummary = (): void => {
+    const f = getActiveOptLabel("opt-faction", "Đại Việt");
+    const m = getActiveOptLabel("opt-mode", "1 vs 1");
+    const d = getActiveOptLabel("opt-diff", "Chiến thuật");
+    const s = getActiveOptLabel("opt-map-size", "48×48");
+    footerSummary.textContent = `${f} · ${m} · ${d} · ${s}`;
   };
 
-  const tabsBar = document.createElement("div");
-  tabsBar.className = "pd-preview-tabs";
-  const paneOverview = document.createElement("div");
-  paneOverview.className = "pd-preview-pane is-active";
-  const paneGuide = document.createElement("div");
-  paneGuide.className = "pd-preview-pane";
-  const paneSettings = document.createElement("div");
-  paneSettings.className = "pd-preview-pane";
-
-  const tabOverviewBtn = document.createElement("button");
-  tabOverviewBtn.type = "button";
-  tabOverviewBtn.className = "pd-tab-btn is-active";
-  tabOverviewBtn.textContent = "Quốc gia";
-
-  const tabGuideBtn = document.createElement("button");
-  tabGuideBtn.type = "button";
-  tabGuideBtn.className = "pd-tab-btn";
-  tabGuideBtn.textContent = "Hướng dẫn";
-
-  const tabSettingsBtn = document.createElement("button");
-  tabSettingsBtn.type = "button";
-  tabSettingsBtn.className = "pd-tab-btn";
-  tabSettingsBtn.textContent = "Cài đặt";
-
-  const setRightTab = (tab: "overview" | "guide" | "settings"): void => {
-    tabOverviewBtn.classList.toggle("is-active", tab === "overview");
-    tabGuideBtn.classList.toggle("is-active", tab === "guide");
-    tabSettingsBtn.classList.toggle("is-active", tab === "settings");
-    paneOverview.classList.toggle("is-active", tab === "overview");
-    paneGuide.classList.toggle("is-active", tab === "guide");
-    paneSettings.classList.toggle("is-active", tab === "settings");
-  };
-
-  tabOverviewBtn.addEventListener("click", () => setRightTab("overview"));
-  tabGuideBtn.addEventListener("click", () => setRightTab("guide"));
-  tabSettingsBtn.addEventListener("click", () => setRightTab("settings"));
-  tabsBar.append(tabOverviewBtn, tabGuideBtn, tabSettingsBtn);
-
-  const renderOverviewPane = (): void => {
-    const fKey = getSelectedFaction();
-    const meta = FACTION_META[fKey];
-    const save = readLocalSaveSummary();
-    const saveBadge = save
-      ? `<span class="pd-badge pd-badge--jade">Đã lưu: ${save.factionName} · Đời ${save.age} · ${save.timeText}</span>`
-      : `<span class="pd-badge">Sẵn sàng xuất quân</span>`;
-
-    paneOverview.innerHTML = `
-      <div class="pd-hero-card">
-        <span class="pd-crest">${meta.svg}</span>
-        <div class="pd-hero-meta">
-          <div class="pd-hero-heading">${meta.name} · ${meta.chip}</div>
-          <p class="pd-hero-copy">${meta.lore}</p>
-          <div>${saveBadge}</div>
-        </div>
-      </div>
-      <div class="pd-motto-strip">Đình Làng · Ấp Ủ · Tượng Binh · Phục Hưng · Ưu Tiên · Nỗ Liên Châu</div>
-    `;
-  };
-
-  renderOverviewPane();
-
-  paneGuide.innerHTML = `
-    <div class="pd-guide-grid">
-      ${QUICK_GUIDE_CARDS.map(
-        (card) => `
-        <div class="pd-guide-card">
-          <div class="pd-guide-title">${card.title}</div>
-          <div class="pd-guide-desc">${card.desc}</div>
-        </div>`,
-      ).join("")}
-    </div>
-  `;
-
-  const settingsGrid = document.createElement("div");
-  settingsGrid.className = "pd-lobby-settings-grid";
-  settingsGrid.append(
-    buildLobbySettingButton("btn-music", "Nhạc: Bật"),
-    buildLobbySettingButton("btn-sound", "Âm: Bật"),
-    buildLobbySettingButton("btn-quality", "Đồ họa: Tự động"),
-    buildLobbySettingButton("btn-atmosphere", "Trời: Tự động"),
-  );
-  paneSettings.appendChild(settingsGrid);
-
-  homeRight.append(tabsBar, paneOverview, paneGuide, paneSettings);
-  
-  const makeHomeBtn = (
-    cls: string,
-    iconSvg: string,
-    title: string,
-    sub: string,
-    onClick: () => void,
-  ): HTMLButtonElement => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = `pd-btn pd-home-btn ${cls}`;
-    btn.innerHTML = `
-      ${iconSvg}
-      <span class="pd-home-btn-text">
-        <span class="pd-home-btn-title">${title}</span>
-        <span class="pd-home-btn-sub">${sub}</span>
-      </span>
-    `;
-    btn.addEventListener("click", onClick);
-    return btn;
+  const setPage = (page: MenuPage): void => {
+    homeMenu.hidden = page !== "home";
+    soloPage.hidden = page !== "solo";
+    onlinePage.hidden = page !== "online";
+    settingsPage.hidden = page !== "settings";
+    const isSub = page !== "home";
+    modalCard.classList.toggle("pd-modal-wide", isSub);
+    modalCard.classList.toggle("pd-modal-subpage", isSub);
+    if (page === "home") refreshLoadSaveButton();
+    if (page === "solo") updateSummary();
   };
 
   if (loadSaveBtn) {
     refreshLoadSaveButton();
-    homeActions.appendChild(loadSaveBtn);
+    homeMenu.appendChild(loadSaveBtn);
   }
 
-  homeActions.appendChild(
-    makeHomeBtn("pd-btn--primary", PIXEL_ICONS.swords, "Trận mới", "Chọn phe, bản đồ & AI", () => {
-      setTier("setup");
-    }),
+  const makeRowBtn = (label: string, extraCls: string, onClick: () => void): HTMLButtonElement => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `pd-btn pd-menu-row ${extraCls}`.trim();
+    btn.textContent = label;
+    btn.addEventListener("click", onClick);
+    return btn;
+  };
+
+  homeMenu.append(
+    makeRowBtn("Chơi mới", "pd-btn--primary", () => setPage("solo")),
+    makeRowBtn("Chơi online", "", () => setPage("online")),
+    makeRowBtn("Cài đặt", "pd-btn--ghost", () => setPage("settings")),
   );
 
-  homeActions.appendChild(
-    makeHomeBtn("pd-btn--ghost", PIXEL_ICONS.multi, "Nhiều người chơi", "Đấu mạng hoặc phòng LAN", () => {
-      setTier("setup");
-    }),
-  );
+  const makeTopbar = (title: string, metaText = ""): HTMLElement => {
+    const bar = document.createElement("div");
+    bar.className = "pd-page-topbar";
 
-  const pairRow = document.createElement("div");
-  pairRow.className = "pd-home-row-pair";
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "pd-btn pd-btn--back";
+    back.textContent = "← Quay lại";
+    back.addEventListener("click", () => setPage("home"));
 
-  const guideBtn = document.createElement("button");
-  guideBtn.type = "button";
-  guideBtn.className = "pd-btn pd-btn--ghost";
-  guideBtn.innerHTML = `${PIXEL_ICONS.guide}<span>Hướng dẫn</span>`;
-  guideBtn.addEventListener("click", () => setRightTab("guide"));
+    const h = document.createElement("h2");
+    h.className = "pd-page-title";
+    h.textContent = title;
 
-  const settingsBtn = document.createElement("button");
-  settingsBtn.type = "button";
-  settingsBtn.className = "pd-btn pd-btn--ghost";
-  settingsBtn.innerHTML = `${PIXEL_ICONS.settings}<span>Cài đặt</span>`;
-  settingsBtn.addEventListener("click", () => setRightTab("settings"));
+    const meta = document.createElement("span");
+    meta.className = "pd-page-meta";
+    meta.textContent = metaText;
 
-  pairRow.append(guideBtn, settingsBtn);
-  homeActions.appendChild(pairRow);
+    bar.append(back, h, meta);
+    return bar;
+  };
 
-  homeLeft.appendChild(homeActions);
-  homeLayout.append(homeLeft, homeRight);
-
-  const topbar = document.createElement("div");
-  topbar.className = "pd-setup-topbar";
-
-  const backBtn = document.createElement("button");
-  backBtn.type = "button";
-  backBtn.className = "pd-btn pd-btn--ghost";
-  backBtn.textContent = "← Quay lại";
-  backBtn.addEventListener("click", () => {
-    refreshLoadSaveButton();
-    renderOverviewPane();
-    setTier("home");
-  });
-
-  const setupHeading = document.createElement("span");
-  setupHeading.className = "pd-setup-heading";
-  setupHeading.textContent = "Thiết lập trận đấu";
-
-  topbar.append(backBtn, setupHeading);
-  if (startBtn) {
-    startBtn.classList.add("pd-btn", "pd-btn--primary");
-    topbar.appendChild(startBtn);
-  }
-
-  const columns = document.createElement("div");
-  columns.className = "pd-setup-columns";
-  const colLeft = document.createElement("div");
-  colLeft.className = "pd-setup-col-left";
-  const colRight = document.createElement("div");
-  colRight.className = "pd-setup-col-right";
+  const soloBody = document.createElement("div");
+  soloBody.className = "pd-page-body";
+  const soloLeft = document.createElement("div");
+  soloLeft.className = "pd-col";
+  const soloRight = document.createElement("div");
+  soloRight.className = "pd-col";
 
   const moved = new Set<HTMLElement>();
   const moveTo = (el: HTMLElement | null, target: HTMLElement): void => {
@@ -465,37 +345,178 @@ export function enhanceModal(modalCard: HTMLElement): void {
     target.appendChild(el);
   };
 
-  moveTo(factionGroup, colLeft);
-  moveTo(modeGroup, colRight);
-  moveTo(diffGroup, colRight);
-  moveTo(mapSizeGroup, colRight);
-  moveTo(mapTypeGroup, colRight);
+  moveTo(factionGroup, soloLeft);
+  moveTo(modeGroup, soloRight);
+  moveTo(diffGroup, soloRight);
+  moveTo(mapSizeGroup, soloRight);
+  moveTo(mapTypeGroup, soloRight);
 
   for (const child of Array.from(setupPanel.children)) {
     if (child instanceof HTMLElement && !moved.has(child)) {
       if (child.children.length > 0 || (child.textContent ?? "").trim().length > 0) {
-        moveTo(child, colRight);
+        moveTo(child, soloRight);
       }
     }
   }
 
-  columns.append(colLeft, colRight);
-  setupTier.append(topbar, columns);
-  setupPanel.append(homeLayout, setupTier);
+  soloBody.append(soloLeft, soloRight);
 
-  const factionRow = document.getElementById("opt-faction");
-  factionRow?.addEventListener("click", () => {
+  const soloFooter = document.createElement("div");
+  soloFooter.className = "pd-page-footer";
+  soloFooter.appendChild(footerSummary);
+  if (startBtn) {
+    startBtn.classList.add("pd-btn", "pd-btn--primary");
+    soloFooter.appendChild(startBtn);
+  }
+
+  soloPage.append(makeTopbar("Chơi mới", "Đấu AI"), soloBody, soloFooter);
+
+  soloBody.addEventListener("click", () => {
     window.setTimeout(() => {
       try {
-        renderOverviewPane();
+        updateSummary();
       } catch {
         /* ignore */
       }
     }, 0);
   });
 
-  setTier("home");
+  const onlineBody = document.createElement("div");
+  onlineBody.className = "pd-page-body";
+
+  const onlineLeft = document.createElement("div");
+  onlineLeft.className = "pd-col";
+
+  const statusPill = document.createElement("span");
+  statusPill.className = "pd-status-pill";
+  statusPill.textContent = "Trạng thái máy chủ: Sẵn sàng kiểm tra";
+
+  const roomFeedback = document.createElement("p");
+  roomFeedback.textContent = "Nhập mã phòng 4 ký tự để tham gia hoặc tạo phòng mới cùng bạn bè.";
+
+  const joinCard = document.createElement("div");
+  joinCard.className = "pd-card-box";
+  joinCard.innerHTML = `<h3>Phòng trực tuyến</h3>`;
+  joinCard.appendChild(statusPill);
+
+  const inputRow = document.createElement("div");
+  inputRow.className = "pd-room-input-row";
+  const codeInput = document.createElement("input");
+  codeInput.type = "text";
+  codeInput.maxLength = 4;
+  codeInput.placeholder = "ABCD";
+  codeInput.className = "pd-input";
+  codeInput.setAttribute("aria-label", "Mã phòng 4 ký tự");
+
+  const joinBtn = document.createElement("button");
+  joinBtn.type = "button";
+  joinBtn.className = "pd-btn pd-btn--primary";
+  joinBtn.textContent = "Vào phòng";
+  joinBtn.addEventListener("click", () => {
+    const code = codeInput.value.trim().toUpperCase();
+    if (code.length < 4) {
+      roomFeedback.textContent = "Vui lòng nhập đủ 4 ký tự mã phòng.";
+      return;
+    }
+    roomFeedback.textContent = `Đang tìm phòng ${code}... (Cần máy chủ Colyseus đang bật để kết nối).`;
+  });
+
+  inputRow.append(codeInput, joinBtn);
+  joinCard.append(inputRow, roomFeedback);
+  onlineLeft.appendChild(joinCard);
+
+  const onlineRight = document.createElement("div");
+  onlineRight.className = "pd-col";
+  const createCard = document.createElement("div");
+  createCard.className = "pd-card-box";
+  createCard.innerHTML = `
+    <h3>Tạo phòng mới</h3>
+    <p>Hỗ trợ tạo phòng mã mời 4 ký tự qua máy chủ trực tuyến hoặc chơi mạng LAN trên iOS.</p>
+  `;
+  const createRoomBtn = document.createElement("button");
+  createRoomBtn.type = "button";
+  createRoomBtn.className = "pd-btn";
+  createRoomBtn.textContent = "Tạo mã phòng";
+  createRoomBtn.addEventListener("click", () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 4; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    codeInput.value = code;
+    roomFeedback.textContent = `Đã tạo mã phòng tạm: ${code}. Chia sẻ mã này khi máy chủ trực tuyến sẵn sàng.`;
+  });
+
+  const pingBtn = document.createElement("button");
+  pingBtn.type = "button";
+  pingBtn.className = "pd-btn pd-btn--ghost";
+  pingBtn.textContent = "Kiểm tra máy chủ";
+  pingBtn.addEventListener("click", () => {
+    statusPill.textContent = "Đang kiểm tra máy chủ...";
+    try {
+      const health = (window as unknown as { PDServerHealth?: { checkHealth?: () => Promise<boolean> } }).PDServerHealth;
+      if (health && typeof health.checkHealth === "function") {
+        health.checkHealth()
+          .then((ok) => {
+            statusPill.textContent = ok ? "Máy chủ: Trực tuyến" : "Máy chủ: Đang ngủ / Ngoại tuyến";
+          })
+          .catch(() => {
+            statusPill.textContent = "Máy chủ: Không phản hồi";
+          });
+      } else {
+        statusPill.textContent = "Máy chủ: Chưa cấu hình URL";
+      }
+    } catch {
+      statusPill.textContent = "Máy chủ: Ngoại tuyến";
+    }
+  });
+
+  createCard.append(createRoomBtn, pingBtn);
+  onlineRight.appendChild(createCard);
+
+  onlineBody.append(onlineLeft, onlineRight);
+  onlinePage.append(makeTopbar("Chơi online", "Phòng 4 ký tự"), onlineBody);
+
+  const settingsBody = document.createElement("div");
+  settingsBody.className = "pd-page-body";
+
+  const settingsLeft = document.createElement("div");
+  settingsLeft.className = "pd-col";
+  const settingsCard = document.createElement("div");
+  settingsCard.className = "pd-card-box";
+  settingsCard.innerHTML = `<h3>Âm thanh & Đồ họa</h3>`;
+  const settingsList = document.createElement("div");
+  settingsList.className = "pd-settings-list";
+  settingsList.append(
+    buildSettingProxyButton("btn-music", "Nhạc: Bật"),
+    buildSettingProxyButton("btn-sound", "Âm: Bật"),
+    buildSettingProxyButton("btn-quality", "Đồ họa: Tự động"),
+    buildSettingProxyButton("btn-atmosphere", "Trời: Tự động"),
+  );
+  settingsCard.appendChild(settingsList);
+  settingsLeft.appendChild(settingsCard);
+
+  const settingsRight = document.createElement("div");
+  settingsRight.className = "pd-col";
+  const guideCard = document.createElement("div");
+  guideCard.className = "pd-card-box";
+  guideCard.innerHTML = `
+    <h3>Hướng dẫn điều khiển</h3>
+    <div class="pd-guide-list">
+      ${QUICK_GUIDE_ITEMS.map(
+        (item) => `<div class="pd-guide-item"><strong>${item.title}</strong><span>${item.desc}</span></div>`,
+      ).join("")}
+    </div>
+  `;
+  settingsRight.appendChild(guideCard);
+
+  settingsBody.append(settingsLeft, settingsRight);
+  settingsPage.append(makeTopbar("Cài đặt", "Âm thanh · Đồ họa"), settingsBody);
+
+  setupPanel.append(homeMenu, soloPage, onlinePage, settingsPage);
+  setPage("home");
 }
+
 function extractMetric(text: string, patterns: RegExp[]): number | null {
   for (const rx of patterns) {
     const m = text.match(rx);
@@ -522,12 +543,14 @@ function renderEndgameScorecard(modalCard: HTMLElement, tipEl: HTMLElement): voi
   const startBtn = document.getElementById("btn-start");
   if (!endgame) {
     if (existing) existing.remove();
-    const topbar = modalCard.querySelector<HTMLElement>(".pd-setup-topbar");
-    if (startBtn && topbar && !topbar.contains(startBtn)) {
-      topbar.appendChild(startBtn);
+    const soloFooter = modalCard.querySelector<HTMLElement>(".pd-page-footer");
+    if (startBtn && soloFooter && !soloFooter.contains(startBtn)) {
+      soloFooter.appendChild(startBtn);
     }
     return;
   }
+
+  modalCard.classList.remove("pd-modal-subpage", "pd-modal-wide");
 
   if (startBtn && !modalCard.querySelector(":scope > #btn-start")) {
     tipEl.insertAdjacentElement("afterend", startBtn);
@@ -607,12 +630,22 @@ function renderEndgameScorecard(modalCard: HTMLElement, tipEl: HTMLElement): voi
 
 export function initLobbyUI(): void {
   try {
+    const modal = document.getElementById("modal");
     const modalCard = document.querySelector<HTMLElement>("#modal .modal-card");
-    if (!modalCard) return;
+    if (!modal || !modalCard) return;
 
     upgradeFactionButtons();
     enhanceModal(modalCard);
     enhancePauseModal();
+    syncMenuOpenClass();
+
+    const modalStateObserver = new MutationObserver(() => syncMenuOpenClass());
+    modalStateObserver.observe(modal, { attributes: true, attributeFilter: ["class", "style"] });
+
+    const pauseModal = document.getElementById("pause-modal");
+    if (pauseModal) {
+      modalStateObserver.observe(pauseModal, { attributes: true, attributeFilter: ["hidden", "style", "class"] });
+    }
 
     const loadSaveBtn = document.getElementById("btn-load-save");
     if (loadSaveBtn) {
@@ -632,15 +665,14 @@ export function initLobbyUI(): void {
     const update = (): void => {
       try {
         renderEndgameScorecard(modalCard, tipsEl);
+        syncMenuOpenClass();
       } catch {
-        /* guard against render-blocking errors */
+        /* ignore */
       }
     };
     update();
 
-    const observer = new MutationObserver(() => {
-      update();
-    });
+    const observer = new MutationObserver(() => update());
     observer.observe(tipsEl, { childList: true, characterData: true, subtree: true });
 
     const setupPanel = document.getElementById("setup-panel");
@@ -648,6 +680,6 @@ export function initLobbyUI(): void {
       observer.observe(setupPanel, { attributes: true, attributeFilter: ["style", "hidden", "class"] });
     }
   } catch {
-    /* never block main game boot */
+    /* never block game boot */
   }
 }
