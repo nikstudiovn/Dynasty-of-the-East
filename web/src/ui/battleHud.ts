@@ -2,6 +2,7 @@ import { isoToTile, tileToIso } from "../render3d/common";
 import type { Renderer3D } from "../render3d";
 import type { Cam } from "../render3d/scene3d";
 import { initBuildingShortcuts, type ShortcutBuilding } from "./buildingShortcuts";
+import { fcx, fcy } from "../sim/footprint";
 
 interface Building extends ShortcutBuilding {
   aiIndex: number;
@@ -299,7 +300,7 @@ export function initBattleHud() {
   canvas.addEventListener("wheel", () => { jump = undefined; }, { passive: true });
 
   function focusBuilding(building: Building, cam: Cam) {
-    const to = tileToIso(building.tx + building.size / 2, building.ty + building.size / 2);
+    const to = tileToIso(fcx(building), fcy(building));
     if (reducedMotion.matches) {
       jump = undefined;
       cam.x = to.x;

@@ -553,6 +553,7 @@
 import "./src/ui/hudTheme.css";
 import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
 import { NAVAL_TYPES, isWaterway, coastalWater, findWaterPath } from "./src/sim/naval";
+import { fw, fh, fcx, fcy, fmax, inFoot, ringTiles, edgeTiles, footprintOf, footDist } from "./src/sim/footprint";
 import { initBattleHud } from "./src/ui/battleHud";
 
 const updateBattleHud = initBattleHud();
@@ -640,11 +641,11 @@ const updateBattleHud = initBattleHud();
   const BLDG_DEFS = {
     dock: { name: "Bến Thuyền", size: 1, hp: 550, vision: 6, cost: { food: 0, wood: 100, gold: 0, stone: 0 }, pop: 0, age: 1 },
     temple: { name: "Từ Đường", size: 2, hp: 780, vision: 6, cost: { food: 0, wood: 135, gold: 35, stone: 60 }, pop: 0, age: 2 },
-    town_center: { name: "Đình Làng", size: 2, hp: 1960, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
+    town_center: { name: "Đình Làng", size: 4, w: 4, h: 4, hp: 1960, vision: 7, atk: 8, range: 6, burst: 1, cost: { food: 0, wood: 250, gold: 0, stone: 100 }, pop: 10, age: 1 },
     house: { name: "Nhà Ngói", size: 1, hp: 400, vision: 4, cost: { food: 0, wood: 35, gold: 0, stone: 0 }, pop: 10, age: 1 },
     depot: { name: "Kho Lẫm", size: 1, hp: 450, vision: 4, cost: { food: 0, wood: 65, gold: 0, stone: 0 }, pop: 0, age: 1 },
-    farm: { name: "Ruộng Lúa", size: 2, hp: 300, vision: 3, cost: { food: 0, wood: 45, gold: 0, stone: 0 }, pop: 0, age: 1 },
-    barracks: { name: "Doanh Trại", size: 2, hp: 850, vision: 5, cost: { food: 0, wood: 120, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    farm: { name: "Ruộng Lúa", size: 4, w: 4, h: 4, hp: 300, vision: 3, cost: { food: 0, wood: 45, gold: 0, stone: 0 }, pop: 0, age: 1 },
+    barracks: { name: "Doanh Trại", size: 4, w: 3, h: 4, hp: 850, vision: 5, cost: { food: 0, wood: 120, gold: 0, stone: 0 }, pop: 0, age: 1 },
     archery_range: { name: "Trường Bắn", size: 2, hp: 800, vision: 5, cost: { food: 0, wood: 130, gold: 0, stone: 0 }, pop: 0, age: 2 },
     watch_tower: { name: "Vọng Lâu", size: 1, hp: 1050, vision: 9, atk: 10, range: 7, burst: 1, cost: { food: 0, wood: 40, gold: 0, stone: 90 }, pop: 0, age: 2 },
     blacksmith: { name: "Lò Rèn Cổ", size: 2, hp: 900, vision: 5, cost: { food: 0, wood: 110, gold: 0, stone: 0 }, pop: 0, age: 2 },
@@ -810,7 +811,7 @@ const updateBattleHud = initBattleHud();
     const pb = window.DOTEValley ? window.DOTEValley.playerBase(setup.mapSize, mapSeed) : { tx: 6, ty: 6 };
     const ptc = spawnBuilding("player", "town_center", pb.tx, pb.ty, 0);
     for (let i = 0; i < 5; i++) {
-      spawnUnit("player", "villager", pb.tx - 0.4 + (i % 3) * 0.75, pb.ty + 2.6 + Math.floor(i / 3) * 0.7, 0);
+      spawnUnit("player", "villager", pb.tx + 0.6 + (i % 3) * 0.75, pb.ty + fh(ptc) + 0.6 + Math.floor(i / 3) * 0.7, 0);
     }
 
     const aiCorners = window.DOTEValley ? window.DOTEValley.aiCorners(setup.mapSize, mapSeed) : [
@@ -853,11 +854,12 @@ const updateBattleHud = initBattleHud();
 
   function spawnBuilding(team, type, tx, ty, aiIndex = 0, underConstruction = false) {
     const def = BLDG_DEFS[type];
-    const b = { id: nextId++, team, aiIndex, type, tx, ty, size: def.size, hp: underConstruction ? Math.max(10, Math.round(def.hp * 0.1)) : def.hp, maxHp: def.hp, atkCooldown: 0, progress: underConstruction ? 0 : 1, trainQueue: [] };
+    const fp = footprintOf(type, def.size);
+    const b = { id: nextId++, team, aiIndex, type, tx, ty, size: Math.max(fp.w, fp.h), w: fp.w, h: fp.h, hp: underConstruction ? Math.max(10, Math.round(def.hp * 0.1)) : def.hp, maxHp: def.hp, atkCooldown: 0, progress: underConstruction ? 0 : 1, trainQueue: [] };
     if (type === "farm") { b.cropAmount = FARM_CAPACITY; b.maxFood = FARM_CAPACITY; }
     state.buildings.push(b);
-    for (let dy = 0; dy < def.size; dy++) {
-      for (let dx = 0; dx < def.size; dx++) {
+    for (let dy = 0; dy < fp.h; dy++) {
+      for (let dx = 0; dx < fp.w; dx++) {
         if (state.grid[ty + dy]?.[tx + dx]) {
           state.grid[ty + dy][tx + dx].res = null;
           state.grid[ty + dy][tx + dx].resAmt = 0;
@@ -912,7 +914,7 @@ const updateBattleHud = initBattleHud();
       }
     };
     for (const b of state.buildings) {
-      if (b.team === "player") reveal(b.tx + b.size / 2, b.ty + b.size / 2, BLDG_DEFS[b.type].vision);
+      if (b.team === "player") reveal(fcx(b), fcy(b), BLDG_DEFS[b.type].vision);
     }
     for (const u of state.units) {
       if (u.team === "player") reveal(u.x, u.y, UNIT_DEFS[u.type].vision);
@@ -973,7 +975,7 @@ const updateBattleHud = initBattleHud();
     if (t === "water" || t === "rock") return true; // water + impassable ridges block; "bridge" and land are walkable
     for (const b of state.buildings) {
       if (b.type === "farm") continue;
-      if (tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size) {
+      if (inFoot(b, tx, ty)) {
         if (b.type === "gate" && team && b.team === team) continue; // friendly gates open for their own side
         return true;
       }
@@ -1010,14 +1012,29 @@ const updateBattleHud = initBattleHud();
     notify: showToast
   };
 
-  function aiSpawnPoint(b) {
-    const options = [];
-    for (let y = b.ty - 1; y <= b.ty + b.size; y++) {
-      for (let x = b.tx - 1; x <= b.tx + b.size; x++) {
-        if (!isTileBlocked(x, y, "enemy")) options.push({ x: x + 0.5, y: y + 0.5 });
-      }
-    }
+  // Free ring tile around a footprint, preferring the south edge; never inside the foundation.
+  function spawnExitPoint(b, team) {
+    const ax = fcx(b), ay = b.ty + fh(b) + 0.35;
+    const options = ringTiles(b).filter(t => !isTileBlocked(t.x, t.y, team))
+      .map(t => ({ x: t.x + 0.5, y: t.y + 0.5 }))
+      .sort((p, q) => Math.hypot(p.x - ax, p.y - ay) - Math.hypot(q.x - ax, q.y - ay));
     return options.find(p => !state.units.some(u => u.hp > 0 && Math.hypot(u.x - p.x, u.y - p.y) < 0.65)) ?? options[0];
+  }
+  function aiSpawnPoint(b) { return spawnExitPoint(b, "enemy"); }
+  // Nearest free tile touching the footprint edge: where a worker/unit can actually reach the building.
+  function approachPoint(b, fx, fy, team) {
+    let best = null, bd = 1e9;
+    for (const t of edgeTiles(b)) {
+      if (isTileBlocked(t.x, t.y, team)) continue;
+      const d = Math.hypot(t.x + 0.5 - fx, t.y + 0.5 - fy);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return best ? { x: best.x + 0.5, y: best.y + 0.5 } : { x: fcx(b), y: fcy(b) };
+  }
+  function pathToBuilding(u, b, team) {
+    team = team || u.team;
+    const g = approachPoint(b, u.x, u.y, team);
+    return findPath(u.x, u.y, g.x, g.y, team);
   }
 
   function findDropoff(team, x, y, aiIndex) {
@@ -1026,7 +1043,7 @@ const updateBattleHud = initBattleHud();
       if (b.team === team && b.hp > 0 && (b.progress ?? 1) >= 1 &&
           (team !== "enemy" || (b.aiIndex ?? 0) === (aiIndex ?? 0)) &&
           (b.type === "town_center" || b.type === "depot")) {
-        const d = Math.hypot(b.tx + b.size / 2 - x, b.ty + b.size / 2 - y);
+        const d = Math.hypot(fcx(b) - x, fcy(b) - y);
         if (d < bestD) { bestD = d; best = b; }
       }
     }
@@ -1048,7 +1065,7 @@ const updateBattleHud = initBattleHud();
 
   function applyDamage(attacker, target, isBldg, baseDmg) {
     const def = attacker && UNIT_DEFS[attacker.type] ? UNIT_DEFS[attacker.type] : null;
-    const shore = attacker?.type === "fire_ship" && isBldg && coastalWater(state.grid, target.tx, target.ty, target.size).length > 0;
+    const shore = attacker?.type === "fire_ship" && isBldg && coastalWater(state.grid, target.tx, target.ty, fw(target), fh(target)).length > 0;
     const navalBonus = attacker?.type === "fire_ship" && (NAVAL_TYPES.has(target.type) || target.type === "dock" || shore) ? 2 : 1;
     let dmg = Math.round(baseDmg * navalBonus * counterMultiplier(attacker?.type, target.type, isBldg, def?.bonusBuilding));
     // Blacksmith Armor mitigation for player units
@@ -1061,8 +1078,8 @@ const updateBattleHud = initBattleHud();
       Math.random() < 0.15) return;
     if (attacker?.type === "war_elephant" && attacker.abilityTime > 0 && attacker.chargeReady) {
       attacker.chargeReady = false;
-      const x = isBldg ? target.tx + target.size / 2 : target.x;
-      const y = isBldg ? target.ty + target.size / 2 : target.y;
+      const x = isBldg ? fcx(target) : target.x;
+      const y = isBldg ? fcy(target) : target.y;
       for (const nearby of state.units) {
         if (nearby.team === attacker.team || nearby.hp <= 0 || nearby.garrisoned || Math.hypot(nearby.x - x, nearby.y - y) > 1.5) continue;
         nearby.slowTime = Math.max(nearby.slowTime ?? 0, 1.2);
@@ -1070,8 +1087,8 @@ const updateBattleHud = initBattleHud();
       }
     }
     target.hp -= dmg;
-    const tx = isBldg ? target.tx + target.size / 2 : target.x;
-    const ty = isBldg ? target.ty + target.size / 2 : target.y;
+    const tx = isBldg ? fcx(target) : target.x;
+    const ty = isBldg ? fcy(target) : target.y;
     addFloat(tx, ty - 0.5, `-${dmg}`, "#EF4444");
     visualFx("hit", { x: tx, y: ty, dmg, targetId: target.id, isBldg, team: target.team, melee: Boolean(def && !def.proj) });
     if (window.DOTEGfx) window.DOTEGfx.vfx.onHit(attacker, target, isBldg);
@@ -1104,11 +1121,11 @@ const updateBattleHud = initBattleHud();
   function ejectUnits(b) {
     for (const u of state.units) {
       const ux = Math.floor(u.x), uy = Math.floor(u.y);
-      if (ux < b.tx || ux >= b.tx + b.size || uy < b.ty || uy >= b.ty + b.size) continue;
+      if (!inFoot(b, ux, uy)) continue;
       let best = null, bd = 1e9;
       for (let r = 1; r <= 3 && !best; r++) {
-        for (let dy = -r; dy <= b.size - 1 + r; dy++) {
-          for (let dx = -r; dx <= b.size - 1 + r; dx++) {
+        for (let dy = -r; dy <= fh(b) - 1 + r; dy++) {
+          for (let dx = -r; dx <= fw(b) - 1 + r; dx++) {
             const nx = b.tx + dx, ny = b.ty + dy;
             if (isTileBlocked(nx, ny, u.team)) continue;
             const d = Math.hypot(nx + 0.5 - u.x, ny + 0.5 - u.y);
@@ -1141,8 +1158,8 @@ const updateBattleHud = initBattleHud();
   for (const b of state.buildings) {
     if (b.hp <= 0) continue;
     if ((b.progress ?? 1) < 1) {
-      const bx = b.tx + b.size * 0.5, by = b.ty + b.size * 0.5;
-      const buildersHere = state.units.filter(u => u.hp > 0 && u.team === b.team && u.type === "villager" && u.task === "build" && u.buildTargetId === b.id && Math.hypot(bx - u.x, by - u.y) <= 2.3).length;
+      const bx = fcx(b), by = fcy(b);
+      const buildersHere = state.units.filter(u => u.hp > 0 && u.team === b.team && u.type === "villager" && u.task === "build" && u.buildTargetId === b.id && footDist(b, u.x, u.y) <= 1.4).length;
       if (buildersHere > 0) {
         if (window.DOTEBuild?.stepBuildingProgress) { window.DOTEBuild.stepBuildingProgress(b, buildersHere, dt); } else { b.progress = Math.min(1, (b.progress ?? 0) + dt * 0.14 * buildersHere); }
         b.hp = Math.min(b.maxHp, Math.max(b.hp, Math.round(b.maxHp * (0.1 + 0.9 * (b.progress ?? 0)))));
@@ -1155,7 +1172,7 @@ const updateBattleHud = initBattleHud();
               while (u.buildQueue?.length) {
                 const nextId = u.buildQueue.shift();
                 const nb = state.buildings.find(x => x.id === nextId && x.hp > 0 && (x.progress ?? 1) < 1);
-                if (nb) { u.buildTargetId = nb.id; u.path = findPath(u.x, u.y, nb.tx + nb.size * 0.5, nb.ty + nb.size * 0.5, u.team); break; }
+                if (nb) { u.buildTargetId = nb.id; u.path = pathToBuilding(u, nb, u.team); break; }
               }
               if (!u.buildTargetId) u.task = "idle";
             }
@@ -1168,7 +1185,7 @@ const updateBattleHud = initBattleHud();
     if (b.trainQueue?.length > 0) {
       b.trainQueue[0].remaining -= dt;
       if (b.trainQueue[0].remaining <= 0) {
-        const exit = b.type === "dock" ? coastalWater(state.grid, b.tx, b.ty, b.size)[0] : b.team === "enemy" ? aiSpawnPoint(b) : { x: b.tx + b.size * 0.5, y: b.ty + b.size + 0.35 };
+        const exit = b.type === "dock" ? coastalWater(state.grid, b.tx, b.ty, fw(b), fh(b))[0] : spawnExitPoint(b, b.team);
         if (!exit) { b.trainQueue[0].remaining = 2; continue; }
         const item = b.trainQueue.shift();
         const nu = spawnUnit(b.team, item.type, exit.x, exit.y, b.aiIndex || 0);
@@ -1185,8 +1202,8 @@ const updateBattleHud = initBattleHud();
       const bdef = BLDG_DEFS[b.type];
       if (!bdef.atk || (b.progress ?? 1) < 1) continue;
       if (b.atkCooldown > 0) { b.atkCooldown -= dt; continue; }
-      const bx = b.tx + b.size / 2;
-      const by = b.ty + b.size / 2;
+      const bx = fcx(b);
+      const by = fcy(b);
       const bonusR = (b.team === "player" && b.type === "watch_tower") ? state.faction.towerRangeBonus : 0;
       const maxRange = bdef.range + bonusR;
 
@@ -1271,9 +1288,9 @@ const updateBattleHud = initBattleHud();
       if (u.team === "enemy" && u.task === "attack" && u.targetEntityId && u.path.length) {
         const target = combatTargets.get(u.targetEntityId);
         if (target && !target.garrisoned) {
-          const tx = target.x ?? target.tx + target.size / 2;
-          const ty = target.y ?? target.ty + target.size / 2;
-          if (Math.hypot(tx - u.x, ty - u.y) <= def.range + (target.size ? target.size * 0.55 : 0.35)) u.path = [];
+          const tx = target.x ?? fcx(target);
+          const ty = target.y ?? fcy(target);
+          if ((target.size ? footDist(target, u.x, u.y) <= def.range + 0.45 : Math.hypot(tx - u.x, ty - u.y) <= def.range + 0.35)) u.path = [];
         } else u.path = [];
       }
       if (!naval && u.path.length > 0 && u.team === "enemy" && window.DOTETactics && (u.task === "attack" || u.task === "attack_move")) {
@@ -1304,18 +1321,18 @@ const updateBattleHud = initBattleHud();
         while (u.buildQueue?.length) {
           const nextId = u.buildQueue.shift();
           const nb = state.buildings.find(x => x.id === nextId && x.hp > 0 && (x.progress ?? 1) < 1);
-          if (nb) { u.buildTargetId = nb.id; u.path = findPath(u.x, u.y, nb.tx + nb.size * 0.5, nb.ty + nb.size * 0.5, u.team); break; }
+          if (nb) { u.buildTargetId = nb.id; u.path = pathToBuilding(u, nb, u.team); break; }
         }
         if (!u.buildTargetId) u.task = "idle";
-      } else if (Math.hypot(tb.tx + tb.size * 0.5 - u.x, tb.ty + tb.size * 0.5 - u.y) > 2.3) {
-        u.path = findPath(u.x, u.y, tb.tx + tb.size * 0.5, tb.ty + tb.size * 0.5, u.team);
+      } else if (footDist(tb, u.x, u.y) > 1.4) {
+        u.path = pathToBuilding(u, tb, u.team);
       }
       continue;
     }
     if (u.type === "villager" && u.task === "gather" && u.targetTile) {
         const { tx, ty } = u.targetTile;
         const cell = state.grid[ty]?.[tx];
-        const farmBldg = state.buildings.find(b => b.type === "farm" && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size &&
+        const farmBldg = state.buildings.find(b => b.type === "farm" && inFoot(b, tx, ty) &&
           b.team === u.team && b.hp > 0 && (b.progress ?? 1) >= 1 &&
           (u.team !== "enemy" || b.aiIndex === u.aiIndex));
         const resType = farmBldg ? "food" : cell?.res;
@@ -1325,7 +1342,7 @@ const updateBattleHud = initBattleHud();
             const drop = u.carryAmt > 0 && findDropoff(u.team, u.x, u.y, u.aiIndex);
             u.targetTile = null;
             u.task = drop ? "return" : "idle";
-            if (drop) u.path = findPath(u.x, u.y, drop.tx + drop.size / 2, drop.ty + drop.size / 2);
+            if (drop) u.path = pathToBuilding(u, drop, u.team);
             continue;
           }
           const nextNode = findNearestResource(u.carryType || "wood", u.x, u.y);
@@ -1354,7 +1371,7 @@ const updateBattleHud = initBattleHud();
             }
             if (u.carryAmt >= 15) {
               const drop = findDropoff(u.team, u.x, u.y, u.aiIndex);
-              if (drop) { u.task = "return"; u.path = findPath(u.x, u.y, drop.tx + drop.size / 2, drop.ty + drop.size / 2); }
+              if (drop) { u.task = "return"; u.path = pathToBuilding(u, drop, u.team); }
             }
           }
         }
@@ -1368,10 +1385,9 @@ const updateBattleHud = initBattleHud();
         if (u.team === "enemy" && u.carryType && u.carryAmt > 0) {
           const drop = findDropoff(u.team, u.x, u.y, u.aiIndex);
           if (!drop) { u.task = "idle"; continue; }
-          const x = drop.tx + drop.size / 2, y = drop.ty + drop.size / 2;
-          if (Math.hypot(u.x - x, u.y - y) > 2.6) {
+          if (footDist(drop, u.x, u.y) > 1.6) {
             if (!(u.repathCd > 0)) {
-              u.path = findPath(u.x, u.y, x, y);
+              u.path = pathToBuilding(u, drop, u.team);
               u.repathCd = 1;
             }
             continue;
@@ -1401,16 +1417,16 @@ const updateBattleHud = initBattleHud();
           else u.task = "idle";
           continue;
         }
-        const tx = tUnit ? tUnit.x : tBldg.tx + tBldg.size / 2;
-        const ty = tUnit ? tUnit.y : tBldg.ty + tBldg.size / 2;
-        const reach = def.range + (tBldg ? tBldg.size * 0.55 : 0.35);
-        if (Math.hypot(tx - u.x, ty - u.y) > reach) {
+        const tx = tUnit ? tUnit.x : fcx(tBldg);
+        const ty = tUnit ? tUnit.y : fcy(tBldg);
+        const reach = def.range + (tBldg ? 0.45 : 0.35);
+        if ((tBldg ? footDist(tBldg, u.x, u.y) : Math.hypot(tx - u.x, ty - u.y)) > reach) {
           if (u.team === "player" && u.stance === "stand_ground" && !u.manualAtk) { u.task = "idle"; u.targetEntityId = null; continue; }
           if (!(u.repathCd > 0)) {
             if (naval && !isWaterway(state.grid[Math.floor(ty)]?.[Math.floor(tx)])) {
-              const near = nearestWater(tx, ty, def.range + (tBldg ? tBldg.size * 0.55 : 0.35), u);
+              const near = nearestWater(tx, ty, def.range + (tBldg ? fmax(tBldg) * 0.55 : 0.35), u);
               u.path = near?.path ?? [];
-            } else u.path = findPath(u.x, u.y, tx, ty);
+            } else u.path = tBldg ? pathToBuilding(u, tBldg, u.team) : findPath(u.x, u.y, tx, ty);
             if (u.path.length === 0) {
               u.repathCd = 1.0; // no route (walled in): retarget the nearest hostile wall / gate that blocks the way
               if (!naval && window.DOTETactics && !(tBldg && (tBldg.type === "wall" || tBldg.type === "gate"))) {
@@ -1519,7 +1535,7 @@ const updateBattleHud = initBattleHud();
     }
     for (const dock of state.buildings) {
       if (dock.type !== "dock" || dock.team !== boat.team || dock.aiIndex !== boat.aiIndex || (dock.progress ?? 1) < 1 || dock.hp <= 0) continue;
-      for (const p of coastalWater(state.grid, dock.tx, dock.ty, dock.size)) {
+      for (const p of coastalWater(state.grid, dock.tx, dock.ty, fw(dock), fh(dock))) {
         if (Math.hypot(boat.x - p.x, boat.y - p.y) < 0.9) {
           const amount = Math.floor(boat.carryAmt || 0);
           if (boat.team === "player") {
@@ -1676,14 +1692,14 @@ const updateBattleHud = initBattleHud();
     const color = teamColor(b);
     const spr = G.atlas.getSprite(b.type, color, age, 0);
     if (!spr) return drawBuildingLegacy(b);
-    const mid = ((b.size || 1) - 1) / 2;
-    const { x, y } = gridToIso(b.tx + mid, b.ty + mid);
+    const midX = (fw(b) - 1) / 2, midY = (fh(b) - 1) / 2;
+    const { x, y } = gridToIso(b.tx + midX, b.ty + midY);
     const cx = x, cy = y + TILE_H / 2;
-    const groundY = b.type === "farm" ? cy + 15 : cy + (b.size === 2 ? 14 : 6);
+    const groundY = b.type === "farm" ? cy + 15 : cy + (fmax(b) >= 2 ? 14 : 6);
     const top = groundY - spr.ay;
-    if (b.type !== "farm") drawShadow(cx + 3, cy + 4, (b.size === 2 ? 44 : 30) * 0.58, 12);
+    if (b.type !== "farm") drawShadow(cx + 3, cy + 4, (fmax(b) >= 2 ? 44 : 30) * 0.58, 12);
     if (state.selectedBuildingId === b.id) {
-      const s = b.size || 1, p0 = gridToIso(b.tx, b.ty), p1 = gridToIso(b.tx + s, b.ty), p2 = gridToIso(b.tx + s, b.ty + s), p3 = gridToIso(b.tx, b.ty + s);
+      const sw = fw(b), sh = fh(b), p0 = gridToIso(b.tx, b.ty), p1 = gridToIso(b.tx + sw, b.ty), p2 = gridToIso(b.tx + sw, b.ty + sh), p3 = gridToIso(b.tx, b.ty + sh);
       ctx.strokeStyle = "#FACC15"; ctx.lineWidth = 2; ctx.beginPath();
       ctx.moveTo(p0.x, p0.y + TILE_H / 2); ctx.lineTo(p1.x, p1.y + TILE_H / 2); ctx.lineTo(p2.x, p2.y + TILE_H / 2); ctx.lineTo(p3.x, p3.y + TILE_H / 2); ctx.closePath(); ctx.stroke();
     }
@@ -1764,9 +1780,10 @@ const updateBattleHud = initBattleHud();
     if (state.buildMode && hoverTile) {
       if (SEAM) SEAM.drawBuildGrid(ctx, hoverTile, state.mapSize);
       const def = BLDG_DEFS[state.buildMode];
-      const valid = canPlaceBuilding(hoverTile.tx, hoverTile.ty, def.size);
-      for (let dy = 0; dy < def.size; dy++) {
-        for (let dx = 0; dx < def.size; dx++) {
+      const pfp = footprintOf(state.buildMode, def.size);
+      const valid = canPlaceBuilding(hoverTile.tx, hoverTile.ty, pfp.w, pfp.h);
+      for (let dy = 0; dy < pfp.h; dy++) {
+        for (let dx = 0; dx < pfp.w; dx++) {
           const wx = (hoverTile.tx + dx - (hoverTile.ty + dy)) * (TILE_W / 2);
           const wy = (hoverTile.tx + dx + (hoverTile.ty + dy)) * (TILE_H / 2);
           drawDiamond(wx, wy, valid ? "rgba(34,197,94,0.55)" : "rgba(239,68,68,0.55)", "#FFF");
@@ -1775,7 +1792,7 @@ const updateBattleHud = initBattleHud();
     }
 
     const drawables = [];
-    for (const b of state.buildings) drawables.push({ depth: b.type === "farm" ? b.tx + b.ty : b.tx + b.ty + b.size, fn: () => drawBuilding(b) });
+    for (const b of state.buildings) drawables.push({ depth: b.type === "farm" ? b.tx + b.ty : b.tx + b.ty + fw(b) / 2 + fh(b) / 2, fn: () => drawBuilding(b) });
     for (const u of state.units) if (!u.garrisoned) drawables.push({ depth: u.x + u.y, fn: () => drawUnit(u) });
     drawables.sort((a, b) => a.depth - b.depth);
     for (const d of drawables) { try { d.fn(); } catch (err) { console.error(err); } }
@@ -1850,7 +1867,7 @@ const updateBattleHud = initBattleHud();
     for (const b of state.buildings) {
       if (b.team === "enemy" && state.fog[b.ty]?.[b.tx] === 0) continue;
       mctx.fillStyle = b.team === "player" ? "#EF4444" : AI_COLORS[b.aiIndex % AI_COLORS.length];
-      mctx.fillRect(b.tx * sx, b.ty * sy, b.size * sx + 1, b.size * sy + 1);
+      mctx.fillRect(b.tx * sx, b.ty * sy, fw(b) * sx + 1, fh(b) * sy + 1);
     }
     for (const u of state.units) {
       const ux = Math.max(0, Math.min(state.mapSize - 1, Math.floor(u.x)));
@@ -2151,17 +2168,19 @@ const updateBattleHud = initBattleHud();
   function isDockLand(cell) { return cell && !cell.bridge && ["grass", "dirt"].includes(cell.terrain); }
   function isSiteOccupied(x, y) {
     return isTileBlocked(x, y) || state.buildings.some(b => b.type === "farm" &&
-      x >= b.tx && x < b.tx + b.size && y >= b.ty && y < b.ty + b.size) ||
+      inFoot(b, x, y)) ||
       (state.shrines ?? []).some(s => Math.floor(s.x) === x && Math.floor(s.y) === y);
   }
 
-  function canPlaceBuilding(tx, ty, size) {
-    if (state.buildMode === "dock" && !coastalWater(state.grid, tx, ty, size).length) return false;
-    for (let dy = 0; dy < size; dy++) {
-      for (let dx = 0; dx < size; dx++) {
+  function canPlaceBuilding(tx, ty, w, hgt = w) {
+    if (tx < 0 || ty < 0 || tx + w > state.mapSize || ty + hgt > state.mapSize) return false;
+    if (state.buildMode === "dock" && !coastalWater(state.grid, tx, ty, w, hgt).length) return false;
+    for (let dy = 0; dy < hgt; dy++) {
+      for (let dx = 0; dx < w; dx++) {
         if (isSiteOccupied(tx + dx, ty + dy)) return false;
         const cell = state.grid[ty + dy][tx + dx];
         if (isWaterway(cell) || (state.buildMode === "dock" && !isDockLand(cell))) return false;
+        if (cell.res && cell.resAmt > 0) return false; // never pave over a mine / tree cluster
         if ((state.fog[ty + dy]?.[tx + dx] ?? 0) === 0) return false;
       }
     }
@@ -2244,21 +2263,16 @@ const updateBattleHud = initBattleHud();
   }
 
   function resumeConstruction(building, villagers) {
-    const center = { x: building.tx + building.size / 2, y: building.ty + building.size / 2 };
+    const center = { x: fcx(building), y: fcy(building) };
     const approach = [];
-    for (let ty = building.ty - 1; ty <= building.ty + building.size; ty++) {
-      for (let tx = building.tx - 1; tx <= building.tx + building.size; tx++) {
-        const x = tx + 0.5, y = ty + 0.5;
-        if (!isTileBlocked(tx, ty, "player") && Math.hypot(x - center.x, y - center.y) <= 2.15) {
-          approach.push({ x, y });
-        }
-      }
+    for (const t of edgeTiles(building)) {
+      if (!isTileBlocked(t.x, t.y, "player")) approach.push({ x: t.x + 0.5, y: t.y + 0.5 });
     }
 
     let assigned = 0;
     for (const villager of villagers) {
       let path = [];
-      if (Math.hypot(villager.x - center.x, villager.y - center.y) > 2.3) {
+      if (footDist(building, villager.x, villager.y) > 1.4) {
         const candidates = [...approach].sort((a, b) => Math.hypot(a.x - villager.x, a.y - villager.y) -
           Math.hypot(b.x - villager.x, b.y - villager.y));
         for (const point of candidates) {
@@ -2293,7 +2307,7 @@ const updateBattleHud = initBattleHud();
     clearUnitTap();
 
     const tappedOwnBldg = state.buildings.find(b => b.team === "player" && b.hp > 0 &&
-      tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
+      inFoot(b, tx, ty));
     const selVils = state.units.filter(u => u.team === "player" && u.type === "villager" &&
       u.hp > 0 && !u.garrisoned && state.selectedIds.includes(u.id));
     if (!state.attackMove && tappedOwnBldg && (tappedOwnBldg.progress ?? 1) < 1 && selVils.length > 0) {
@@ -2307,7 +2321,8 @@ const updateBattleHud = initBattleHud();
 
     if (state.buildMode) {
       const def = BLDG_DEFS[state.buildMode];
-      if (!canPlaceBuilding(tx, ty, def.size)) { showToast("Chọn ô cỏ trống đã mở sương mù!"); return; }
+      const pfp2 = footprintOf(state.buildMode, def.size);
+      if (!canPlaceBuilding(tx, ty, pfp2.w, pfp2.h)) { showToast("Chọn ô cỏ trống đã mở sương mù!"); return; }
       if (!canAfford(def.cost)) {
         showToast("Chưa đủ tài nguyên!");
         state.buildMode = null; canvas.classList.remove("build-mode"); renderCommandDock(); return;
@@ -2322,7 +2337,7 @@ const updateBattleHud = initBattleHud();
       const u = state.units.find(x => x.id === uid && x.hp > 0 && x.team === "player" && x.type === "villager");
       if (!u) continue;
       if (!u.buildQueue) u.buildQueue = [];
-      if (u.task === "build" && u.buildTargetId) { u.buildQueue.push(b.id); } else { u.task = "build"; u.buildTargetId = b.id; u.path = findPath(u.x, u.y, b.tx + b.size * 0.5, b.ty + b.size * 0.5, "player"); }
+      if (u.task === "build" && u.buildTargetId) { u.buildQueue.push(b.id); } else { u.task = "build"; u.buildTargetId = b.id; u.path = findPath(u.x, u.y, fcx(b), fcy(b), "player"); }
     }
     if (!canAfford(def.cost)) { state.buildMode = null; canvas.classList.remove("build-mode"); }
       updateHud(); renderCommandDock();
@@ -2331,7 +2346,7 @@ const updateBattleHud = initBattleHud();
 
     const tappedUnit = unitAtScreen(x, y, pointerType);
     const tappedEnemyUnit = tappedUnit?.team === "enemy" ? tappedUnit : null;
-    const tappedEnemyBldg = !tappedUnit && state.buildings.find(b => b.team === "enemy" && b.hp > 0 && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
+    const tappedEnemyBldg = !tappedUnit && state.buildings.find(b => b.team === "enemy" && b.hp > 0 && inFoot(b, tx, ty));
     const enemyTarget = tappedEnemyUnit || tappedEnemyBldg;
     const boats = state.units.filter(u => NAVAL_TYPES.has(u.type) && state.selectedIds.includes(u.id));
     if (!enemyTarget && boats.length && isWaterway(state.grid[ty]?.[tx])) {
@@ -2355,7 +2370,7 @@ const updateBattleHud = initBattleHud();
         u.task = "attack"; u.targetEntityId = enemyTarget.id; u.manualAtk = true; u.amDest = null;
         u.path = NAVAL_TYPES.has(u.type) ? [] : findPath(u.x, u.y, tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + 1, tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + 1);
       }
-      visualFx("command", { x: tappedEnemyUnit ? tappedEnemyUnit.x : tappedEnemyBldg.tx + tappedEnemyBldg.size / 2, y: tappedEnemyUnit ? tappedEnemyUnit.y : tappedEnemyBldg.ty + tappedEnemyBldg.size / 2, kind: "attack" });
+      visualFx("command", { x: tappedEnemyUnit ? tappedEnemyUnit.x : fcx(tappedEnemyBldg), y: tappedEnemyUnit ? tappedEnemyUnit.y : fcy(tappedEnemyBldg), kind: "attack" });
       sfxClick(); showToast("Đã ra lệnh tấn công!"); return;
     }
 
@@ -2605,7 +2620,7 @@ const updateBattleHud = initBattleHud();
     document.getElementById("modal-sub").textContent = "Chọn nền văn minh, số lượng AI (1v1–1v3) và độ khó";
     document.getElementById("btn-start").textContent = "Xuất Quân Ngay";
     document.getElementById("modal").classList.remove("hidden"); checkLocalSave(); });
-function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, ageResearch: state.ageResearch ?? null, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, herbalMedicine: state.herbalMedicine, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, ageResearch: sanitizeAgeResearch(d.ageResearch, d.age || 1), resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], herbalMedicine: !!d.herbalMedicine, shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
+function checkLocalSave() { const btnLoad = document.getElementById("btn-load-save"); if (!btnLoad) return; try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (raw) { const d = JSON.parse(raw); if (d && d.factionId && d.age && d.buildings && d.units && Array.isArray(d.grid) && [48, 64, 96].includes(d.mapSize || 48) && d.grid.length === (d.mapSize || 48)) { const fname = (typeof FACTIONS !== "undefined" && FACTIONS[d.factionId]) ? FACTIONS[d.factionId].name : d.factionId; const aname = (typeof AGES !== "undefined" && AGES[d.age - 1]) ? AGES[d.age - 1].name : ("Thời kỳ " + d.age); btnLoad.textContent = `Tiếp tục ván đã lưu (${fname} · ${aname})`; btnLoad.style.display = "block"; return; } } } catch (e) {} btnLoad.style.display = "none"; } checkLocalSave(); document.getElementById("btn-save").addEventListener("click", () => { if (!state || !state.running) return; try { const payload = { mapSize: state.mapSize, mapType: state.mapType, mapSeed: state.mapSeed, factionId: state.factionId, aiCount: state.aiCount, difficulty: state.difficulty, age: state.age, ageResearch: state.ageResearch ?? null, resources: state.resources, upgrades: state.upgrades, grid: state.grid, fog: state.fog, buildings: state.buildings, units: state.units, animals: state.animals, aiStates: state.aiStates, herbalMedicine: state.herbalMedicine, shrines: state.shrines, relic: state.relic, aiWave: state.aiWave, aiLastAttack: state.aiLastAttack, aiTurn: state.aiTurn, garrisonedCount: state.garrisonedCount, bellActive: state.bellActive, stats: state.stats, savedAt: Date.now() }; localStorage.setItem("dote_save_v1", JSON.stringify(payload)); showToast("Đã lưu ván đấu vào máy!"); } catch (e) { showToast("Không thể lưu ván đấu!"); } }); document.getElementById("btn-load-save").addEventListener("click", () => { try { let raw = localStorage.getItem("dote_save_v1"); if (!raw) { raw = localStorage.getItem("pixel_dynasty_save_v1"); if (raw) localStorage.setItem("dote_save_v1", raw); } if (!raw) return; const d = JSON.parse(raw); if (!d || !d.factionId || !d.buildings || !d.units) return; const dMap = [48, 64, 96].includes(d.mapSize) ? d.mapSize : 48; if (!Array.isArray(d.grid) || d.grid.length !== dMap) { showToast("Bản lưu không khớp kích thước bản đồ!"); return; } ensureAudio(); state = { running: true, gameOver: false, mapSize: dMap, mapType: d.mapType || "river_valley", mapSeed: d.mapSeed || 0, factionId: d.factionId, aiCount: d.aiCount || 1, difficulty: d.difficulty || "normal", age: d.age || 1, ageResearch: sanitizeAgeResearch(d.ageResearch, d.age || 1), resources: d.resources, upgrades: d.upgrades || { attack: 0, armor: 0 }, grid: d.grid, fog: d.fog, buildings: d.buildings, units: d.units, animals: d.animals || null, attackMove: false, aiStates: d.aiStates || [], herbalMedicine: !!d.herbalMedicine, shrines: d.shrines, relic: d.relic ?? null, garrisonedCount: d.garrisonedCount || 0, bellActive: !!d.bellActive, stats: d.stats || { elapsedSec: 0, unitsTrained: 0, enemiesKilled: 0, buildingsBuilt: 0, resourcesGathered: 0 }, selectedIds: [], selectedBuildingId: null, buildMode: null, controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, faction: FACTIONS[d.factionId], projectiles: [], floats: [], aiWave: d.aiWave || 0, aiLastAttack: d.aiLastAttack, aiTurn: d.aiTurn || 0 }; for (const b of state.buildings) { if (b.w == null || b.h == null) { b.w = b.h = b.size || 1; } } if (!state.animals) { const tcs = state.buildings.filter(b => b.type === "town_center"); state.animals = window.DOTEWild ? window.DOTEWild.spawnWildlife(state.grid, state.mapSize, state.mapSeed, tcs, () => nextId++) : []; }
  nextId = 1 + Math.max(0, ...state.units.map(u => u.id), ...state.buildings.map(b => b.id), ...state.animals.map(a => a.id)); prepareGfx(); recomputeFog(); updateHud(); renderCommandDock(); document.getElementById("modal").classList.add("hidden"); startBGM(); showToast("Đã tải lại ván đấu đã lưu!"); } catch (e) { showToast("Bản lưu không hợp lệ!"); } });   
   document.getElementById("btn-start").addEventListener("click", () => {
     ensureAudio();
@@ -2697,7 +2712,8 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
         teamColor: e => teamColor(e),
         ageOf: e => (e && e.team === "player" ? state.age : (state.aiAge || 1)) || 1,
         bldgSize: type => (BLDG_DEFS[type] && BLDG_DEFS[type].size) || 1,
-        canPlace: (tx, ty, size) => canPlaceBuilding(tx, ty, size),
+        bldgFoot: type => footprintOf(type, (BLDG_DEFS[type] && BLDG_DEFS[type].size) || 1),
+        canPlace: (tx, ty, w, hgt) => canPlaceBuilding(tx, ty, w, hgt),
         getHover: () => hoverTile,
         getSelectionBox: () => selectionBox
       });
@@ -2708,6 +2724,18 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
       R3D = null;
     }
   }
+  // Opt-in verification hook (?dote_test=1): lets headless runs drive the simulation. No effect otherwise.
+  try {
+    if (/[?&]dote_test=1/.test(location.search)) {
+      window.__DOTE_TEST__ = {
+        get state() { return state; }, setup, step: dt => stepSimulation(dt), initGame, spawnBuilding, spawnUnit, findPath,
+        canPlaceBuilding, trainFrom, advanceAge, isTileBlocked, spawnExitPoint, approachPoint, pathToBuilding, BLDG_DEFS, UNIT_DEFS,
+        save: () => document.getElementById("btn-save").click(), nextId: () => nextId++,
+        get R3D() { return R3D; }, cam,
+        focusTile: (tx, ty) => { cam.x = (tx - ty) * (TILE_W / 2); cam.y = (tx + ty + 5) * (TILE_H / 2); }
+      };
+    }
+  } catch (e) { /* test hook is optional */ }
   window.onload = () => {
     init3D();
     resize();

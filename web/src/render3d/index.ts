@@ -190,7 +190,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
         if (!e.group.visible || !(b.hp < b.maxHp)) continue;
         const p = s3.project(e.group.position.x, e.group.position.y + e.parts.top * e.group.scale.y + 0.15, e.group.position.z);
         if (!p.visible || p.x < -40 || p.y < -40 || p.x > W + 40 || p.y > H + 40) continue;
-        drawBar(p.x, p.y, (b.size || 1) * 22, b.hp / b.maxHp, b.team === "player");
+        drawBar(p.x, p.y, Math.max(b.w ?? b.size ?? 1, b.h ?? b.size ?? 1) * 22, b.hp / b.maxHp, b.team === "player");
       }
       // Town Center progress: age research always, villager training only while selected.
       try {

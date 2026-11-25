@@ -310,14 +310,14 @@ export class Terrain3D {
 
   private refreshFoundations(state: any): boolean {
     const buildings = state.buildings || [];
-    const key = buildings.map((b: any) => `${b.tx}/${b.ty}/${b.size || 1}`).join("|");
+    const key = buildings.map((b: any) => `${b.tx}/${b.ty}/${b.w ?? b.size ?? 1}/${b.h ?? b.size ?? 1}`).join("|");
     if (key === this.foundationKey && this.gridRef && this.terrain) return false;
     this.foundationKey = key;
     setFoundations(buildings);
     this.occupied.clear();
     for (const b of buildings) {
-      const size = b.size || 1;
-      for (let z = b.ty; z < b.ty + size; z++) for (let x = b.tx; x < b.tx + size; x++) this.occupied.add(z * MAP_N + x);
+      const bw = b.w ?? b.size ?? 1, bh = b.h ?? b.size ?? 1;
+      for (let z = b.ty; z < b.ty + bh; z++) for (let x = b.tx; x < b.tx + bw; x++) this.occupied.add(z * MAP_N + x);
     }
     return true;
   }
@@ -381,7 +381,7 @@ export class Terrain3D {
     const segs: number[][] = [];
     const tcs = (state.buildings || []).filter((b: any) => b.type === "town_center");
     for (const tc of tcs) {
-      const cx = tc.tx + tc.size / 2, cz = tc.ty + tc.size / 2;
+      const cx = tc.tx + (tc.w ?? tc.size ?? 1) / 2, cz = tc.ty + (tc.h ?? tc.size ?? 1) / 2;
       const dirs: [number, number][] = [[MAP_N / 2 - cx, MAP_N / 2 - cz], [MAP_N / 2 - cx, 0], [0, MAP_N / 2 - cz]];
       dirs.forEach(([dx, dz], di) => {
         const len = Math.hypot(dx, dz) || 1;
@@ -951,15 +951,15 @@ export class Terrain3D {
     // glowing placement footprint (only while placing a building)
     const hover = env.getHover();
     if (state.buildMode && hover) {
-      const size = env.bldgSize(state.buildMode);
-      const ok = env.canPlace(hover.tx, hover.ty, size);
+      const fp = env.bldgFoot ? env.bldgFoot(state.buildMode) : { w: env.bldgSize(state.buildMode), h: env.bldgSize(state.buildMode) };
+      const ok = env.canPlace(hover.tx, hover.ty, fp.w, fp.h);
       const fm = this.footprint.material as THREE.MeshBasicMaterial;
       fm.color.set(ok ? 0x22c55e : 0xef4444);
       fm.opacity = 0.35 + Math.sin(t * 6) * 0.1;
       let hMax = 0;
-      for (let dz = 0; dz <= size; dz++) for (let dx = 0; dx <= size; dx++) hMax = Math.max(hMax, terrainHeight(hover.tx + dx, hover.ty + dz));
-      this.footprint.position.set(hover.tx + size / 2, hMax + 0.05, hover.ty + size / 2);
-      this.footprint.scale.set(size * 0.98, 1, size * 0.98);
+      for (let dz = 0; dz <= fp.h; dz++) for (let dx = 0; dx <= fp.w; dx++) hMax = Math.max(hMax, terrainHeight(hover.tx + dx, hover.ty + dz));
+      this.footprint.position.set(hover.tx + fp.w / 2, hMax + 0.05, hover.ty + fp.h / 2);
+      this.footprint.scale.set(fp.w * 0.98, 1, fp.h * 0.98);
       this.footprint.visible = true;
     } else this.footprint.visible = false;
   }

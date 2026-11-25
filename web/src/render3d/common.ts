@@ -19,7 +19,8 @@ export interface Env3D {
   teamColor(e: any): string;
   ageOf(e: any): number;
   bldgSize(type: string): number;
-  canPlace(tx: number, ty: number, size: number): boolean;
+  bldgFoot?(type: string): { w: number; h: number };
+  canPlace(tx: number, ty: number, w: number, h?: number): boolean;
   getHover(): { tx: number; ty: number } | null;
   getSelectionBox(): { x1: number; y1: number; x2: number; y2: number } | null;
 }
@@ -52,7 +53,7 @@ export function fbm(x: number, y: number): number {
 
 // ---- Height field -----------------------------------------------------------
 let waterMask: Float32Array = new Float32Array(MAP_N * MAP_N);
-let foundationTiles = new Map<number, { x: number; z: number; size: number; height: number }[]>();
+let foundationTiles = new Map<number, { x: number; z: number; w: number; d: number; height: number }[]>();
 let shallowMask: Float32Array = new Float32Array(MAP_N * MAP_N);
 let rockMask: Float32Array = new Float32Array(MAP_N * MAP_N);
 
@@ -143,16 +144,16 @@ function naturalHeight(x: number, z: number): number {
   return (land * (1 - shallow) - shallow * 0.155) * (1 - w) - w * 0.63;
 }
 
-export function setFoundations(buildings: readonly { tx: number; ty: number; size?: number; hp?: number; type?: string }[]): void {
+export function setFoundations(buildings: readonly { tx: number; ty: number; size?: number; w?: number; h?: number; hp?: number; type?: string }[]): void {
   foundationTiles.clear();
   for (const b of buildings) {
     if ((b.hp ?? 1) <= 0) continue;
-    const size = b.size || 1;
-    const height = (naturalHeight(b.tx, b.ty) + naturalHeight(b.tx + size, b.ty) +
-      naturalHeight(b.tx, b.ty + size) + naturalHeight(b.tx + size, b.ty + size) +
-      naturalHeight(b.tx + size / 2, b.ty + size / 2)) / 5;
-    const pad = { x: b.tx, z: b.ty, size, height: Math.max(0.025, height) };
-    for (let z = b.ty - 1; z <= b.ty + size; z++) for (let x = b.tx - 1; x <= b.tx + size; x++) {
+    const w = b.w ?? b.size ?? 1, d = b.h ?? b.size ?? 1;
+    const height = (naturalHeight(b.tx, b.ty) + naturalHeight(b.tx + w, b.ty) +
+      naturalHeight(b.tx, b.ty + d) + naturalHeight(b.tx + w, b.ty + d) +
+      naturalHeight(b.tx + w / 2, b.ty + d / 2)) / 5;
+    const pad = { x: b.tx, z: b.ty, w, d, height: Math.max(0.025, height) };
+    for (let z = b.ty - 1; z <= b.ty + d; z++) for (let x = b.tx - 1; x <= b.tx + w; x++) {
       const key = z * (MAP_N + 4) + x;
       const nearby = foundationTiles.get(key);
       if (nearby) nearby.push(pad);
@@ -165,8 +166,8 @@ export function groundPadWeight(x: number, z: number): number {
   const pads = foundationTiles.get(Math.floor(z) * (MAP_N + 4) + Math.floor(x));
   let weight = 0;
   for (const pad of pads ?? []) {
-    const dx = Math.max(0, pad.x - x, x - pad.x - pad.size);
-    const dz = Math.max(0, pad.z - z, z - pad.z - pad.size);
+    const dx = Math.max(0, pad.x - x, x - pad.x - pad.w);
+    const dz = Math.max(0, pad.z - z, z - pad.z - pad.d);
     weight = Math.max(weight, 1 - smoothstep(0.02, 0.8, Math.hypot(dx, dz)));
   }
   return weight;
@@ -178,7 +179,7 @@ export function terrainHeight(x: number, z: number): number {
   if (!pads) return natural;
   let blend = 0, height = natural;
   for (const pad of pads) {
-    const distance = Math.max(pad.x - x, x - pad.x - pad.size, pad.z - z, z - pad.z - pad.size);
+    const distance = Math.max(pad.x - x, x - pad.x - pad.w, pad.z - z, z - pad.z - pad.d);
     const weight = 1 - smoothstep(0, 0.85, distance);
     if (weight > blend) { blend = weight; height = pad.height; }
   }

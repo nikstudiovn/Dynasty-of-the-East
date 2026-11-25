@@ -637,8 +637,8 @@ export class Units3D {
       const target = u.targetEntityId != null ? byId.get(u.targetEntityId) : null;
       if (moving) want = Math.atan2(vx, vz);
       else if (target && u.task === "attack") {
-        const tx = target.x !== undefined ? target.x : target.tx + (target.size || 1) / 2;
-        const tz = target.y !== undefined && target.x !== undefined ? target.y : target.ty + (target.size || 1) / 2;
+        const tx = target.x !== undefined ? target.x : target.tx + (target.w ?? target.size ?? 1) / 2;
+        const tz = target.y !== undefined && target.x !== undefined ? target.y : target.ty + (target.h ?? target.size ?? 1) / 2;
         want = Math.atan2(tx - u.x, tz - u.y);
       } else if (u.type === "villager" && u.workStyle && u.workStyle !== "idle" && u.targetTile) {
         want = Math.atan2(u.targetTile.tx + 0.5 - u.x, u.targetTile.ty + 0.5 - u.y);

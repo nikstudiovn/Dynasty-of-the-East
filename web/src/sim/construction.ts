@@ -15,7 +15,7 @@ export const BUILD_TIMES_SEC: Record<string, number> = {
   imperial_citadel: 30,
 };
 
-export const FARM_FOOTPRINT = 2;
+export const FARM_FOOTPRINT = 4;
 export const FARM_MAX_WORKERS = 2;
 export const FARM_REPLANT_WOOD_RATIO = 0.5;
 

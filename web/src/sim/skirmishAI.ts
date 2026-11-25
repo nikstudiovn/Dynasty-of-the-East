@@ -1,5 +1,6 @@
 import { NAVAL_TYPES } from "./naval";
 import { POPULATION_LIMIT, type Shrine } from "./expansion";
+import { footprintOf, fw, fh, fcx, fcy, inFoot, edgeTiles } from "./footprint";
 import type { PathPt } from "./pathfinding";
 import type { FactionId, ResourceKey, ResourcePool } from "./types";
 
@@ -28,7 +29,7 @@ type Unit = PathPt & {
   wave?: boolean; repathCd?: number; aiOrder?: Order; aiOrderUntil?: number;
 };
 type Building = Tile & {
-  id: number; team: Team; aiIndex?: number; type: string; size: number; hp: number; maxHp: number;
+  id: number; team: Team; aiIndex?: number; type: string; size: number; w?: number; h?: number; hp: number; maxHp: number;
   progress?: number; trainQueue?: { type: string; remaining: number; total: number }[];
 };
 type Intel = PathPt & { seenAt: number };
@@ -71,7 +72,7 @@ interface Rules {
 }
 
 const distance = (a: PathPt, b: PathPt) => Math.hypot(a.x - b.x, a.y - b.y);
-const point = (b: Building): PathPt => ({ x: b.tx + b.size / 2, y: b.ty + b.size / 2 });
+const point = (b: Building): PathPt => ({ x: fcx(b), y: fcy(b) });
 const ready = (b: Building) => (b.progress ?? 1) >= 1;
 const own = (entity: Building | Unit, index: number) => entity.team === "enemy" && (entity.aiIndex ?? 0) === index;
 const targetPoint = (target: Unit | Building) => "x" in target ? target : point(target);
@@ -146,35 +147,40 @@ function construction(state: Match, rules: Rules, base: Building, buildings: Bui
   if (!builder || !afford(bank, def.cost)) return false;
   const candidates: (Tile & { score: number })[] = [];
   const home = point(base);
-  for (let ty = base.ty - 7; ty <= base.ty + 7; ty++) {
-    for (let tx = base.tx - 7; tx <= base.tx + 7; tx++) {
+  const fp = footprintOf(type, def.size);
+  const maxD = 8 + Math.max(0, Math.max(fp.w, fp.h) - 2) * 1.5;
+  const reach = Math.ceil(maxD) + 1;
+  for (let ty = base.ty - reach; ty <= base.ty + reach; ty++) {
+    for (let tx = base.tx - reach; tx <= base.tx + reach; tx++) {
       let valid = true;
-      for (let y = ty; y < ty + def.size && valid; y++) {
-        for (let x = tx; x < tx + def.size; x++) {
+      for (let y = ty; y < ty + fp.h && valid; y++) {
+        for (let x = tx; x < tx + fp.w; x++) {
           const cell = state.grid[y]?.[x];
           if (!cell || cell.res || cell.terrain === "bridge" || rules.blocked(x, y) ||
-              buildings.some(b => b.type === "farm" && x >= b.tx && x < b.tx + b.size && y >= b.ty && y < b.ty + b.size)) { valid = false; break; }
+              buildings.some(b => b.type === "farm" && inFoot(b, x, y))) { valid = false; break; }
         }
       }
       if (!valid) continue;
-      if (builder.x >= tx && builder.x < tx + def.size && builder.y >= ty && builder.y < ty + def.size) continue;
-      const center = { x: tx + def.size / 2, y: ty + def.size / 2 };
+      // keep a one-tile lane around the Đình Làng so units can spawn and workers can reach its edge
+      if (tx < base.tx + fw(base) + 1 && tx + fp.w > base.tx - 1 && ty < base.ty + fh(base) + 1 && ty + fp.h > base.ty - 1) continue;
+      if (builder.x >= tx && builder.x < tx + fp.w && builder.y >= ty && builder.y < ty + fp.h) continue;
+      const center = { x: tx + fp.w / 2, y: ty + fp.h / 2 };
       const d = distance(center, home);
-      if (d < 3 || d > 8) continue;
+      if (d < 3 || d > maxD) continue;
       const score = threat && type === "watch_tower" ? distance(center, threat) + d * 0.4 : d + distance(center, builder) * 0.4;
       candidates.push({ tx, ty, score });
     }
   }
   candidates.sort((a, b) => a.score - b.score);
   for (const { tx, ty } of candidates.slice(0, 8)) {
-    const edge = [
-      { x: tx - 0.5, y: ty + 0.5 }, { x: tx + def.size + 0.5, y: ty + 0.5 },
-      { x: tx + 0.5, y: ty - 0.5 }, { x: tx + 0.5, y: ty + def.size + 0.5 }
-    ].filter(p => !rules.blocked(Math.floor(p.x), Math.floor(p.y)));
+    const rect = { tx, ty, w: fp.w, h: fp.h };
+    const edge = edgeTiles(rect)
+      .filter(t => !rules.blocked(t.x, t.y))
+      .map(t => ({ x: t.x + 0.5, y: t.y + 0.5 }));
     edge.sort((a, b) => distance(a, builder) - distance(b, builder));
     for (const goal of edge.slice(0, 2)) {
       const path = route(rules, builder, goal);
-      const entersFootprint = path?.some(p => p.x >= tx && p.x < tx + def.size && p.y >= ty && p.y < ty + def.size);
+      const entersFootprint = path?.some(p => inFoot(rect, p.x, p.y));
       if (!path || entersFootprint) continue;
       const b = rules.build(type, tx, ty, base.aiIndex ?? 0);
       pay(bank, def.cost);

@@ -884,16 +884,17 @@ export class Buildings3D {
       const ageKey = b.type === "town_center" || b.type === "house" || b.type === "depot" || b.type === "stable" || b.type === "barracks" || b.type === "archery_range" || b.type === "watch_tower" || b.type === "blacksmith" || b.type === "siege_workshop" ? age : 0;
       const mask = b.type === "wall" || b.type === "gate" ? linkMask(state, b) : 0;
       const side = b.team === "player" ? "player" : "enemy";
-      const key = `${b.type}|${faction}|${side}|${color}|${ageKey}|${stage}|${mask}|${b.size || 1}`;
+      const fpW = b.w ?? b.size ?? 1, fpH = b.h ?? b.size ?? 1, fpM = Math.max(fpW, fpH);
+      const key = `${b.type}|${faction}|${side}|${color}|${ageKey}|${stage}|${mask}|${b.w ?? b.size ?? 1}x${b.h ?? b.size ?? 1}`;
       let e = this.map.get(b.id);
       if (!e || e.key !== key) {
         if (e) this.remove(e);
-        const built = buildBuilding(b.type, color, Math.min(4, age), b.size || 1, stage, mask, faction, side);
+        const built = buildBuilding(b.type, color, Math.min(4, age), fpM, stage, mask, faction, side);
         batchStaticMeshes(built.group, built.parts, key);
         const rising = new THREE.Group();
         if (b.type !== "farm") {
           if (!built.group.children.some(child => child.userData.foundation)) {
-            const footing = mesh(box((b.size || 1) * 0.83, 0.055, (b.size || 1) * 0.8), mat(STONE_D, { surface: "stone", rough: 0.91 }), 0, 0.019, 0);
+            const footing = mesh(box(fpM * 0.83, 0.055, fpM * 0.8), mat(STONE_D, { surface: "stone", rough: 0.91 }), 0, 0.019, 0);
             footing.userData.foundation = true;
             built.group.add(footing);
           }
@@ -903,20 +904,21 @@ export class Buildings3D {
         const ring = new THREE.LineLoop(this.ringGeo, this.ringMat);
         ring.renderOrder = 6;
         built.group.add(ring);
-        const size = b.size || 1;
-        const base = contactShadow(size * 1.56, size * 1.4);
-        const scorch = contactShadow(size * 1.21, size * 1.17);
+        // Rectangular footprints: model is authored on the longest side, then stretched on X/Z only (height unchanged).
+        built.group.scale.set(fpW / fpM, 1, fpH / fpM);
+        const base = contactShadow(fpW * 1.56, fpH * 1.4);
+        const scorch = contactShadow(fpW * 1.21, fpH * 1.17);
         this.group.add(base, scorch);
         e = { group: built.group, rising, parts: built.parts, key, ring, base, scorch, dustT: 0, smokeT: 0, fireT: 0, b };
-        e.model = this.models.building(b.type, faction, size, rising, { side, color }, built.parts.top);
+        e.model = this.models.building(b.type, faction, fpM, rising, { side, color }, built.parts.top);
         this.group.add(e.group);
         this.map.set(b.id, e);
       }
       e.b = b;
-      const size = b.size || 1;
-      const cx = b.tx + size / 2, cz = b.ty + size / 2;
+      const sw = b.w ?? b.size ?? 1, sh = b.h ?? b.size ?? 1, size = Math.max(sw, sh);
+      const cx = b.tx + sw / 2, cz = b.ty + sh / 2;
       let hMin = 9, hAvg = 0;
-      for (const [dx, dz] of [[0, 0], [size, 0], [0, size], [size, size], [size / 2, size / 2]]) { const h = terrainHeight(b.tx + dx, b.ty + dz); hMin = Math.min(hMin, h); hAvg += h / 5; }
+      for (const [dx, dz] of [[0, 0], [sw, 0], [0, sh], [sw, sh], [sw / 2, sh / 2]]) { const h = terrainHeight(b.tx + dx, b.ty + dz); hMin = Math.min(hMin, h); hAvg += h / 5; }
       const gy = Math.max(hMin, hAvg - 0.06);
       e.group.position.set(cx, gy, cz);
       const fogv = state.fog[Math.min(MAP_N - 1, b.ty)]?.[Math.min(MAP_N - 1, b.tx)] ?? 0;
@@ -927,10 +929,11 @@ export class Buildings3D {
       const hpk = b.maxHp > 0 ? b.hp / b.maxHp : 1;
       e.base.position.set(cx, gy + 0.038, cz);
       e.base.visible = e.group.visible && b.type !== "farm";
-      e.scorch.position.set(cx + 0.18 * size, gy + 0.046, cz - 0.12 * size);
+      e.scorch.position.set(cx + 0.18 * sw, gy + 0.046, cz - 0.12 * sh);
       e.scorch.visible = e.group.visible && !building && hpk < 0.5;
       if (building && !e.scaffold) {
         e.scaffold = scaffold(size, e.parts.top);
+        e.scaffold.scale.set(sw / size, 1, sh / size);
         this.group.add(e.scaffold);
       }
       if (e.scaffold && !building) {
@@ -963,7 +966,8 @@ export class Buildings3D {
           if (e!.dustT > 0) return;
           e!.dustT = 0.3;
           const working = state.units.some((u: any) => u.hp > 0 && u.team === b.team && u.type === "villager" && u.task === "build" &&
-            u.buildTargetId === b.id && Math.hypot(u.x - cx, u.y - cz) <= 2.3 + size / 2);
+            u.buildTargetId === b.id &&
+            Math.max(Math.abs(u.x - cx) - sw / 2, Math.abs(u.y - cz) - sh / 2, 0) <= 1.5);
           if (working) e!.dustBursts = (e!.dustBursts ?? 0) + 1;
         });
       }
