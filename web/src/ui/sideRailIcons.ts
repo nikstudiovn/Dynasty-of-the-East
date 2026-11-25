@@ -10,8 +10,8 @@ export type SideRailIconKey =
   | "temple" | "healer" | "dock" | "fishing_boat" | "galley" | "fire_ship" | "collapse" | "expand" | "left_hand" | "default_cmd";
 
 const K = {
-  gold: "#b7b7b7", goldLight: "#e5e5e5", crimson: "#505050", crimsonDark: "#2e2e2e",
-  jade: "#7d7d7d", steel: "#d4d4d4", steelDark: "#727272", wood: "#737373", woodDark: "#3e3e3e", ink: "#101010",
+  gold: "#c3b7af", goldLight: "#f1e9d9", crimson: "#5c5048", crimsonDark: "#322e2c",
+  jade: "#897d75", steel: "#e0d8c8", steelDark: "#7e726a", wood: "#7f736b", woodDark: "#423e3c", ink: "#14100e",
 } as const;
 
 const badge = (num: string): string =>
@@ -23,7 +23,7 @@ const outline = (path: string, color: string = K.goldLight): string =>
 
 const ICON_BODY: Record<SideRailIconKey, string> = {
   res_food: outline("M12 21V3m0 7C8 10 6 7 6 5c4 0 6 2 6 5zm0 6c4 0 6-3 6-5-4 0-6 2-6 5zm0 3c-4 0-6-3-6-5 4 0 6 2 6 5z"),
-  res_wood: outline("M8 21l2-18m4 18 2-18M8 15h7m-6-5h6m0 2 4-4", "#b5b5b5"),
+  res_wood: outline("M8 21l2-18m4 18 2-18M8 15h7m-6-5h6m0 2 4-4", "#c1b5ad"),
   res_gold: `<path d="M3 16l3-7h12l3 7-2 3H5z" fill="${K.gold}" stroke="${K.goldLight}" stroke-width="1.5"/><path d="M3 16h18M8 10l-2 5" stroke="${K.woodDark}" stroke-width="1.4"/>`,
   res_stone: `<path d="M3 15l5-8 7-2 6 7-2 7H5z" fill="${K.steelDark}" stroke="${K.steel}" stroke-width="1.5"/><path d="M8 7l2 6 11-1M10 13l-5 6" fill="none" stroke="${K.steel}" stroke-width="1.3"/>`,
   res_pop: outline("M3 12l9-7 9 7M6 11v8h12v-8m-8 8v-5h4v5"),
@@ -45,7 +45,7 @@ const ICON_BODY: Record<SideRailIconKey, string> = {
   grp_3: badge("3"),
   grp_assign: `<rect x="3" y="3" width="18" height="18" rx="4" fill="${K.woodDark}" stroke="${K.gold}" stroke-width="1.5"/><path d="M12 7v10M7 12h10" stroke="${K.goldLight}" stroke-width="2.4" stroke-linecap="round"/>`,
   all_army: `<path d="M6 17L16 5l2 2-10 12z" fill="${K.steel}"/><path d="M18 17L8 5 6 7l10 12z" fill="${K.goldLight}"/><path d="M5 15l3 3M19 15l-3 3" stroke="${K.gold}" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="18" r="2" fill="${K.crimson}"/>`,
-  idle_vil: `<circle cx="10.5" cy="6.5" r="3" fill="${K.goldLight}"/><path d="M5.5 19c0-3.2 2.2-5.2 5-5.2s5 2 5 5.2" fill="${K.jade}" stroke="${K.gold}" stroke-width="1.2"/><circle cx="18.5" cy="7.5" r="3.5" fill="${K.crimson}" stroke="${K.goldLight}" stroke-width="1"/><path d="M18.5 5.5v2.4M18.5 9.5v.3" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>`,
+  idle_vil: `<circle cx="10.5" cy="6.5" r="3" fill="${K.goldLight}"/><path d="M5.5 19c0-3.2 2.2-5.2 5-5.2s5 2 5 5.2" fill="${K.jade}" stroke="${K.gold}" stroke-width="1.2"/><circle cx="18.5" cy="7.5" r="3.5" fill="${K.crimson}" stroke="${K.goldLight}" stroke-width="1"/><path d="M18.5 5.5v2.4M18.5 9.5v.3" stroke="#fffff3" stroke-width="1.4" stroke-linecap="round"/>`,
   town_bell: `<path d="M12 4a1.5 1.5 0 0 1 1.5 1.5c2.8.8 4.5 3.3 4.5 6.5v3l2 2H4l2-2v-3c0-3.2 1.7-5.7 4.5-6.5A1.5 1.5 0 0 1 12 4z" fill="${K.gold}" stroke="${K.ink}" stroke-width="1"/><circle cx="12" cy="19.5" r="2" fill="${K.crimson}"/>`,
   focus_tc: `<path d="M3 11L12 4l9 7z" fill="${K.crimson}" stroke="${K.gold}" stroke-width="1.3" stroke-linejoin="round"/><rect x="6" y="11" width="12" height="9" rx="1" fill="${K.wood}" stroke="${K.gold}" stroke-width="1.2"/><path d="M10 20v-5a2 2 0 0 1 4 0v5z" fill="${K.goldLight}"/>`,
   attack_move: `<path d="M5 19L17 7" stroke="${K.steel}" stroke-width="2.4" stroke-linecap="round"/><polygon points="19,5 12,6 18,12" fill="${K.crimson}" stroke="${K.goldLight}" stroke-width="0.9"/><path d="M4 15l5 5" stroke="${K.gold}" stroke-width="2" stroke-linecap="round"/>`,

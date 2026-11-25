@@ -1,4 +1,4 @@
-/* Battle HUD uses the same typography and silver accents as the lobby. */
+/* Battle HUD uses the same typography and vermilion accents as the lobby. */
 #game-wrap {
   --battle-left: max(8px, calc(env(safe-area-inset-left, 0px) + 6px));
   --battle-right: max(8px, calc(env(safe-area-inset-right, 0px) + 6px));
@@ -7,11 +7,11 @@
   --battle-controls-top: calc(var(--top-hud-bottom, 48px) + 6px);
   --battle-map-height: 74px;
   --battle-map-width: 106px;
-  --battle-lacquer: linear-gradient(155deg, rgba(35, 35, 35, .96), rgba(14, 14, 14, .94) 57%);
-  --battle-button: linear-gradient(165deg, #313131, #1a1a1a 55%, #141414);
-  --battle-border: #676767;
-  --battle-gold: #d8d8d8;
-  --battle-shadow: inset 0 1px rgba(220, 220, 220, .16), 0 3px 9px #080808a6;
+  --battle-lacquer: linear-gradient(155deg, #38231bef, #18100ded 66%);
+  --battle-button: linear-gradient(160deg, #44291f, #291a15 60%, #201410);
+  --battle-border: #a16e50;
+  --battle-gold: #ffebc9;
+  --battle-shadow: inset 0 1px rgba(248, 211, 163, .16), 0 3px 9px #0c0806a6;
 }
 
 #game-wrap .top-hud {
@@ -51,12 +51,12 @@
 #game-wrap [data-battle-icon] svg { display: block; }
 #game-wrap :is(#relic-countdown, .battle-timer, #dote-herbal-badge) {
   padding: 2px 5px;
-  border: 1px solid #676767a0;
+  border: 1px solid #73675fa0;
   border-radius: 4px;
-  background: #141414;
+  background: #181412;
   color: var(--battle-gold);
 }
-#game-wrap #dote-herbal-badge { color: #d1d1d1; }
+#game-wrap #dote-herbal-badge { color: #ddd5c5; }
 #game-wrap :is(#dote-herbal-badge, #relic-countdown, #hud-settings, #dote-pause-settings,
   #btn-pause-music, #btn-pause-sound)[hidden] { display: none !important; }
 
@@ -81,16 +81,16 @@
 #game-wrap :is(.icon-btn, .dote-rail-btn, .act-btn, .dote-drawer-tab):is(.active, .selected, .dote-active, [aria-pressed="true"]),
 #game-wrap .dote-rail-drawer #cmd-buttons .act-btn.selected,
 #game-wrap #pause-modal #btn-pause-resume {
-  border-color: #c5c5c5;
-  background: linear-gradient(165deg, #525252, #292929 75%);
-  color: #f1f1f1;
+  border-color: #edaf80;
+  background: linear-gradient(165deg, #a4392a, #612219 78%);
+  color: #fff5de;
 }
 #game-wrap .dote-rail-drawer #cmd-buttons .act-btn:disabled {
   opacity: .66;
-  border-color: #4d4d4d;
-  color: #c4c4c4;
+  border-color: #514d4b;
+  color: #d0c8b8;
 }
-#game-wrap #btn-faction-ability:disabled { opacity: .85; color: #cccccc; }
+#game-wrap #btn-faction-ability:disabled { opacity: .85; color: #d8d0c0; }
 #game-wrap :is(button, [role="button"]):focus-visible {
   outline: 2px solid var(--battle-gold);
   outline-offset: 2px;
@@ -161,7 +161,7 @@ body.dote-left-handed #game-wrap .dote-rail-drawer {
   bottom: var(--battle-bottom);
   min-width: 72px;
   padding-inline: 9px;
-  border-color: #818181;
+  border-color: #8d8179;
 }
 #game-wrap .dote-rail-handle { right: var(--battle-right); bottom: var(--battle-bottom); }
 body.dote-left-handed #game-wrap .dote-rail-handle { right: auto; left: var(--battle-left); }
@@ -183,7 +183,7 @@ body.dote-side-rail-active #game-wrap .battle-alerts {
 }
 #game-wrap .dote-pause-actions > button { min-width: 0; white-space: normal; }
 #game-wrap .dote-pause-quick-settings {
-  background: #151515;
+  background: #191513;
   border-color: var(--battle-border) !important;
 }
 #game-wrap .dote-pause-audio {
@@ -247,7 +247,7 @@ body.dote-side-rail-active #game-wrap .battle-alerts {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-#game-wrap #dote-command-timers progress { width: 100%; height: 5px; accent-color: #c2c2c2; }
+#game-wrap #dote-command-timers progress { width: 100%; height: 5px; accent-color: #cec6b6; }
 #game-wrap #relic-countdown {
-  background: linear-gradient(to right, #424242 var(--dote-relic-left, 100%), #161616 0);
+  background: linear-gradient(to right, #464240 var(--dote-relic-left, 100%), #1a1614 0);
 }

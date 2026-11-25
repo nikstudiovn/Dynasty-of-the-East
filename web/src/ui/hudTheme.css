@@ -6,19 +6,19 @@
 }
 
 #game-wrap.battle-hud-active {
-  --hud-ink: #0e0e0e;
-  --hud-lac-surface: rgba(15, 15, 15, 0.9);
-  --hud-btn-bg: #1b1b1b;
-  --hud-btn-bg-hover: #252525;
-  --hud-brass: rgba(188, 188, 188, 0.5);
-  --hud-brass-soft: rgba(188, 188, 188, 0.28);
-  --hud-highlight: #e9e9e9;
-  --hud-gold: #bcbcbc;
-  --hud-crimson: #3f3f3f;
-  --hud-crimson-dark: #222222;
-  --hud-crimson-border: #767676;
+  --hud-ink: #120e0c;
+  --hud-lac-surface: rgba(24, 15, 12, 0.9);
+  --hud-btn-bg: #1f1b19;
+  --hud-btn-bg-hover: #292523;
+  --hud-brass: rgba(209, 160, 115, 0.5);
+  --hud-brass-soft: rgba(209, 160, 115, 0.28);
+  --hud-highlight: #f5eddd;
+  --hud-gold: #c8c0b0;
+  --hud-crimson: #433f3d;
+  --hud-crimson-dark: #262220;
+  --hud-crimson-border: #82766e;
   --hud-panel-shadow:
-    inset 0 1px 0 rgba(233, 233, 233, 0.16),
+    inset 0 1px 0 rgba(255, 221, 178, 0.16),
     inset 0 -2px 0 rgba(6, 6, 6, 0.55),
     0 3px 10px rgba(5, 5, 5, 0.55);
 }
@@ -117,13 +117,13 @@
   border: 1px solid var(--hud-brass-soft);
   border-radius: 2px;
   outline: none;
-  color: #f3f3f3;
+  color: #fff7e7;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   font-weight: 600;
   letter-spacing: 0.01em;
-  text-shadow: 0 1px 0 #0a0a0a;
+  text-shadow: 0 1px 0 #0e0a08;
   box-shadow:
-    inset 0 1px 0 rgba(233, 233, 233, 0.14),
+    inset 0 1px 0 rgba(255, 221, 178, 0.14),
     0 2px 0 rgba(7, 7, 7, 0.85);
   transition: background-color 80ms ease, border-color 80ms ease, transform 60ms ease;
   -webkit-tap-highlight-color: transparent;
@@ -143,7 +143,7 @@
 .battle-hud-active :is(.icon-btn, .mini-btn, .act-btn, .battle-dock-toggle):active:not(:disabled) {
   transform: translateY(1px);
   box-shadow:
-    inset 0 1px 0 rgba(233, 233, 233, 0.08),
+    inset 0 1px 0 rgba(255, 221, 178, 0.08),
     0 1px 0 rgba(7, 7, 7, 0.9);
 }
 
@@ -151,9 +151,9 @@
 .battle-hud-active .act-btn.selected {
   background: var(--hud-crimson);
   border-color: var(--hud-highlight);
-  color: #fafafa;
+  color: #fffeee;
   box-shadow:
-    inset 0 1px 0 rgba(233, 233, 233, 0.35),
+    inset 0 1px 0 rgba(255, 221, 178, 0.35),
     0 2px 0 rgba(7, 7, 7, 0.9);
 }
 
@@ -187,7 +187,7 @@
   pointer-events: none;
   color: var(--hud-gold);
   font: 700 8px/1 ui-monospace, monospace;
-  text-shadow: 0 1px 0 #0e0e0e;
+  text-shadow: 0 1px 0 #120e0c;
   opacity: 0.85;
 }
 
@@ -277,8 +277,8 @@
 
 .battle-hud-active .act-btn:disabled {
   opacity: 0.44;
-  background: rgba(16, 16, 16, 0.72);
-  border-color: rgba(188, 188, 188, 0.16);
+  background: rgba(26, 17, 13, 0.72);
+  border-color: rgba(209, 160, 115, 0.16);
   box-shadow: none;
   cursor: not-allowed;
 }
@@ -286,7 +286,7 @@
 .battle-hud-active .act-btn.act-btn--cancel {
   background: var(--hud-crimson-dark);
   border-color: var(--hud-crimson-border);
-  color: #e8e8e8;
+  color: #f4ecdc;
   box-shadow:
     inset 0 1px 0 rgba(203, 203, 203, 0.22),
     0 2px 0 rgba(7, 7, 7, 0.9);
@@ -298,7 +298,7 @@
 }
 
 .battle-hud-active .act-btn.act-btn--cancel .act-cost {
-  color: #c7c7c7;
+  color: #d3cbbb;
 }
 
 .battle-hud-active .battle-alerts {
@@ -318,7 +318,7 @@
   border: 1px solid var(--hud-brass);
   border-left: 3px solid var(--hud-crimson-border);
   border-radius: 2px;
-  background: rgba(20, 20, 20, 0.94);
+  background: rgba(29, 18, 14, 0.94);
   color: var(--hud-highlight);
   font-family: inherit;
   font-weight: 600;
