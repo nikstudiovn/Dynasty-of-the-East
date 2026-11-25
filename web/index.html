@@ -1295,7 +1295,10 @@ const updateBattleHud = initBattleHud();
         if (u.abilityTime > 0) mult *= u.type === "war_elephant" ? 1.45 : u.type === "horse_archer" ? 1.4 : 1;
         if (u.slowTime > 0) mult *= 0.55;
         const step = def.speed * mult * dt;
-        if (window.DOTESim) { window.DOTESim.moveUnit(u, dt, def.speed * mult, state.units, blockedByTeam[curTeam] || isTileBlocked); }
+        if (window.DOTESim) {
+          if (u._repath && !naval && (u.repathCd ?? 0) <= 0) { const g = u.path[u.path.length - 1]; u._repath = false; u.repathCd = 0.8; u.path = findPath(u.x, u.y, g.x, g.y, curTeam); if (!u.path.length) continue; }
+          window.DOTESim.moveUnit(u, dt, def.speed * mult, state.units, blockedByTeam[curTeam] || isTileBlocked);
+        }
         else if (dist <= step) { u.x = next.x; u.y = next.y; u.path.shift(); }
         else { u.x += (dx / dist) * step; u.y += (dy / dist) * step; }
         continue;
