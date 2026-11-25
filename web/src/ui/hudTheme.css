@@ -6,17 +6,21 @@
 }
 
 #game-wrap.battle-hud-active {
-  --hud-brass: #b6894e;
-  --hud-highlight: #ffe4a2;
-  --hud-wood:
-    repeating-linear-gradient(174deg, transparent 0 6px, #e7a46c0a 7px, #12080524 9px, transparent 11px 21px),
-    linear-gradient(180deg, #57301f 0%, #361a12 45%, #23100c 100%);
-  --hud-carving:
-    inset 0 1px #fae0a983,
-    inset 0 0 0 2px #230d08,
-    inset 0 0 0 3px #c8945345,
-    inset 0 -4px #18090584,
-    0 2px 6px #0804029c;
+  --hud-ink: #160c09;
+  --hud-lac-surface: rgba(24, 13, 10, 0.9);
+  --hud-btn-bg: #2a1711;
+  --hud-btn-bg-hover: #3a2017;
+  --hud-brass: rgba(245, 184, 65, 0.5);
+  --hud-brass-soft: rgba(245, 184, 65, 0.28);
+  --hud-highlight: #ffe9a8;
+  --hud-gold: #f5b841;
+  --hud-crimson: #9e261e;
+  --hud-crimson-dark: #4d1614;
+  --hud-crimson-border: #e05a4f;
+  --hud-panel-shadow:
+    inset 0 1px 0 rgba(255, 233, 168, 0.16),
+    inset 0 -2px 0 rgba(10, 5, 3, 0.55),
+    0 3px 10px rgba(8, 4, 2, 0.55);
 }
 
 .battle-hud-active .top-hud,
@@ -35,18 +39,18 @@
 }
 
 .battle-hud-active :is(.hud-pill, .minimap-box, .cmd-dock) {
-  background: var(--hud-wood);
+  background: var(--hud-lac-surface);
   border: 1px solid var(--hud-brass);
-  border-radius: 6px 6px 10px 10px;
+  border-radius: 3px;
   outline: none;
-  box-shadow: var(--hud-carving);
+  box-shadow: var(--hud-panel-shadow);
 }
 
 .battle-hud-active .hud-pill {
   min-width: 0;
   flex-wrap: wrap;
   overflow: visible;
-  padding: 5px 8px 6px;
+  padding: 4px 8px;
   gap: 4px 8px;
   backdrop-filter: none;
 }
@@ -64,18 +68,18 @@
 .battle-hud-active :is(.hud-pill, .cmd-dock)::after {
   content: "";
   position: absolute;
-  width: 8px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   pointer-events: none;
-  color: #e6b773;
+  border-color: var(--hud-gold);
+  opacity: 0.7;
 }
 
 .battle-hud-active :is(.hud-pill, .cmd-dock)::before {
-  top: 1px;
-  left: 1px;
+  top: 2px;
+  left: 2px;
   border-top: 1px solid;
   border-left: 1px solid;
-  border-top-left-radius: 3px;
 }
 
 .battle-hud-active :is(.hud-pill, .cmd-dock)::after {
@@ -83,7 +87,6 @@
   bottom: 2px;
   border-bottom: 1px solid;
   border-right: 1px solid;
-  border-bottom-right-radius: 4px;
 }
 
 .battle-hud-active .battle-timer {
@@ -91,14 +94,13 @@
   order: -1;
   align-items: center;
   justify-content: center;
-  padding: 2px 5px;
+  padding: 2px 6px;
   min-width: 5ch;
-  border: 1px solid #bd925f;
-  border-radius: 3px;
-  background: linear-gradient(#251610, #412b20);
-  color: #fff0bb;
-  box-shadow: inset 0 1px 2px #130706b5;
-  font: 700 12px/1.15 ui-monospace, monospace;
+  border: 1px solid var(--hud-brass-soft);
+  border-radius: 2px;
+  background: rgba(14, 8, 6, 0.85);
+  color: var(--hud-highlight);
+  font: 700 12px/1.15 ui-monospace, "SF Mono", Menlo, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -110,12 +112,26 @@
 }
 
 .battle-hud-active :is(.icon-btn, .mini-btn, .act-btn, .battle-dock-toggle) {
-  background: linear-gradient(#613725, #432319 55%, #32160e);
-  border: 1px solid #a87543;
-  border-radius: 5px;
+  position: relative;
+  background: var(--hud-btn-bg);
+  border: 1px solid var(--hud-brass-soft);
+  border-radius: 2px;
   outline: none;
-  color: #fff1d4;
-  box-shadow: inset 0 1px #ffdca34a, inset 0 -2px #1c090780, 0 1px 2px #100805b0;
+  color: #fff3d6;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 0 #120805;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 233, 168, 0.14),
+    0 2px 0 rgba(12, 6, 4, 0.85);
+  transition: background-color 80ms ease, border-color 80ms ease, transform 60ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.battle-hud-active :is(.icon-btn, .mini-btn, .act-btn, .battle-dock-toggle):hover:not(:disabled) {
+  background: var(--hud-btn-bg-hover);
+  border-color: var(--hud-brass);
 }
 
 .battle-hud-active :is(.icon-btn, .mini-btn, .act-btn, .battle-dock-toggle):focus-visible,
@@ -124,12 +140,29 @@
   outline-offset: -2px;
 }
 
-.battle-hud-active :is(.icon-btn, .mini-btn, .act-btn, .battle-dock-toggle):active:not(:disabled),
+.battle-hud-active :is(.icon-btn, .mini-btn, .act-btn, .battle-dock-toggle):active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 233, 168, 0.08),
+    0 1px 0 rgba(12, 6, 4, 0.9);
+}
+
 .battle-hud-active :is(.icon-btn, .mini-btn).active,
 .battle-hud-active .act-btn.selected {
-  background: linear-gradient(#8a3828, #49170f);
+  background: var(--hud-crimson);
   border-color: var(--hud-highlight);
-  box-shadow: inset 0 0 7px #ffbd626e, 0 0 5px #ffbb5c62;
+  color: #fffaf0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 233, 168, 0.35),
+    0 2px 0 rgba(12, 6, 4, 0.9);
+}
+
+.battle-hud-active .icon-btn {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .battle-hud-active .bottom-hud {
@@ -139,12 +172,12 @@
 .battle-hud-active .minimap-box {
   position: relative;
   display: block;
-  padding: 12px 12px 11px;
+  padding: 10px 10px 9px;
 }
 
 .battle-hud-active #minimapCanvas {
   border-radius: 1px;
-  outline: 1px solid #9e754e;
+  outline: 1px solid var(--hud-brass-soft);
 }
 
 .battle-hud-active .battle-compass {
@@ -152,9 +185,10 @@
   inset: 0;
   display: block;
   pointer-events: none;
-  color: #ebc482;
-  font: 700 9px/1 Georgia, serif;
-  text-shadow: 0 1px #180b06;
+  color: var(--hud-gold);
+  font: 700 8px/1 ui-monospace, monospace;
+  text-shadow: 0 1px 0 #160c09;
+  opacity: 0.85;
 }
 
 .battle-compass span { position: absolute; }
@@ -165,12 +199,13 @@
 
 .battle-hud-active .cmd-dock {
   min-width: 0;
-  gap: 4px;
-  padding: 6px 7px;
+  gap: 5px;
+  padding: 6px 8px;
 }
 
 .battle-hud-active .cmd-header {
   justify-content: flex-start;
+  align-items: center;
   gap: 4px 6px;
   min-width: 0;
 }
@@ -178,20 +213,34 @@
 .battle-hud-active .cmd-title {
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hud-highlight);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .battle-hud-active .quick-bar {
+  display: flex;
   flex-wrap: wrap;
   max-width: 100%;
-  gap: 3px;
+  gap: 4px;
+}
+
+.battle-hud-active .mini-btn {
+  min-height: 28px;
+  padding: 3px 7px;
+  font-size: 11.5px;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .battle-hud-active .cmd-buttons {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(94px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(96px, 100%), 1fr));
   align-items: stretch;
-  gap: 4px;
+  gap: 5px;
   max-height: 92px;
   overflow: auto;
   padding: 1px 1px 3px;
@@ -200,14 +249,57 @@
 
 .battle-hud-active .act-btn {
   min-width: 0;
-  padding: 4px 5px;
+  min-height: 38px;
+  padding: 5px 7px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   text-align: center;
-  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.15;
 }
 
-.battle-hud-active .act-btn > span { max-width: 100%; }
+.battle-hud-active .act-btn > span {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.battle-hud-active .act-btn .act-cost {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--hud-gold);
+  opacity: 0.92;
+}
+
+.battle-hud-active .act-btn:disabled {
+  opacity: 0.44;
+  background: rgba(24, 14, 11, 0.72);
+  border-color: rgba(245, 184, 65, 0.16);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.battle-hud-active .act-btn.act-btn--cancel {
+  background: var(--hud-crimson-dark);
+  border-color: var(--hud-crimson-border);
+  color: #ffe2de;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 190, 180, 0.22),
+    0 2px 0 rgba(12, 6, 4, 0.9);
+}
+
+.battle-hud-active .act-btn.act-btn--cancel:hover:not(:disabled) {
+  background: var(--hud-crimson);
+  border-color: var(--hud-highlight);
+}
+
+.battle-hud-active .act-btn.act-btn--cancel .act-cost {
+  color: #ffb8b0;
+}
 
 .battle-hud-active .battle-alerts {
   position: absolute;
@@ -223,13 +315,13 @@
 .battle-alert {
   max-width: 100%;
   padding: 5px 9px;
-  border: 1px solid #e6af66;
-  border-left: 3px solid #ff816d;
-  border-radius: 4px 12px 12px 4px;
-  background: linear-gradient(#482319f5, #271210f5);
-  color: #fff2cd;
+  border: 1px solid var(--hud-brass);
+  border-left: 3px solid var(--hud-crimson-border);
+  border-radius: 2px;
+  background: rgba(34, 16, 12, 0.94);
+  color: var(--hud-highlight);
   font-family: inherit;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 12px;
   line-height: 1.3;
   text-align: left;
@@ -249,13 +341,13 @@
 
 @media (max-width: 680px) {
   .battle-hud-active .top-right { justify-content: flex-start; }
-  .battle-hud-active .icon-btn { padding: 4px 6px; font-size: 11px; }
+  .battle-hud-active .icon-btn { padding: 4px 7px; font-size: 11.5px; }
   .battle-hud-active #minimapCanvas { width: 72px; height: 48px; }
   .battle-hud-active #sel-portrait { width: 31px; height: 31px; }
   .battle-hud-active .quick-bar { flex-basis: 100%; }
-  .battle-hud-active .mini-btn { padding: 4px 5px; font-size: 11px; }
+  .battle-hud-active .mini-btn { padding: 3px 6px; font-size: 11px; }
   .battle-hud-active .cmd-buttons {
-    grid-template-columns: repeat(auto-fill, minmax(min(75px, 100%), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(84px, 100%), 1fr));
   }
 }
 
@@ -276,13 +368,14 @@
 @media (orientation: landscape) and (max-height: 520px) {
   .battle-hud-active .hud-pill { gap: 3px 6px; }
   .battle-hud-active .top-right { justify-content: flex-start; }
-  .battle-hud-active .cmd-dock { padding: 4px 6px; }
-  .battle-hud-active .cmd-buttons { max-height: 61px; }
+  .battle-hud-active .cmd-dock { padding: 4px 7px; gap: 4px; }
+  .battle-hud-active .cmd-buttons { max-height: 82px; gap: 4px; }
+  .battle-hud-active .act-btn { min-height: 36px; padding: 4px 6px; }
   .battle-hud-active .battle-dock-toggle {
     display: block;
     align-self: flex-end;
     min-height: 24px;
-    padding: 2px 12px;
+    padding: 2px 10px;
     font: 700 11px/1.2 system-ui, sans-serif;
     cursor: pointer;
   }
@@ -324,10 +417,10 @@
   overscroll-behavior: contain;
   touch-action: pan-y;
   padding: 5px;
-  background: var(--hud-wood);
+  background: var(--hud-lac-surface);
   border: 1px solid var(--hud-brass);
-  border-radius: 6px;
-  box-shadow: var(--hud-carving);
+  border-radius: 3px;
+  box-shadow: var(--hud-panel-shadow);
   pointer-events: auto;
 }
 
