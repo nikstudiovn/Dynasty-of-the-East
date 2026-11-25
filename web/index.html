@@ -2639,7 +2639,7 @@ const updateBattleHud = initBattleHud();
     const doubleTapHold = lastTap?.match === state && lastTap.type === e.pointerType &&
       performance.now() - lastTap.time <= 320 && Math.hypot(clientX - lastTap.x, clientY - lastTap.y) <= 28;
     lastTap = null;
-    gesture = { pointerId, match: state, startX: clientX, startY: clientY, lastX: clientX, lastY: clientY, dragged: false };
+    const blockMove = Boolean(boxSelectMode || e.shiftKey || doubleTapHold); gesture = { pointerId, match: state, startX: clientX, startY: clientY, lastX: clientX, lastY: clientY, dragged: false, blockMove };
     canvas.setPointerCapture(pointerId);
     if (boxSelectMode || e.shiftKey || doubleTapHold) {
       const rect = canvas.getBoundingClientRect();
@@ -2664,14 +2664,14 @@ const updateBattleHud = initBattleHud();
     if (gesture?.pointerId !== e.pointerId) return;
     if (!canControlBattle() || gesture.match !== state) { cancelCanvasGesture(); return; }
     updateGesture(e, canvas.getBoundingClientRect());
-    const { dragged } = gesture;
+    const { dragged, blockMove } = gesture;
     const box = selectionBox;
     resetCanvasGesture();
     if (box) {
       if (Math.hypot(box.x2 - box.x1, box.y2 - box.y1) > 12) { finishBoxSelect(box); return; }
       setBoxSelectMode(false);
     }
-    if (!dragged) {
+    if (blockMove) return; if (!dragged) {
       lastTap = { match: state, type: e.pointerType, time: performance.now(), x: e.clientX, y: e.clientY };
       handleTap(e.clientX, e.clientY, e.pointerType);
     }
