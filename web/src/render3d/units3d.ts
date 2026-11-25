@@ -641,7 +641,7 @@ r.height = 0.75;
 break;
 }
 case "samurai": {
-humanoid(r, b, team, { armor: "plate", head: "none", faction: "fuso" });
+humanoid(r, b, team, { armor: "lamellar", head: undefined, faction: "fuso" });
 const indigo = cloth("#243356"), charM = steel("#232730"), silver = steel(PAL.steel);
 b.add(mesh(box(0.2, 0.18, 0.135), indigo, 0, 0.34, 0));
 b.add(mesh(box(0.21, 0.04, 0.14), charM, 0, 0.28, 0, false));
