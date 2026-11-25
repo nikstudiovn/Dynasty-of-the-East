@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
+// Dynasty of the East 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
 import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import * as THREE from "three";
 import { box, cyl, cone, sphere, geo, mat, mesh, shade, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, fxGuard, type Faction } from "./common";

@@ -39,10 +39,10 @@
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
   <key>NSLocalNetworkUsageDescription</key>
-  <string>Pixel Dynasty uses your local Wi-Fi network to discover and connect nearby players for LAN skirmish matches.</string>
+  <string>Dynasty of the East uses your local Wi-Fi network to discover and connect nearby players for LAN skirmish matches.</string>
   <key>NSBonjourServices</key>
   <array>
-    <string>_pixeldynasty._tcp</string>
+    <string>_dote._tcp</string>
   </array>
 </dict>
 </plist>

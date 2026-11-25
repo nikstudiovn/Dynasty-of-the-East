@@ -1,4 +1,4 @@
-// Pixel Dynasty — pooled VFX (smoke, flames, slash arcs, dust, craters, shockwaves).
+// Dynasty of the East — pooled VFX (smoke, flames, slash arcs, dust, craters, shockwaves).
 // All particles live in one preallocated pool (MAX_PARTICLES). Nothing is allocated per frame.
 
 export const MAX_PARTICLES = 160;

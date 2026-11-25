@@ -3,8 +3,8 @@ import Network
 
 /// Local Wi-Fi LAN discovery using Apple's modern Network framework (Bonjour).
 final class LanSessionManager {
-    private let serviceType = "_pixeldynasty._tcp"
-    private let queue = DispatchQueue(label: "com.nikstudio.pixeldynasty.lan")
+    private let serviceType = "_dote._tcp"
+    private let queue = DispatchQueue(label: "com.nikstudio.dote.lan")
     private var listener: NWListener?
     private var browser: NWBrowser?
 

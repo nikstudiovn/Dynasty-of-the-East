@@ -1,4 +1,4 @@
-// Pixel Dynasty — atmosphere: ink-wash fog edges, warm building glow, ambient wind.
+// Dynasty of the East — atmosphere: ink-wash fog edges, warm building glow, ambient wind.
 
 const TILE_W = 52;
 const TILE_H = 26;

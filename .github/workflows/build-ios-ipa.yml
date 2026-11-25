@@ -1,4 +1,4 @@
-name: Build iOS IPA (Pixel Dynasty)
+name: Build iOS IPA (Dynasty of the East)
 
 on:
   workflow_dispatch:
@@ -38,8 +38,8 @@ jobs:
 
       - name: Sync web bundle into iOS app
         run: |
-          rm -rf ios/PixelDynasty/WebBundle/*
-          cp -R web/dist/* ios/PixelDynasty/WebBundle/
+          rm -rf ios/DOTE/WebBundle/*
+          cp -R web/dist/* ios/DOTE/WebBundle/
 
       - name: Install XcodeGen & generate Xcode project
         working-directory: ios
@@ -52,8 +52,8 @@ jobs:
         working-directory: ios
         run: |
           xcodebuild \
-            -project PixelDynasty.xcodeproj \
-            -scheme PixelDynasty \
+            -project DOTE.xcodeproj \
+            -scheme DOTE \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build/DerivedData \
@@ -62,12 +62,12 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             clean build
           mkdir -p build/Payload
-          cp -R "build/DerivedData/Build/Products/Release-iphoneos/Pixel Dynasty.app" build/Payload/
-          cd build && zip -qr PixelDynasty-unsigned.ipa Payload
+          cp -R "build/DerivedData/Build/Products/Release-iphoneos/Dynasty of the East.app" build/Payload/
+          cd build && zip -qr DOTE-unsigned.ipa Payload
 
       - name: Upload unsigned IPA artifact
         if: ${{ inputs.build_mode != 'testflight' }}
         uses: actions/upload-artifact@v4
         with:
-          name: PixelDynasty-unsigned-ipa
-          path: ios/build/PixelDynasty-unsigned.ipa
+          name: DOTE-unsigned-ipa
+          path: ios/build/DOTE-unsigned.ipa

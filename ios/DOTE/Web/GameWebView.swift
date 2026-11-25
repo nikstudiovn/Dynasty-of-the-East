@@ -13,7 +13,7 @@ struct GameWebView: UIViewRepresentable {
         config.setURLSchemeHandler(BundleSchemeHandler(), forURLScheme: "app")
 
         let contentController = WKUserContentController()
-        contentController.add(context.coordinator, name: "pixelDynasty")
+        contentController.add(context.coordinator, name: "dote")
         config.userContentController = contentController
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -45,7 +45,7 @@ struct GameWebView: UIViewRepresentable {
                 let style = data?["style"] as? String ?? "light"
                 HapticsManager.shared.trigger(style: style)
             case "lan_host":
-                let roomName = data?["roomName"] as? String ?? "PixelDynasty"
+                let roomName = data?["roomName"] as? String ?? "DOTE"
                 lanManager.startHosting(roomName: roomName)
             case "lan_browse":
                 lanManager.startBrowsing { [weak self] peers in

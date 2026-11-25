@@ -1,4 +1,4 @@
-# Pixel Dynasty (Triều Đại Pixel)
+# Dynasty of the East (Triều Đại Phương Đông)
 
 Game chiến thuật thời gian thực (RTS) phong cách **Á Đông (Việt Nam – Trung Quốc)** tối ưu cho iPhone (nhịp trận 10–15 phút, 4 tài nguyên, 4 thời kỳ, AI 1v1–1v3, Wi-Fi LAN và Online).
 
@@ -17,13 +17,13 @@ Game chiến thuật thời gian thực (RTS) phong cách **Á Đông (Việt Na
   - `ci-check.yml`: Kiểm tra TypeScript (`npx tsc --noEmit`) và build (`npm run build`) trên Node 20 cho cả `web/` và `server/` khi `push` hoặc `pull_request` vào `main`.
   - `cleanup-actions-runs.yml`: Tự động dọn dẹp các GitHub Actions runs cũ.
   - `deploy-web-pages.yml`: Tự động build `/web` và xuất bản lên GitHub Pages.
-  - `build-ios-ipa.yml`: Tự động build `/web`, nhúng vào `/ios/PixelDynasty/WebBundle`, chạy `xcodegen generate` trên `macos-15` và xuất tệp `.ipa` (hỗ trợ cả bản Unsigned `.ipa` test nhanh lẫn ký đẩy TestFlight).
+  - `build-ios-ipa.yml`: Tự động build `/web`, nhúng vào `/ios/DOTE/WebBundle`, chạy `xcodegen generate` trên `macos-15` và xuất tệp `.ipa` (hỗ trợ cả bản Unsigned `.ipa` test nhanh lẫn ký đẩy TestFlight).
 
 ## Hướng dẫn khởi chạy chỉ bằng GitHub và iPhone
 
-1. **Tạo kho GitHub mới** (ví dụ `pixel-dynasty`) và tải toàn bộ thư mục này lên nhánh `main`.
+1. **Chơi bản web** tại [Dynasty of the East](https://nikstudiovn.github.io/Dynasty-of-the-East/). Kho mã nguồn là `nikstudiovn/Dynasty-of-the-East`, nhánh mặc định là `main`.
 2. **Bật GitHub Pages**: Vào **Settings → Pages → Build and deployment → Source: GitHub Actions**. Từ lúc này, mỗi khi sửa `units.json`, `buildings.json`, `factions.json` hoặc mã trong `web/`, Safari trên iPhone sẽ có bản mới sau ~15 giây.
-3. **Biên dịch file `.ipa` không cần máy Mac**: Vào tab **Actions → Build iOS IPA (Pixel Dynasty) → Run workflow** để tải tệp `PixelDynasty-unsigned.ipa` về iPhone ký và cài thử.
+3. **Biên dịch file `.ipa` không cần máy Mac**: Vào tab **Actions → Build iOS IPA (Dynasty of the East) → Run workflow** để tải tệp `DOTE-unsigned.ipa` về iPhone ký và cài thử.
 4. **Đẩy tự động lên TestFlight (App Store)**: Cấu hình các biến bảo mật (Secrets) trong `Settings → Secrets and variables → Actions`:
    - `APPLE_CERT_BASE64`, `APPLE_CERT_PASSWORD`, `APPLE_PROVISION_PROFILE_BASE64`, `APPLE_TEAM_ID`
    - `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_PRIVATE_KEY`

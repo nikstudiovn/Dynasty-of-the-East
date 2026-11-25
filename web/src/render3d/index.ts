@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — facade used by the classic game script, plus the crisp 2D Retina overlay bridge.
+// Dynasty of the East 3D — facade used by the classic game script, plus the crisp 2D Retina overlay bridge.
 import { ModelRegistry } from "./modelRegistry";
 import * as THREE from "three";
 import { Scene3D, Cam, MIN_ZOOM, MAX_ZOOM, type QualityPreset } from "./scene3d";

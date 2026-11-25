@@ -1,4 +1,4 @@
-// Pixel Dynasty — grid A* backed by a binary min-heap (fast enough for 96×96 maps on iPhone-class CPUs).
+// Dynasty of the East — grid A* backed by a binary min-heap (fast enough for 96×96 maps on iPhone-class CPUs).
 // Pure functions: the game passes in its own `isTileBlocked(tx, ty, team?)`.
 
 export type BlockedFn = (tx: number, ty: number, team?: string) => boolean;

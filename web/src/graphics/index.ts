@@ -1,4 +1,4 @@
-// Pixel Dynasty graphics bundle. Exposes window.DOTEGfx for the classic (non-module) game script.
+// Dynasty of the East graphics bundle. Exposes window.DOTEGfx for the classic (non-module) game script.
 import * as vfx from "./vfxPool";
 import * as atmosphere from "./atmosphere";
 import * as terrain from "./terrainMap";

@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — smooth 3-state fog of war: a terrain-hugging veil driven by a mapSize×mapSize (48/64/96) DataTexture
+// Dynasty of the East 3D — smooth 3-state fog of war: a terrain-hugging veil driven by a mapSize×mapSize (48/64/96) DataTexture
 // sampled with LinearFilter for soft edges.
 import * as THREE from "three";
 import { MAP_N, terrainHeight, bridgeDeckAt } from "./common";

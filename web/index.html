@@ -2408,7 +2408,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
       zoomMin = R3D.minZoom; zoomMax = R3D.maxZoom; R3D.setQuality?.(savedQuality);
       document.body.classList.add("r3d");
     } catch (err) {
-      console.warn("[Pixel Dynasty] WebGL2 3D renderer unavailable, using classic 2D canvas:", err);
+      console.warn("[Dynasty of the East] WebGL2 3D renderer unavailable, using classic 2D canvas:", err);
       R3D = null;
     }
   }

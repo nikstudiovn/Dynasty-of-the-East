@@ -1,4 +1,4 @@
-// Pixel Dynasty 3D — shared procedural geometry for nature & resources (Chặng 2A).
+// Dynasty of the East 3D — shared procedural geometry for nature & resources (Chặng 2A).
 // Every builder returns ONE merged BufferGeometry (position / normal / uv) so each kind of tree, rock or
 // crystal is drawn by a single InstancedMesh: a whole forest costs one trunk + one canopy draw call.
 import * as THREE from "three";
