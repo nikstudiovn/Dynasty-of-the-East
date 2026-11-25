@@ -1,0 +1,527 @@
+/* Side-Rail Command HUD - Pixel + Lacquer (Son Mai) Theme */
+:root {
+  --pd-ink: #1a0e0a;
+  --pd-wood: #3a2218;
+  --pd-lacquer: #7a1f1a;
+  --pd-crimson: #b22b22;
+  --pd-gold: #f5b841;
+  --pd-cream: #ffe9a8;
+  --pd-jade: #2f8f6b;
+  --pd-rail-w: 56px;
+}
+
+body.pd-side-rail-active,
+body.pd-side-rail-active #game-wrap {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Hide old brown command dock without removing DOM nodes */
+body.pd-side-rail-active .bottom-hud {
+  pointer-events: none;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 0;
+}
+
+body.pd-side-rail-active .cmd-dock {
+  position: fixed;
+  width: 0;
+  height: 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Minimap top-left below thin resource bar */
+body.pd-side-rail-active .minimap-box {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 46px);
+  left: calc(env(safe-area-inset-left, 0px) + 8px);
+  z-index: 32;
+  pointer-events: auto;
+  background: var(--pd-wood);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  padding: 3px;
+  box-shadow: 0 0 0 2px var(--pd-ink), 4px 4px 0 0 var(--pd-ink);
+  image-rendering: pixelated;
+  backdrop-filter: none;
+}
+
+body.pd-side-rail-active #minimapCanvas {
+  width: 112px;
+  height: 74px;
+  display: block;
+  image-rendering: pixelated;
+  border-radius: 0;
+}
+
+/* Stepped pixel corner utility */
+.pd-pixel-frame {
+  background: var(--pd-wood);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  box-shadow:
+    inset 0 0 0 2px var(--pd-lacquer),
+    0 0 0 2px var(--pd-ink),
+    3px 3px 0 0 var(--pd-ink);
+  clip-path: polygon(
+    4px 0, calc(100% - 4px) 0,
+    calc(100% - 4px) 4px, 100% 4px,
+    100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px),
+    calc(100% - 4px) 100%, 4px 100%,
+    4px calc(100% - 4px), 0 calc(100% - 4px),
+    0 4px, 4px 4px
+  );
+  backdrop-filter: none;
+  image-rendering: pixelated;
+}
+
+/* Dual Vertical Side Rails */
+.pd-rail {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 128px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  width: var(--pd-rail-w);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.pd-rail-left {
+  left: calc(env(safe-area-inset-left, 0px) + 6px);
+}
+
+.pd-rail-right {
+  top: calc(env(safe-area-inset-top, 0px) + 52px);
+  right: calc(env(safe-area-inset-right, 0px) + 6px);
+}
+
+.pd-rail-scroll {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 6px;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+
+.pd-rail-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Rail Buttons: 48x48px (>= 44x44 touch target) */
+.pd-rail-btn,
+.pd-rail .mini-btn {
+  width: 48px;
+  height: 48px;
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding: 2px;
+  margin: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: var(--pd-wood);
+  color: var(--pd-cream);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px var(--pd-lacquer), 2px 2px 0 0 var(--pd-ink);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  image-rendering: pixelated;
+  backdrop-filter: none;
+}
+
+.pd-rail-btn:hover,
+.pd-rail .mini-btn:hover {
+  background: var(--pd-lacquer);
+  border-color: var(--pd-cream);
+}
+
+.pd-rail-btn.active,
+.pd-rail-btn.pd-active,
+.pd-rail .mini-btn.active,
+.pd-rail .mini-btn.selected {
+  background: var(--pd-crimson);
+  border-color: var(--pd-cream);
+  color: #ffffff;
+}
+
+.pd-rail-btn svg,
+.pd-rail .mini-btn svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+
+.pd-btn-lbl {
+  display: block;
+  max-width: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8px;
+  letter-spacing: -0.02em;
+  color: var(--pd-cream);
+}
+
+.pd-rail-collapse-btn {
+  width: 48px;
+  height: 36px;
+  min-width: 44px;
+  min-height: 36px;
+  background: var(--pd-lacquer);
+}
+
+/* Edge Handle when Collapsed */
+.pd-rail-handle {
+  display: none;
+  position: fixed;
+  top: 50%;
+  right: calc(env(safe-area-inset-right, 0px) + 2px);
+  transform: translateY(-50%);
+  width: 36px;
+  height: 56px;
+  min-width: 36px;
+  min-height: 44px;
+  z-index: 45;
+  background: var(--pd-lacquer);
+  color: var(--pd-gold);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 0 var(--pd-ink);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+body.pd-rails-collapsed .pd-rail,
+body.pd-rails-collapsed .pd-rail-drawer {
+  display: none !important;
+}
+
+body.pd-rails-collapsed .pd-rail-handle {
+  display: flex;
+}
+
+/* Sliding Contextual Drawer */
+.pd-rail-drawer {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 52px);
+  right: calc(env(safe-area-inset-right, 0px) + var(--pd-rail-w) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 56px);
+  width: min(296px, calc(100vw - var(--pd-rail-w) * 2 - 36px));
+  z-index: 42;
+  display: flex;
+  flex-direction: column;
+  background: var(--pd-wood);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  box-shadow:
+    inset 0 0 0 2px var(--pd-lacquer),
+    4px 4px 0 0 var(--pd-ink);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(18px);
+  transition: transform 180ms steps(4, end), opacity 140ms linear;
+  backdrop-filter: none;
+  image-rendering: pixelated;
+}
+
+.pd-rail-drawer.pd-drawer-open {
+  pointer-events: auto;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.pd-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--pd-lacquer);
+  border-bottom: 2px solid var(--pd-gold);
+  color: var(--pd-cream);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pd-drawer-close {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  background: var(--pd-wood);
+  color: var(--pd-gold);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pd-drawer-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 6px 4px;
+  background: var(--pd-ink);
+  border-bottom: 2px solid var(--pd-gold);
+}
+
+.pd-drawer-tab {
+  flex: 1 1 0;
+  min-height: 36px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--pd-wood);
+  color: var(--pd-cream);
+  border: 2px solid var(--pd-lacquer);
+  border-radius: 0;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pd-drawer-tab.active {
+  background: var(--pd-lacquer);
+  border-color: var(--pd-gold);
+  color: var(--pd-gold);
+}
+
+.pd-drawer-tab svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.pd-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px;
+}
+
+.pd-rail-drawer #cmd-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pd-rail-drawer #cmd-buttons .act-btn {
+  min-height: 48px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  background: var(--pd-lacquer);
+  color: var(--pd-cream);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 0 var(--pd-ink);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  image-rendering: pixelated;
+}
+
+.pd-rail-drawer #cmd-buttons .act-btn.selected {
+  background: var(--pd-jade);
+  border-color: var(--pd-cream);
+}
+
+.pd-rail-drawer #cmd-buttons .act-btn:disabled {
+  opacity: 0.52;
+  background: var(--pd-wood);
+  border-color: var(--pd-crimson);
+  color: #d6b6a8;
+  cursor: not-allowed;
+}
+
+.pd-rail-drawer #cmd-buttons .act-btn.pd-hidden-by-tab {
+  display: none !important;
+}
+
+.pd-cmd-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pd-ink);
+  border: 1px solid var(--pd-gold);
+}
+
+.pd-cmd-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pd-cmd-text .act-cost {
+  font-size: 9px;
+  color: var(--pd-gold);
+}
+
+/* Compact Selection Pill at Bottom Center */
+.pd-sel-pill {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+  transform: translateX(-50%);
+  z-index: 38;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  max-width: min(300px, calc(100vw - var(--pd-rail-w) * 2 - 32px));
+  background: var(--pd-wood);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px var(--pd-lacquer), 3px 3px 0 0 var(--pd-ink);
+  pointer-events: auto;
+  backdrop-filter: none;
+}
+
+.pd-sel-pill #sel-portrait {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  background: var(--pd-ink);
+  image-rendering: pixelated;
+}
+
+.pd-sel-pill #sel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pd-cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Left-Handed Mode: Swap Left & Right Rails + Drawer Direction */
+body.pd-left-handed .pd-rail-left {
+  left: auto;
+  right: calc(env(safe-area-inset-right, 0px) + 6px);
+}
+
+body.pd-left-handed .pd-rail-right {
+  right: auto;
+  left: calc(env(safe-area-inset-left, 0px) + 6px);
+  top: calc(env(safe-area-inset-top, 0px) + 128px);
+}
+
+body.pd-left-handed .pd-rail-left {
+  top: calc(env(safe-area-inset-top, 0px) + 52px);
+}
+
+body.pd-left-handed .pd-rail-drawer {
+  right: auto;
+  left: calc(env(safe-area-inset-left, 0px) + var(--pd-rail-w) + 12px);
+  transform: translateX(-18px);
+}
+
+body.pd-left-handed .pd-rail-drawer.pd-drawer-open {
+  transform: translateX(0);
+}
+
+body.pd-left-handed .pd-rail-handle {
+  right: auto;
+  left: calc(env(safe-area-inset-left, 0px) + 2px);
+}
+
+/* Long-press Tooltip */
+.pd-rail-tooltip {
+  position: fixed;
+  z-index: 60;
+  padding: 5px 8px;
+  background: var(--pd-ink);
+  color: var(--pd-cream);
+  border: 2px solid var(--pd-gold);
+  border-radius: 0;
+  box-shadow: 2px 2px 0 0 var(--pd-lacquer);
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+  display: none;
+}
+
+.pd-rail-tooltip.visible {
+  display: block;
+}
+
+/* Left-handed toggle inside #hud-settings */
+.pd-lh-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* Portrait Fallback (e.g. 390x844) */
+@media (max-width: 520px) and (orientation: portrait) {
+  :root {
+    --pd-rail-w: 48px;
+  }
+
+  body.pd-side-rail-active #minimapCanvas {
+    width: 96px;
+    height: 64px;
+  }
+
+  .pd-rail-btn,
+  .pd-rail .mini-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .pd-rail-drawer {
+    width: calc(100vw - var(--pd-rail-w) * 2 - 24px);
+    top: calc(env(safe-area-inset-top, 0px) + 122px);
+  }
+
+  .pd-rail-drawer #cmd-buttons {
+    grid-template-columns: 1fr;
+  }
+}

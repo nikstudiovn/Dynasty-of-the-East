@@ -2,6 +2,8 @@
 import "./graphics/index";
 import "./ui/screens.css";
 import { initLobbyUI } from "./ui/lobbyScreen";
+import "./ui/sideRailHud.css";
+import { initSideRailHud } from "./ui/sideRailHud";;
 import * as steering from "./sim/steering";
 import * as pinch from "./input/pinchZoom";
 import * as render3d from "./render3d/index";
@@ -32,6 +34,8 @@ import * as gameplayExtras from "./sim/gameplayExtras";
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initLobbyUI);
+  document.addEventListener("DOMContentLoaded", initSideRailHud);;
 } else {
   initLobbyUI();
+  initSideRailHud();
 }
