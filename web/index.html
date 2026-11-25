@@ -950,10 +950,10 @@ const updateBattleHud = initBattleHud();
   // Team whose unit is being simulated right now (so findPath knows which gates are walkable); player outside the unit loop.
   let curTeam = null;
   const blockedByTeam = { player: (x, y) => isTileBlocked(x, y, "player"), enemy: (x, y) => isTileBlocked(x, y, "enemy") };
-  function findPath(sx, sy, gx, gy, team) {
+  function findPath(sx, sy, gx, gy, team, strict = false) {
     team = team || curTeam || "player";
     const blocked = (x, y) => isTileBlocked(x, y, team);
-    const raw = window.DOTEPath.findPathRaw(state.mapSize, sx, sy, gx, gy, isTileBlocked, team, team === "enemy");
+    const raw = window.DOTEPath.findPathRaw(state.mapSize, sx, sy, gx, gy, isTileBlocked, team, strict || team === "enemy");
     return window.DOTESim ? window.DOTESim.smoothPath(sx, sy, raw, blocked) : raw;
   }
 
@@ -1950,6 +1950,46 @@ const updateBattleHud = initBattleHud();
     return nearest;
   }
 
+  function resumeConstruction(building, villagers) {
+    const center = { x: building.tx + building.size / 2, y: building.ty + building.size / 2 };
+    const approach = [];
+    for (let ty = building.ty - 1; ty <= building.ty + building.size; ty++) {
+      for (let tx = building.tx - 1; tx <= building.tx + building.size; tx++) {
+        const x = tx + 0.5, y = ty + 0.5;
+        if (!isTileBlocked(tx, ty, "player") && Math.hypot(x - center.x, y - center.y) <= 2.15) {
+          approach.push({ x, y });
+        }
+      }
+    }
+
+    let assigned = 0;
+    for (const villager of villagers) {
+      let path = [];
+      if (Math.hypot(villager.x - center.x, villager.y - center.y) > 2.3) {
+        const candidates = [...approach].sort((a, b) => Math.hypot(a.x - villager.x, a.y - villager.y) -
+          Math.hypot(b.x - villager.x, b.y - villager.y));
+        for (const point of candidates) {
+          path = findPath(villager.x, villager.y, point.x, point.y, "player", true);
+          if (path.length) break;
+        }
+        if (!path.length) continue;
+      }
+      const previous = villager.task === "build" && villager.buildTargetId;
+      const pending = previous ? [previous, ...(villager.buildQueue || [])] : [];
+      villager.buildQueue = [...new Set(pending)].filter(id => id !== building.id);
+      villager.buildTargetId = building.id;
+      villager.task = "build";
+      villager.path = path;
+      villager.targetTile = null;
+      villager.targetEntityId = null;
+      villager.huntId = null;
+      villager.amDest = null;
+      villager.manualAtk = false;
+      assigned++;
+    }
+    return assigned;
+  }
+
   function handleTap(clientX, clientY, pointerType) {
     ensureAudio();
     const rect = canvas.getBoundingClientRect();
@@ -1958,6 +1998,19 @@ const updateBattleHud = initBattleHud();
     const prevTap = state._lastTapUnit;
     const prevTapTime = state._lastTapUnitTime;
     clearUnitTap();
+
+    const tappedOwnBldg = state.buildings.find(b => b.team === "player" && b.hp > 0 &&
+      tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
+    const selVils = state.units.filter(u => u.team === "player" && u.type === "villager" &&
+      u.hp > 0 && !u.garrisoned && state.selectedIds.includes(u.id));
+    if (!state.attackMove && tappedOwnBldg && (tappedOwnBldg.progress ?? 1) < 1 && selVils.length > 0) {
+      const assigned = resumeConstruction(tappedOwnBldg, selVils);
+      if (assigned) {
+        sfxClick();
+        showToast(`Tiếp tục xây ${BLDG_DEFS[tappedOwnBldg.type].name}`);
+      } else showToast("Dân làng không tìm được lối tới công trình.");
+      return;
+    }
 
     if (state.buildMode) {
       const def = BLDG_DEFS[state.buildMode];
@@ -2029,8 +2082,6 @@ const updateBattleHud = initBattleHud();
       sfxClick(); renderCommandDock(); return;
     }
 
-    const tappedOwnBldg = state.buildings.find(b => b.team === "player" && b.hp > 0 && tx >= b.tx && tx < b.tx + b.size && ty >= b.ty && ty < b.ty + b.size);
-    const selVils = state.units.filter(u => state.selectedIds.includes(u.id) && u.type === "villager");
     if (tappedOwnBldg && !(tappedOwnBldg.type === "farm" && selVils.length > 0)) {
       state.selectedBuildingId = tappedOwnBldg.id; state.selectedIds = [];
       sfxClick(); renderCommandDock(); return;

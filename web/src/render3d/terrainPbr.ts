@@ -8,13 +8,15 @@ const LAYERS = [
   { dark: [52, 44, 36], light: [121, 104, 83], rough: 0.81, relief: 0.6 }
 ];
 
-function hash(x: number, y: number, seed: number): number {
+/** Integer hash in [0,1] shared by the procedural PBR texture generators. */
+export function hash(x: number, y: number, seed: number): number {
   let h = Math.imul(x + seed, 374761393) + Math.imul(y, 668265263);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
-function noise(u: number, v: number, nx: number, ny: number, seed: number): number {
+/** Seamless value noise: tiles across [0,1) with nx × ny lattice cells. */
+export function noise(u: number, v: number, nx: number, ny: number, seed: number): number {
   const x = Math.floor(u * nx), y = Math.floor(v * ny);
   const fx = u * nx - x, fy = v * ny - y;
   const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);

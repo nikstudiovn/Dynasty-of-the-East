@@ -1,4 +1,5 @@
 // Pixel Dynasty 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
+import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import * as THREE from "three";
 import { box, cyl, cone, sphere, geo, mat, mesh, shade, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, type Faction } from "./common";
 import { softMask } from "./surfaces";
@@ -8,6 +9,7 @@ const SKIN = "#e8c39e", PANTS = "#3a2a1e", WOOD = "#7a4f2a", STEEL = "#cbd5e1", 
 const TAU = Math.PI * 2;
 
 interface Rig {
+  model?: ModelVisual;
   root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group;
   legL: THREE.Group | null; legR: THREE.Group | null;
   tools: Record<string, THREE.Object3D>; carry: Record<string, THREE.Object3D>;
@@ -293,7 +295,7 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
 }
 
 // ---------------------------------------------------------------------------
-interface AnimalRig { root: THREE.Group; legs: THREE.Group[]; body: THREE.Group; yaw: number; px: number; pz: number; walk: number; init: boolean; type: string; dead: number; }
+interface AnimalRig { model?: ModelVisual; root: THREE.Group; legs: THREE.Group[]; body: THREE.Group; yaw: number; px: number; pz: number; walk: number; init: boolean; type: string; dead: number; }
 
 /** Stylized low-poly deer (antlered stag with spotted flanks) and wild boar (bristled, tusked). */
 function wildlifeSpecies(type: string): string {
@@ -416,17 +418,27 @@ export class Units3D {
   private readonly frustumMatrix = new THREE.Matrix4();
   private readonly bounds = new THREE.Sphere(new THREE.Vector3(), 1.3);
   private readonly animals = new Map<number, AnimalRig>();
+  private readonly animalHeights = new Map<string, number>();
 
-  constructor(private readonly fx: FX3D) {}
+  private readonly dying = new Map<Rig, number>();
+
+  constructor(private readonly fx: FX3D, private readonly models: ModelRegistry) {}
+
+  private disposeRig(rig: Rig | AnimalRig): void {
+    rig.model?.dispose();
+    disposeTree(rig.root);
+  }
 
   rigFor(id: number): Rig | undefined { return this.rigs.get(id); }
   allRigs(): IterableIterator<Rig> { return this.rigs.values(); }
 
   clear(): void {
-    for (const r of this.rigs.values()) disposeTree(r.root);
+    for (const r of this.rigs.values()) this.disposeRig(r);
     this.rigs.clear();
-    for (const a of this.animals.values()) disposeTree(a.root);
+    for (const a of this.animals.values()) this.disposeRig(a);
     this.animals.clear();
+    for (const r of this.dying.keys()) this.disposeRig(r);
+    this.dying.clear();
     for (const list of Object.values(this.pool)) {
       for (const mesh of list) disposeTree(mesh);
       list.length = 0;
@@ -474,7 +486,7 @@ export class Units3D {
     return o;
   }
 
-  update(state: any, env: Env3D, t: number, dt: number, camera: THREE.Camera): void {
+  update(state: any, env: Env3D, t: number, dt: number, camera: THREE.Camera, shadows: boolean): void {
     camera.getWorldQuaternion(this.cameraFacing);
     this.frustum.setFromProjectionMatrix(this.frustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const seen = new Set<number>();
@@ -526,8 +538,10 @@ export class Units3D {
       const key = `${u.type}|${color}|${faction}`;
       let r = this.rigs.get(u.id);
       if (!r || r.key !== key) {
-        if (r) disposeTree(r.root);
+        if (r) this.disposeRig(r);
         r = buildUnit(u.type, color, faction);
+        r.model = this.models.creature("units", u.type, r.height, r.root, r.body,
+          { side: u.team === "player" ? "player" : "enemy", color });
         this.group.add(r.root);
         this.rigs.set(u.id, r);
       }
@@ -587,25 +601,51 @@ export class Units3D {
         r.lastPose = t;
         r.nextPose = t + (dist > 1600 ? 0.063 : dist > 500 ? 0.033 : 0);
         this.animate(r, u, state, t, elapsed, moving, speed, target);
+        const pose = u.hp <= 0 ? "die" : moving ? (speed > 2.35 ? "run" : "walk")
+          : u.task === "attack" || u.task === "hunt" ? "attack"
+          : u.task === "build" ? "build" : u.task === "gather" ? "gather" : "idle";
+        r.model?.update(elapsed, pose, shadows);
       }
     }
 
-    this.updateAnimals(state, t, dt, fogAt);
+    this.updateAnimals(state, t, dt, fogAt, shadows);
+
+    for (const [r, end] of this.dying) {
+      if (t >= end || !r.model?.deathDuration) {
+        this.disposeRig(r);
+        this.dying.delete(r);
+      } else r.model.update(dt, "die", shadows);
+    }
 
     for (const [id, r] of this.rigs) {
       if (seen.has(id)) continue;
       if (r.root.visible) this.fx.debris.burst(r.root.position.x, r.root.position.y + 0.2, r.root.position.z, 10, 0.9, 1.6, 0.8, 1, [0x8a7a66, 0x5b4a3a, 0xb91c1c], -7);
-      disposeTree(r.root);
+      const duration = r.model?.deathDuration ?? 0;
+      if (r.root.visible && duration > 0 && this.dying.size < 20) {
+        r.ring.visible = r.health.visible = false;
+        this.dying.set(r, t + Math.min(duration, 2.5));
+        r.model?.update(dt, "die", shadows);
+      } else this.disposeRig(r);
       this.rigs.delete(id);
     }
   }
 
-  private updateAnimals(state: any, t: number, dt: number, fogAt: (x: number, z: number) => number): void {
+  private updateAnimals(state: any, t: number, dt: number, fogAt: (x: number, z: number) => number, shadows: boolean): void {
     const seenA = new Set<number>();
     for (const a of state.animals || []) {
       seenA.add(a.id);
       let r = this.animals.get(a.id);
-      if (!r) { r = buildAnimal(a.type, a.seed ?? a.id); this.group.add(r.root); this.animals.set(a.id, r); }
+      if (!r) {
+        r = buildAnimal(a.type, a.seed ?? a.id);
+        let height = this.animalHeights.get(a.type);
+        if (height === undefined) {
+          height = new THREE.Box3().setFromObject(r.body).max.y;
+          this.animalHeights.set(a.type, height);
+        }
+        r.model = this.models.creature("wildlife", a.type, height, r.root, r.body);
+        this.group.add(r.root);
+        this.animals.set(a.id, r);
+      }
       const vis = fogAt(a.x, a.y) === 2;
       r.root.visible = vis;
       const gy = standHeight(a.x, a.y, state.grid);
@@ -639,12 +679,14 @@ export class Units3D {
       r.body.rotation.z = r.dead * 1.45;
       const meat = a.dead ? 0.55 + 0.45 * Math.max(0, (a.food ?? 0) / (a.maxFood || (a.type === "deer" ? 140 : 240))) : 1;
       r.root.scale.setScalar(meat);
+      r.model?.update(dt, a.dead ? "die" : moving ? (speed > 1.5 ? "run" : "walk")
+        : a.aggroId != null ? "attack" : "idle", shadows);
       // fresh hurt flash for charging boar: raise head
       if (a.type === "boar" && a.aggroId != null) r.body.rotation.x = -0.12;
     }
     for (const [id, r] of this.animals) {
       if (seenA.has(id)) continue;
-      disposeTree(r.root);
+      this.disposeRig(r);
       this.animals.delete(id);
     }
   }

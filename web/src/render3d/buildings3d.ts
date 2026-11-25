@@ -1,10 +1,12 @@
 // Pixel Dynasty 3D — procedural stylized East Asian architecture for all 11 building types (4-age evolution).
+import type { ModelRegistry, ModelVisual } from "./modelRegistry";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { box, cyl, cone, sphere, geo, mat, mesh, shade, terrainHeight, Env3D, MAP_N, contactShadow, disposeTree, renderFaction, type Faction, smoothstep } from "./common";
 import { paddyMaterial, RICE_COLORS, riceTuftGeometry } from "./terrain3d";
 import { applyWind } from "./wind3d";
 import { softMask } from "./surfaces";
+import { mat_wood, mat_stone, mat_roof, mat_gold, mat_bamboo, pbrTint, pbrFlag } from "./pbrMaterials";
 import type { Scene3D } from "./scene3d";
 import type { FX3D } from "./fx3d";
 
@@ -14,6 +16,8 @@ const LATTICE = "#ffb347", BAMBOO = "#c9a36a", THATCH = "#b8955a", TERRACOTTA = 
 export interface BuildingParts { fires: THREE.Mesh[]; spin: THREE.Object3D[]; top: number; lanterns: THREE.Object3D[]; chimney?: THREE.Vector3; doors?: THREE.Object3D[]; rice?: THREE.InstancedMesh; }
 /** Collector for the building currently being assembled (lanterns register themselves to sway). */
 let curParts: BuildingParts | null = null;
+/** Side of the building being assembled: picks the player / enemy banner cloth (mat_team_*). */
+let curSide: "player" | "enemy" = "player";
 
 // ---------------------------------------------------------------------------
 // Curved roof: flared upturned eaves, concave sweep, optional ridge along x.
@@ -39,15 +43,25 @@ function roofGeometry(w: number, d: number, h: number, lift: number): THREE.Buff
   });
 }
 
+/** Thatch keeps its straw surface; every tiled roof uses mat_roof (tinted per faction / age). */
+function roofMaterial(color: string, gilded: boolean): THREE.MeshStandardMaterial {
+  if (color === THATCH) return mat(THATCH, { surface: "thatch", rough: 0.87, metal: 0.04, side: THREE.DoubleSide });
+  if (color === TERRACOTTA) return mat_roof;
+  return pbrTint("mat_roof", color, gilded ? { metalness: 0.42, roughness: 0.62 } : {});
+}
+
+/** Tiled roof colours for buildings that do not evolve with the age (farm hut, gate, market). */
+function factionRoof(faction: Faction): { roof: string; ridge: string; trim: string } {
+  if (faction === "trung_nguyen") return { roof: "#377972", ridge: GOLD, trim: "#2f5f5a" };
+  if (faction === "bac_cuong") return { roof: "#39484b", ridge: "#82623f", trim: "#6b4a2e" };
+  return { roof: TERRACOTTA, ridge: "#5a2a18", trim: VERMILION };
+}
+
 function roof(parent: THREE.Object3D, w: number, d: number, h: number, y: number, color: string, ridgeColor: string, gilded = false, lift = 0.16): void {
-  const surface = color === THATCH ? "thatch" : gilded || color !== TERRACOTTA ? "glaze" : "tile";
-  const m = mat(color, {
-    surface, rough: surface === "glaze" ? 0.44 : 0.87, metal: gilded ? 0.24 : 0.04, side: THREE.DoubleSide
-  });
-  const r = mesh(roofGeometry(w, d, h, lift), m, 0, y, 0);
+  const r = mesh(roofGeometry(w, d, h, lift), roofMaterial(color, gilded), 0, y, 0);
   parent.add(r);
   // tile underside trim + golden ridge with upturned ridge ends
-  const rm = mat(ridgeColor, { metal: ridgeColor === GOLD ? 0.75 : 0.1, rough: ridgeColor === GOLD ? 0.3 : 0.6 });
+  const rm = ridgeColor === GOLD ? mat_gold : pbrTint("mat_roof", ridgeColor);
   const rl = w > d ? Math.max(0.12, (1 - d / w) * 0.9 * w) : 0.1;
   parent.add(mesh(box(rl + 0.06, 0.06, 0.07), rm, 0, y + h + 0.02, 0));
   for (const s of [-1, 1]) {
@@ -56,7 +70,7 @@ function roof(parent: THREE.Object3D, w: number, d: number, h: number, y: number
     parent.add(tip);
   }
   // curled roof-corner finials on the upturned eave tips
-  const fm = mat(ridgeColor === GOLD || gilded ? GOLD : shade(ridgeColor, 0.15), { metal: 0.6, rough: 0.35 });
+  const fm = ridgeColor === GOLD || gilded ? mat_gold : pbrTint("mat_roof", shade(ridgeColor, 0.15));
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     const f = mesh(cone(0.028, 0.13, 5), fm, sx * w / 2 * 0.98, y + lift + 0.05, sz * d / 2 * 0.98, false);
     f.rotation.set(sz * 0.7, 0, -sx * 0.7);
@@ -64,32 +78,55 @@ function roof(parent: THREE.Object3D, w: number, d: number, h: number, y: number
   }
 }
 
-function foundation(parent: THREE.Object3D, w: number, d: number, steps = 2): number {
+/** Stepped mat_stone plinth (stays planted while the rest rises during construction). */
+function foundation(parent: THREE.Object3D, w: number, d: number, steps = 2, stairs = false): number {
   let y = 0; // The terrain blends the ground pad into the surrounding soil.
+  const lower = pbrTint("mat_stone", "#8d887f");
   for (let k = 0; k < steps; k++) {
     const s = 1 - k * 0.07, h = 0.08;
-    const step = mesh(box(w * s, h + (k === 0 ? 0.5 : 0), d * s), mat(k === 0 ? STONE_D : STONE, { rough: 0.92, surface: "stone" }), 0, y + h / 2 - (k === 0 ? 0.25 : 0), 0);
+    const step = mesh(box(w * s, h + (k === 0 ? 0.5 : 0), d * s), k === 0 ? lower : mat_stone, 0, y + h / 2 - (k === 0 ? 0.25 : 0), 0);
     step.userData.foundation = true;
     parent.add(step);
     y += h;
+  }
+  if (stairs) {
+    const front = d * (1 - (steps - 1) * 0.07) / 2;
+    for (let k = 0; k < steps; k++) {
+      const st = mesh(box(Math.min(0.34, w * 0.42), y - k * 0.08, 0.07), k === 0 ? lower : mat_stone, 0, (y - k * 0.08) / 2, front + 0.035 + (steps - 1 - k) * 0.07);
+      st.userData.foundation = true;
+      parent.add(st);
+    }
   }
   return y;
 }
 
 function pillars(parent: THREE.Object3D, w: number, d: number, h: number, y: number, color = VERMILION, front = true): void {
-  const m = mat(color, { rough: 0.52, surface: "lacquer" });
+  const m = color === TIMBER ? mat_wood : mat(color, { rough: 0.52, surface: "lacquer" });
   const xs = [-w / 2, w / 2], zs = [-d / 2, d / 2];
-  for (const x of xs) for (const z of zs) parent.add(mesh(cyl(0.035, 0.04, h, 8), m, x, y + h / 2, z));
-  if (front && w > 0.9) for (const z of zs) parent.add(mesh(cyl(0.035, 0.04, h, 8), m, 0, y + h / 2, z));
+  const post = (x: number, z: number) => {
+    parent.add(mesh(cyl(0.035, 0.04, h, 8), m, x, y + h / 2, z));
+    parent.add(mesh(box(0.085, 0.035, 0.085), mat_stone, x, y + 0.0175, z)); // chân tảng (stone pedestal)
+  };
+  for (const x of xs) for (const z of zs) post(x, z);
+  if (front && w > 0.9) for (const z of zs) post(0, z);
+}
+
+/** Timber frame (mat_wood posts on stone pedestals + tie beams) for the economic / defensive buildings. */
+function timberFrame(parent: THREE.Object3D, w: number, d: number, h: number, y: number): void {
+  pillars(parent, w, d, h, y, TIMBER);
+  for (const s of [-1, 1]) {
+    parent.add(mesh(box(w + 0.08, 0.045, 0.05), mat_wood, 0, y + h - 0.02, s * d / 2));
+    parent.add(mesh(box(0.05, 0.045, d + 0.08), mat_wood, s * w / 2, y + h - 0.02, 0));
+  }
 }
 
 function walls(parent: THREE.Object3D, w: number, d: number, h: number, y: number, color: string, windows = true): void {
   parent.add(mesh(box(w, h, d), mat(color, { rough: 0.85, surface: color === BAMBOO ? "teak" : "plaster" }), 0, y + h / 2, 0));
   // timber beam band
-  parent.add(mesh(box(w + 0.02, 0.05, d + 0.02), mat(TIMBER, { surface: "teak" }), 0, y + h - 0.03, 0));
+  parent.add(mesh(box(w + 0.02, 0.05, d + 0.02), mat_wood, 0, y + h - 0.03, 0));
   if (!windows) return;
   const lm = mat("#ffd08a", { emissive: LATTICE, emissiveIntensity: 0.83, rough: 0.55, surface: "lattice", lantern: true });
-  const fm = mat(TIMBER, { surface: "teak" });
+  const fm = mat_wood;
   const n = w > 1 ? 2 : 1;
   for (const s of [-1, 1]) {
     for (let k = 0; k < n; k++) {
@@ -102,7 +139,7 @@ function walls(parent: THREE.Object3D, w: number, d: number, h: number, y: numbe
     parent.add(mesh(box(0.012, 0.16, 0.2), lm, s * (w / 2 + 0.006), y + h * 0.55, 0, false));
   }
   // door
-  parent.add(mesh(box(0.18, h * 0.62, 0.02), mat("#4a1c12"), 0, y + h * 0.31, d / 2 + 0.012, false));
+  parent.add(mesh(box(0.18, h * 0.62, 0.02), pbrTint("mat_wood", "#8a5a48"), 0, y + h * 0.31, d / 2 + 0.012, false));
 }
 
 function lantern(parent: THREE.Object3D, x: number, y: number, z: number): void {
@@ -134,11 +171,10 @@ function lantern(parent: THREE.Object3D, x: number, y: number, z: number): void 
 function lanternOn(parent: THREE.Object3D, x: number, y: number, z: number): void { lantern(parent, x, y, z); }
 
 function banner(parent: THREE.Object3D, x: number, y: number, z: number, color: string, h = 0.7): void {
-  parent.add(mesh(cyl(0.012, 0.015, h, 6), mat("#3a2412"), x, y + h / 2, z));
-  parent.add(mesh(sphere(0.025, 8, 6), mat(GOLD, { metal: 0.8, rough: 0.3 }), x, y + h + 0.02, z));
+  parent.add(mesh(cyl(0.012, 0.015, h, 6), mat_wood, x, y + h / 2, z));
+  parent.add(mesh(sphere(0.025, 8, 6), mat_gold, x, y + h + 0.02, z));
   const g = geo("building-banner", () => new THREE.PlaneGeometry(0.34, 0.2, 8, 2).translate(0.17, 0, 0));
-  const f = mesh(g, mat(color, { side: THREE.DoubleSide, rough: 0.73, surface: "silk", flagWind: true }),
-    x + 0.012, y + h - 0.12, z, false);
+  const f = mesh(g, pbrFlag(curSide, color), x + 0.012, y + h - 0.12, z, false);
   f.userData.wind = true;
   parent.add(f);
 }
@@ -198,10 +234,12 @@ function hall(g: THREE.Group, parts: BuildingParts, w: number, d: number, wallH:
   return top;
 }
 
-export function buildBuilding(type: string, team: string, age: number, size: number, cropStage: number, mask = 0, faction: Faction = "dai_viet"): { group: THREE.Group; parts: BuildingParts } {
+export function buildBuilding(type: string, team: string, age: number, size: number, cropStage: number, mask = 0, faction: Faction = "dai_viet", side: "player" | "enemy" = "player"): { group: THREE.Group; parts: BuildingParts } {
   const g = new THREE.Group();
   const parts: BuildingParts = { fires: [], spin: [], top: 1, lanterns: [] };
   curParts = parts;
+  curSide = side;
+  const fr = factionRoof(faction);
   const S = size * 0.92;
   const teamRoof = shade(team, -0.25);
   const ageStyle = styleFor(age, team, faction);
@@ -257,35 +295,76 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       break;
     }
     case "house": {
+      // Nhà ngói: stepped stone plinth, timber frame on stone pedestals, verandah and a gently curved roof
       const st = { ...ageStyle, tiers: 1 };
-      hall(g, parts, 0.62, 0.5, 0.3, st);
-      if (age >= 3) lantern(g, 0.2, 0.3, 0.3);
-      if (age <= 1) for (let k = 0; k < 3; k++) g.add(mesh(cyl(0.025, 0.025, 0.42, 6), mat("#a8b85a"), -0.38, 0.21, -0.15 + k * 0.08));
+      const thatch = st.roof === THATCH, roofH = thatch ? 0.4 : 0.3;
+      const y0 = foundation(g, 0.82, 0.7, 2, true);
+      timberFrame(g, 0.62, 0.5, 0.3, y0);
+      walls(g, 0.57, 0.45, 0.3, y0, st.wall);
+      for (const s of [-1, 1]) g.add(mesh(cyl(0.026, 0.03, 0.24, 7), mat_wood, s * 0.28, y0 + 0.12, 0.35));
+      g.add(mesh(box(0.64, 0.035, 0.05), mat_wood, 0, y0 + 0.235, 0.35));
+      roof(g, 0.98, 0.86, roofH, y0 + 0.28, st.roof, st.ridge, st.gilded, thatch ? 0.04 : 0.12);
+      g.add(mesh(cyl(0.05, 0.038, 0.1, 9), mat("#4a3428", { surface: "glaze", rough: 0.45 }), 0.37, y0 + 0.05, 0.2));
+      for (let k = 0; k < 3; k++) {
+        const log = mesh(cyl(0.018, 0.018, 0.2, 6), mat_wood, -0.37, y0 + 0.018 + k * 0.034, 0.04 + (k % 2) * 0.03);
+        log.rotation.x = Math.PI / 2;
+        g.add(log);
+      }
+      if (faction === "bac_cuong") g.add(mesh(box(0.2, 0.15, 0.012), mat("#8b6a48", { surface: "silk", rough: 0.9 }), -0.16, y0 + 0.17, 0.236, false));
+      if (age >= 3) lantern(g, 0.2, y0 + 0.24, 0.37);
+      if (age <= 1) for (let k = 0; k < 3; k++) g.add(mesh(cyl(0.022, 0.025, 0.42, 7), mat_bamboo, -0.43, 0.21, -0.15 + k * 0.08));
+      banner(g, -0.4, 0, -0.3, team, 0.62);
+      parts.top = y0 + 0.28 + roofH + 0.06;
       break;
     }
     case "depot": {
-      const y0 = foundation(g, 0.8, 0.7, 1);
-      pillars(g, 0.62, 0.5, 0.36, y0, TIMBER);
-      roof(g, 0.86, 0.72, 0.26, y0 + 0.34, ageStyle.roof, ageStyle.ridge, ageStyle.gilded, 0.1);
-      if (age >= 3) lantern(g, 0.28, 0.36, 0.33);
-      for (let k = 0; k < 3; k++) g.add(mesh(box(0.14, 0.14, 0.14), mat("#8a5a2e"), -0.18 + k * 0.17, y0 + 0.07, -0.08));
-      for (let k = 0; k < 2; k++) { const s = mesh(sphere(0.08, 8, 6), mat("#d8c08a"), -0.1 + k * 0.2, y0 + 0.07, 0.14); s.scale.set(1, 0.8, 1.2); g.add(s); }
-      parts.top = y0 + 0.6;
+      // Kho lẫm: open timber shed with a plank back wall, crates, log pile, cut stone and grain sacks
+      const y0 = foundation(g, 0.86, 0.76, 1, true);
+      timberFrame(g, 0.64, 0.52, 0.36, y0);
+      g.add(mesh(box(0.64, 0.33, 0.03), mat_wood, 0, y0 + 0.165, -0.26));
+      roof(g, 0.92, 0.8, 0.26, y0 + 0.34, ageStyle.roof, ageStyle.ridge, ageStyle.gilded, ageStyle.roof === THATCH ? 0.04 : 0.1);
+      if (age >= 3) lantern(g, 0.3, y0 + 0.3, 0.3);
+      const iron = mat("#2c2a28", { metal: 0.6, rough: 0.45 });
+      for (let k = 0; k < 3; k++) {
+        g.add(mesh(box(0.13, 0.13, 0.13), mat_wood, -0.18 + k * 0.16, y0 + 0.065, -0.15));
+        g.add(mesh(box(0.136, 0.018, 0.136), iron, -0.18 + k * 0.16, y0 + 0.1, -0.15, false));
+      }
+      g.add(mesh(box(0.12, 0.12, 0.12), mat_wood, -0.1, y0 + 0.19, -0.15));
+      for (let k = 0; k < 5; k++) {
+        const row = k < 3 ? 0 : 1, i = row ? k - 3 : k;
+        const log = mesh(cyl(0.032, 0.032, 0.3, 7), mat_wood, 0.18, y0 + 0.032 + row * 0.056, 0.02 + i * 0.066 + row * 0.033);
+        log.rotation.z = Math.PI / 2;
+        g.add(log);
+      }
+      for (let k = 0; k < 3; k++) g.add(mesh(box(0.1, 0.07, 0.08), mat_stone, -0.22 + k * 0.11, y0 + 0.035, 0.2));
+      for (let k = 0; k < 2; k++) {
+        const sack = mesh(sphere(0.07, 8, 6), mat("#a89470", { surface: "silk", rough: 0.92 }), -0.16 + k * 0.13, y0 + 0.13, 0.2);
+        sack.scale.set(1, 0.8, 1.15);
+        g.add(sack);
+      }
+      banner(g, 0.4, 0, -0.33, team, 0.7);
+      parts.top = y0 + 0.64;
       break;
     }
     case "farm": {
       const footprint = size / 2;
       const dry = cropStage === -1;
       const stage = Math.max(0, Math.min(2, cropStage));
-      const bed = mat("#735539", { surface: "plaster", rough: 0.95 });
+      const bed = mat("#5f4631", { surface: "plaster", rough: 0.95 });
       for (const [tx, tz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
         const x = tx * footprint / 2, z = tz * footprint / 2;
         g.add(mesh(box(footprint * 0.96, 0.07, footprint * 0.96), bed, x, 0.025, z));
         if (tx === 1 && tz === -1) {
+          // field hut (chòi canh): stone pad, timber posts, tiled roof in the faction's colours, team pennant
           const hut = new THREE.Group();
           hut.position.set(x, 0.06, z);
-          pillars(hut, footprint * 0.47, footprint * 0.46, 0.30, 0, TIMBER);
-          roof(hut, footprint * 0.77, footprint * 0.75, 0.17, 0.28, THATCH, TIMBER, false, 0.05);
+          hut.add(mesh(box(footprint * 0.62, 0.05, footprint * 0.6), mat_stone, 0, 0.0, 0));
+          pillars(hut, footprint * 0.47, footprint * 0.46, 0.3, 0.025, TIMBER);
+          for (const s of [-1, 1]) hut.add(mesh(box(footprint * 0.52, 0.035, 0.035), mat_wood, 0, 0.31, s * footprint * 0.23));
+          hut.add(mesh(box(footprint * 0.4, 0.03, footprint * 0.3), mat_wood, 0, 0.12, 0)); // raised bamboo-slat bed
+          roof(hut, footprint * 0.8, footprint * 0.78, 0.19, 0.31, faction === "bac_cuong" ? THATCH : fr.roof, fr.ridge, false, 0.07);
+          hut.add(mesh(cyl(0.04, 0.032, 0.08, 9), mat("#4a3428", { surface: "glaze", rough: 0.45 }), footprint * 0.18, 0.065, footprint * 0.3));
+          banner(hut, -footprint * 0.3, 0, -footprint * 0.28, team, 0.58);
           g.add(hut);
           continue;
         }
@@ -295,7 +374,7 @@ export function buildBuilding(type: string, team: string, age: number, size: num
           g.add(mesh(box(footprint * 0.08, 0.073, footprint * 0.9), bed, x + sign * footprint * 0.44, 0.065, z));
         }
       }
-      const riceMaterial = new THREE.MeshStandardMaterial({ color: dry ? "#ae955a" : RICE_COLORS[stage], roughness: 0.6 });
+      const riceMaterial = new THREE.MeshStandardMaterial({ color: dry ? "#9a8452" : RICE_COLORS[stage], roughness: 0.6 });
       applyWind(riceMaterial, "rice");
       const tufts = new THREE.InstancedMesh(geo("farm-rice", riceTuftGeometry), riceMaterial, 27);
       const matrix = new THREE.Matrix4();
@@ -314,7 +393,7 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       tufts.receiveShadow = true;
       g.add(tufts);
       parts.rice = tufts;
-      parts.top = 0.49;
+      parts.top = 0.56;
       break;
     }
     case "barracks": {
@@ -346,38 +425,53 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       break;
     }
     case "watch_tower": {
-      foundation(g, 0.72, 0.72, 1);
-      const body = mesh(cyl(0.24, 0.32, 1.25, 4), mat(STONE, { rough: 0.9, flat: true, surface: "stone" }), 0, 0.7, 0);
-      body.rotation.y = Math.PI / 4;
-      g.add(body);
-      for (let k = 0; k < 4; k++) g.add(mesh(box(0.36, 0.03, 0.36), mat(STONE_D), 0, 0.35 + k * 0.28, 0));
-      g.add(mesh(box(0.46, 0.06, 0.46), mat(TIMBER, { surface: "teak" }), 0, 1.35, 0));
-      for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) g.add(mesh(cyl(0.02, 0.02, 0.3, 6), mat(VERMILION, { surface: "lacquer" }), x, 1.52, z));
-      roof(g, 0.6, 0.6, 0.24, 1.66, ageStyle.roof, ageStyle.ridge, ageStyle.gilded, 0.12);
+      // Vọng lâu: four battered stone courses, timber lookout stage with railings, curved roof and brazier
+      foundation(g, 0.74, 0.74, 1);
+      const course = pbrTint("mat_stone", "#78736b");
+      [0.56, 0.51, 0.46, 0.41].forEach((w, k) => {
+        g.add(mesh(box(w, 0.3, w), mat_stone, 0, 0.23 + k * 0.29, 0));
+        g.add(mesh(box(w + 0.03, 0.03, w + 0.03), course, 0, 0.08 + k * 0.29, 0));
+      });
+      g.add(mesh(box(0.5, 0.06, 0.5), mat_wood, 0, 1.35, 0));
+      for (const [x, z] of [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]]) g.add(mesh(cyl(0.022, 0.024, 0.3, 7), mat_wood, x, 1.52, z));
+      for (const s of [-1, 1]) {
+        g.add(mesh(box(0.44, 0.025, 0.025), mat_wood, 0, 1.47, s * 0.2));
+        g.add(mesh(box(0.025, 0.025, 0.44), mat_wood, s * 0.2, 1.47, 0));
+      }
+      roof(g, 0.62, 0.62, 0.24, 1.66, ageStyle.roof, ageStyle.ridge, ageStyle.gilded, 0.12);
       if (age >= 3) lantern(g, 0.24, 1.55, 0.24);
       if (age >= 4) roof(g, 0.29, 0.29, 0.15, 1.88, GOLD, shade(team, -0.1), true, 0.09);
-      // brazier
       g.add(mesh(cyl(0.08, 0.05, 0.07, 8), mat("#3a3a3a", { metal: 0.6, rough: 0.4 }), 0, 1.42, 0));
       fire(g, parts, 0, 1.45, 0, 0.9);
-      g.add(mesh(box(0.08, 0.1, 0.01), mat("#ffd08a", { emissive: LATTICE, emissiveIntensity: 0.8, surface: "lattice", lantern: true }), 0, 0.95, 0.26, false));
+      g.add(mesh(box(0.08, 0.1, 0.01), mat("#ffd08a", { emissive: LATTICE, emissiveIntensity: 0.8, surface: "lattice", lantern: true }), 0, 0.95, 0.236, false));
       banner(g, 0.24, 1.38, 0.24, team, 0.55);
       parts.top = age >= 4 ? 2.08 : 1.95;
       break;
     }
     case "blacksmith": {
-      hall(g, parts, S * 0.7, S * 0.5, 0.34, { ...milStyle, roof: age >= 3 ? ageStyle.roof : TERRACOTTA, ridge: age >= 3 ? ageStyle.ridge : "#3a1a10" });
-      // chimney + glowing furnace + anvil
-      g.add(mesh(box(0.16, 0.9, 0.16), mat(STONE_D, { rough: 0.95 }), S * 0.28, 0.45, -S * 0.12));
-      g.add(mesh(box(0.2, 0.05, 0.2), mat("#3f3b36"), S * 0.28, 0.92, -S * 0.12));
+      // Lò rèn: plinth + timber hall, stone chimney (smoke origin), glowing forge, anvil, quench barrel, rack
+      const st = { ...milStyle, roof: age >= 3 ? ageStyle.roof : TERRACOTTA, ridge: age >= 3 ? ageStyle.ridge : "#3a1a10", tiers: 1 };
+      const w = S * 0.7, d = S * 0.5;
+      const y0 = foundation(g, w + 0.16, d + 0.16, 2, true);
+      timberFrame(g, w, d, 0.34, y0);
+      walls(g, w - 0.05, d - 0.05, 0.34, y0, st.wall);
+      roof(g, w + 0.36, d + 0.36, 0.32, y0 + 0.32, st.roof, st.ridge, st.gilded, st.roof === THATCH ? 0.04 : 0.15);
+      parts.top = y0 + 0.32 + 0.36;
+      const iron = mat("#475569", { metal: 0.85, rough: 0.35 });
+      g.add(mesh(box(0.17, 0.9, 0.17), mat_stone, S * 0.28, 0.45, -S * 0.12));
+      g.add(mesh(box(0.21, 0.05, 0.21), pbrTint("mat_stone", "#6f6a62"), S * 0.28, 0.92, -S * 0.12));
       parts.chimney = new THREE.Vector3(S * 0.28, 0.96, -S * 0.12);
-      // anvil horn
-      { const horn = mesh(cone(0.03, 0.08, 6), mat("#475569", { metal: 0.85, rough: 0.35 }), S * 0.15 + 0.11, 0.17, S * 0.38, false); horn.rotation.z = -Math.PI / 2; g.add(horn); }
-      g.add(mesh(box(0.34, 0.26, 0.26), mat("#57534e", { rough: 0.9 }), -S * 0.3, 0.13, S * 0.33));
+      { const horn = mesh(cone(0.03, 0.08, 6), iron, S * 0.15 + 0.11, 0.17, S * 0.38, false); horn.rotation.z = -Math.PI / 2; g.add(horn); }
+      g.add(mesh(box(0.34, 0.26, 0.26), mat_stone, -S * 0.3, 0.13, S * 0.33));
       const glowM = mat("#ff7a1a", { emissive: "#ff5a00", emissiveIntensity: 2.2 });
       g.add(mesh(box(0.16, 0.1, 0.02), glowM, -S * 0.3, 0.12, S * 0.33 + 0.135, false));
       fire(g, parts, -S * 0.3, 0.26, S * 0.33, 0.8);
-      g.add(mesh(box(0.16, 0.06, 0.08), mat("#475569", { metal: 0.85, rough: 0.35 }), S * 0.15, 0.17, S * 0.38));
-      g.add(mesh(cyl(0.04, 0.05, 0.12, 6), mat(TIMBER, { surface: "teak" }), S * 0.15, 0.07, S * 0.38));
+      g.add(mesh(box(0.16, 0.06, 0.08), iron, S * 0.15, 0.17, S * 0.38));
+      g.add(mesh(cyl(0.04, 0.05, 0.12, 7), mat_wood, S * 0.15, 0.07, S * 0.38));
+      g.add(mesh(cyl(0.065, 0.06, 0.14, 10), mat_wood, S * 0.02, 0.07, S * 0.42));
+      g.add(mesh(cyl(0.067, 0.067, 0.014, 10), mat("#2c2a28", { metal: 0.6, rough: 0.45 }), S * 0.02, 0.11, S * 0.42, false));
+      for (let k = 0; k < 3; k++) g.add(mesh(cyl(0.008, 0.008, 0.36, 5), iron, S * 0.4 + k * 0.05, 0.2, S * 0.2));
+      g.add(mesh(box(0.18, 0.02, 0.025), mat_wood, S * 0.45, 0.3, S * 0.2));
       banner(g, -S * 0.42, 0, -S * 0.22, team, 0.8);
       break;
     }
@@ -440,7 +534,8 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       break;
     }
     case "wall": {
-      const stoneM = mat("#9a948a", { rough: 0.9 }), darkM = mat(STONE_D, { rough: 0.95 }), capM = mat("#b3ada1", { rough: 0.85 });
+      // Tường thành: dark stone footing, mat_stone courses, a tiled coping (mat_roof) and crenellations
+      const stoneM = mat_stone, darkM = pbrTint("mat_stone", "#7d786f"), capM = mat_roof;
       const post = (x: number, z: number, w: number, d: number, h: number) => {
         g.add(mesh(box(w, h, d), stoneM, x, h / 2, z));
         g.add(mesh(box(w + 0.04, 0.05, d + 0.04), capM, x, h + 0.025, z));
@@ -456,8 +551,7 @@ export function buildBuilding(type: string, team: string, age: number, size: num
         const w = dx !== 0 ? len : T, d = dz !== 0 ? len : T;
         g.add(mesh(box(w, 0.07, d + (dz ? 0 : 0.1)), darkM, cx, 0.035, cz));
         g.add(mesh(box(w, H, d), stoneM, cx, H / 2, cz));
-        g.add(mesh(box(w + (dz ? 0.04 : 0), 0.05, d + (dx ? 0.0 : 0.0) + (dz ? 0 : 0.04)), capM, cx, H + 0.025, cz));
-        // battlements (merlons) on both faces
+        g.add(mesh(box(w + (dz ? 0.04 : 0), 0.05, d + (dz ? 0 : 0.04)), capM, cx, H + 0.025, cz));
         for (const sd of [-1, 1]) {
           for (let k = 0; k < 2; k++) {
             const off = (k - 0.5) * (len * 0.5);
@@ -466,13 +560,16 @@ export function buildBuilding(type: string, team: string, age: number, size: num
           }
         }
       }
-      if (!mask) for (let k = 0; k < 4; k++) g.add(mesh(box(0.09, 0.1, 0.09), stoneM, ((k & 1) ? 1 : -1) * 0.13, H + 0.17, ((k & 2) ? 1 : -1) * 0.13));
-      else for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(mesh(box(0.09, 0.1, 0.09), stoneM, sx * 0.13, H + 0.17, sz * 0.13));
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(mesh(box(0.09, 0.1, 0.09), stoneM, sx * 0.13, H + 0.17, sz * 0.13));
+      // a faction banner on corners, ends and isolated posts (straight runs stay clean)
+      if (mask !== 5 && mask !== 10) banner(g, 0.02, H + 0.06, 0.02, team, 0.5);
       parts.top = H + 0.3;
       break;
     }
     case "gate": {
-      const stoneM = mat("#9a948a", { rough: 0.9 }), darkM = mat(STONE_D, { rough: 0.95 }), woodM = mat("#6b4423", { rough: 0.8 }), ironM = mat("#2c2a28", { metal: 0.6, rough: 0.4 });
+      // Cổng thành: stone piers, timber gatehouse pavilion under a curved roof, studded swinging doors
+      const stoneM = mat_stone, darkM = pbrTint("mat_stone", "#7d786f"), capM = pbrTint("mat_stone", "#c9c3b8");
+      const ironM = mat("#2c2a28", { metal: 0.6, rough: 0.4 });
       const alongZ = !(mask & (2 | 8)) && !!(mask & (1 | 4));
       const gg = new THREE.Group();
       if (alongZ) gg.rotation.y = Math.PI / 2;
@@ -480,23 +577,27 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       gg.add(mesh(box(1.0, 0.06, 0.62), darkM, 0, 0.03, 0));
       for (const sx of [-1, 1]) {
         gg.add(mesh(box(0.28, 0.8, 0.5), stoneM, sx * 0.36, 0.4, 0));
-        gg.add(mesh(box(0.32, 0.05, 0.54), mat("#b3ada1", { rough: 0.85 }), sx * 0.36, 0.825, 0));
+        gg.add(mesh(box(0.32, 0.05, 0.54), capM, sx * 0.36, 0.825, 0));
         for (const sz of [-1, 1]) gg.add(mesh(box(0.08, 0.09, 0.08), stoneM, sx * 0.36, 0.89, sz * 0.2));
       }
       gg.add(mesh(box(0.9, 0.12, 0.5), stoneM, 0, 0.68, 0));
-      gg.add(mesh(box(0.5, 0.05, 0.54), mat(VERMILION, { rough: 0.6 }), 0, 0.605, 0));
-      // curved gatehouse roof
-      roof(gg, 1.06, 0.74, 0.26, 0.84, TERRACOTTA, "#5a2a18", false, 0.12);
-      for (const sx of [-1, 1]) lanternOn(gg, sx * 0.5, 0.72, 0.3);
+      gg.add(mesh(box(0.5, 0.05, 0.54), mat(fr.trim, { rough: 0.6, surface: "lacquer" }), 0, 0.605, 0));
+      // gatehouse pavilion
+      gg.add(mesh(box(0.84, 0.04, 0.46), mat_wood, 0, 0.76, 0));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) gg.add(mesh(cyl(0.022, 0.025, 0.2, 7), mat_wood, sx * 0.34, 0.87, sz * 0.18));
+      for (const sz of [-1, 1]) gg.add(mesh(box(0.72, 0.022, 0.022), mat_wood, 0, 0.84, sz * 0.18));
+      roof(gg, 1.06, 0.74, 0.26, 0.96, fr.roof, fr.ridge, false, 0.12);
+      for (const sx of [-1, 1]) lanternOn(gg, sx * 0.5, 0.78, 0.3);
       // swinging double doors (pivot at hinge, pushed open when friendly units are near)
       const doors: THREE.Object3D[] = [];
       for (const sx of [-1, 1]) {
         const pivot = new THREE.Group();
         pivot.position.set(sx * 0.22, 0, 0);
         const panel = new THREE.Group();
-        panel.add(mesh(box(0.22, 0.54, 0.05), woodM, -sx * 0.11, 0.27, 0));
+        panel.add(mesh(box(0.22, 0.54, 0.05), mat_wood, -sx * 0.11, 0.27, 0));
         for (const yy of [0.12, 0.42]) panel.add(mesh(box(0.22, 0.03, 0.06), ironM, -sx * 0.11, yy, 0, false));
-        panel.add(mesh(sphere(0.02, 6, 5), mat(GOLD, { metal: 0.8, rough: 0.3 }), -sx * 0.17, 0.27, 0.035, false));
+        for (const yy of [0.2, 0.34]) for (const xx of [0.05, 0.11, 0.17]) panel.add(mesh(sphere(0.008, 5, 4), ironM, -sx * xx, yy, 0.028, false));
+        panel.add(mesh(sphere(0.02, 6, 5), mat_gold, -sx * 0.17, 0.27, 0.035, false));
         pivot.add(panel);
         pivot.userData.sx = sx;
         gg.add(pivot);
@@ -504,39 +605,39 @@ export function buildBuilding(type: string, team: string, age: number, size: num
       }
       parts.doors = doors;
       banner(gg, -0.36, 0.89, -0.2, team, 0.35);
-      parts.top = 1.15;
+      banner(gg, 0.36, 0.89, 0.2, team, 0.35);
+      parts.top = 1.27;
       break;
     }
     case "market": {
-      const woodM = mat("#7a5230", { rough: 0.85 }), plankM = mat("#a4784a", { rough: 0.85 });
-      const y0 = foundation(g, S * 0.98, S * 0.98, 1);
-      g.add(mesh(box(S * 0.96, 0.04, S * 0.96), plankM, 0, y0 + 0.02, 0));
-      const awn = ["#d9382b", "#f2b630", "#2fa6a0", "#8a4fc4"];
+      // Nhà chợ: stone-paved plinth, four timber stalls with muted striped awnings, a small tiled pavilion
+      const y0 = foundation(g, S * 0.98, S * 0.98, 1, true);
+      g.add(mesh(box(S * 0.96, 0.04, S * 0.96), pbrTint("mat_stone", "#bdb6aa"), 0, y0 + 0.02, 0));
+      const awn = ["#8e2a20", "#a8822e", "#2f6a64", "#5b3f78"], stripe = "#d9cfba";
       const stalls: Array<[number, number, number]> = [[-1, -1, 0], [1, -1, 1], [-1, 1, 2], [1, 1, 3]];
       for (const [sx, sz, i] of stalls) {
         const cx = sx * S * 0.25, cz = sz * S * 0.25;
-        for (const px of [-1, 1]) for (const pz of [-1, 1]) g.add(mesh(cyl(0.022, 0.026, 0.46, 6), woodM, cx + px * 0.3, y0 + 0.27, cz + pz * 0.26));
-        // sloped striped awning
+        for (const px of [-1, 1]) for (const pz of [-1, 1]) g.add(mesh(cyl(0.022, 0.026, 0.46, 7), mat_wood, cx + px * 0.3, y0 + 0.27, cz + pz * 0.26));
         const aw = new THREE.Group();
         aw.position.set(cx, y0 + 0.5, cz);
         aw.rotation.x = -sz * 0.22;
-        for (let k = 0; k < 6; k++) aw.add(mesh(box(0.1, 0.025, 0.62), mat(k % 2 ? "#f6efe0" : awn[i], { rough: 0.7 }), -0.3 + k * 0.12, 0, 0));
-        for (let k = 0; k < 6; k++) aw.add(mesh(box(0.1, 0.07, 0.015), mat(k % 2 ? "#f6efe0" : awn[i], { rough: 0.7 }), -0.3 + k * 0.12, -0.04, sz * 0.315, false));
+        for (let k = 0; k < 6; k++) aw.add(mesh(box(0.1, 0.025, 0.62), mat(k % 2 ? stripe : awn[i], { rough: 0.8, surface: "silk" }), -0.3 + k * 0.12, 0, 0));
+        for (let k = 0; k < 6; k++) aw.add(mesh(box(0.1, 0.07, 0.015), mat(k % 2 ? stripe : awn[i], { rough: 0.8, surface: "silk" }), -0.3 + k * 0.12, -0.04, sz * 0.315));
         g.add(aw);
-        // counter + goods
-        g.add(mesh(box(0.56, 0.16, 0.18), woodM, cx, y0 + 0.1, cz + sz * 0.12));
+        g.add(mesh(box(0.56, 0.16, 0.18), mat_wood, cx, y0 + 0.1, cz + sz * 0.12));
         for (let k = 0; k < 4; k++) {
-          const gm = mat(["#e0523a", "#e8c23a", "#7ac04a", "#c9a36a"][(k + i) % 4], { rough: 0.6 });
-          const o = mesh(sphere(0.045, 8, 6), gm, cx - 0.18 + k * 0.12, y0 + 0.22, cz + sz * 0.12);
-          g.add(o);
+          const gm = mat(["#a8432f", "#b8963a", "#5f8a3c", "#9c7f52"][(k + i) % 4], { rough: 0.6 });
+          g.add(mesh(sphere(0.045, 8, 6), gm, cx - 0.18 + k * 0.12, y0 + 0.22, cz + sz * 0.12));
         }
       }
-      // central pole with banner, crates, barrels
-      g.add(mesh(cyl(0.025, 0.03, 0.9, 6), woodM, 0, y0 + 0.45, 0));
-      banner(g, 0, y0 + 0.5, 0, team, 0.45);
-      g.add(mesh(box(0.14, 0.12, 0.14), plankM, 0.1, y0 + 0.06, 0.08));
-      g.add(mesh(box(0.12, 0.1, 0.12), plankM, -0.12, y0 + 0.05, -0.09));
-      g.add(mesh(cyl(0.07, 0.07, 0.15, 8), woodM, 0.05, y0 + 0.08, -0.14));
+      // central tiled pavilion (replaces the bare pole), crates, barrels
+      for (const px of [-1, 1]) for (const pz of [-1, 1]) g.add(mesh(cyl(0.02, 0.024, 0.62, 7), mat_wood, px * 0.1, y0 + 0.31, pz * 0.1));
+      roof(g, 0.42, 0.42, 0.18, y0 + 0.6, fr.roof, fr.ridge, false, 0.07);
+      g.add(mesh(box(0.14, 0.12, 0.14), mat_wood, 0.1, y0 + 0.1, 0.16));
+      g.add(mesh(box(0.12, 0.1, 0.12), mat_wood, -0.14, y0 + 0.09, -0.16));
+      g.add(mesh(cyl(0.07, 0.07, 0.15, 10), mat_wood, 0.16, y0 + 0.115, -0.14));
+      g.add(mesh(cyl(0.072, 0.072, 0.014, 10), mat("#2c2a28", { metal: 0.6, rough: 0.45 }), 0.16, y0 + 0.15, -0.14, false));
+      banner(g, S * 0.45, y0, S * 0.45, team, 0.75);
       lanternOn(g, S * 0.3, y0 + 0.5, 0);
       lanternOn(g, -S * 0.3, y0 + 0.5, 0);
       parts.top = y0 + 0.95;
@@ -561,9 +662,14 @@ export function buildBuilding(type: string, team: string, age: number, size: num
 }
 
 // ---------------------------------------------------------------------------
-function batchStaticMeshes(root: THREE.Group, parts: BuildingParts, key: string): void {
+function batchStaticMeshes(root: THREE.Object3D, parts: BuildingParts, key: string, path = "r"): void {
   const batches = new Map<string, THREE.Mesh[]>();
   const moving = new Set<THREE.Object3D>([...parts.fires, ...parts.spin]);
+  // Sub-groups (gatehouse, door panels, awnings, field hut, lantern pivots) move or sit as a whole, so their
+  // own siblings can be merged in local space too; individually animated meshes are never merged.
+  root.children.forEach((child, i) => {
+    if (!(child as THREE.Mesh).isMesh && child.children.length) batchStaticMeshes(child, parts, key, `${path}.${i}`);
+  });
   for (const child of root.children) {
     const mesh = child as THREE.Mesh;
     if (!mesh.isMesh || Array.isArray(mesh.material) || mesh.userData.wind || mesh.userData.foundation || (mesh as THREE.InstancedMesh).isInstancedMesh || moving.has(mesh)) continue;
@@ -575,7 +681,7 @@ function batchStaticMeshes(root: THREE.Group, parts: BuildingParts, key: string)
   }
   for (const [id, batch] of batches) {
     if (batch.length < 4) continue;
-    const geometry = geo(`building:${key}/${id}`, () => {
+    const geometry = geo(`building:${key}/${path}/${id}`, () => {
       const geometries = batch.map(mesh => {
         const transformed = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
         mesh.updateMatrix();
@@ -610,7 +716,7 @@ function scaffold(size: number, height: number): THREE.Group {
   return group;
 }
 
-interface Entry { group: THREE.Group; rising: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
+interface Entry { model?: ModelVisual; group: THREE.Group; rising: THREE.Group; parts: BuildingParts; key: string; ring: THREE.LineLoop; base: THREE.Mesh; scorch: THREE.Mesh; scaffold?: THREE.Group; dustT: number; smokeT: number; fireT: number; puffT?: number; b: any; open?: number; }
 
 function linkMask(state: any, b: any): number {
   let m = 0;
@@ -658,12 +764,13 @@ export class Buildings3D {
   private readonly ringGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 0, -0.5), new THREE.Vector3(0.5, 0, 0.5), new THREE.Vector3(-0.5, 0, 0.5)]);
   private readonly ringMat = new THREE.LineBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.95, fog: false });
 
-  constructor(private readonly fx: FX3D) {}
+  constructor(private readonly fx: FX3D, private readonly models: ModelRegistry) {}
 
   /** Building ids -> current entry (used by the overlay for HP bars). */
   entries(): IterableIterator<Entry> { return this.map.values(); }
 
   private remove(entry: Entry): void {
+    entry.model?.dispose();
     entry.ring.removeFromParent();
     entry.base.removeFromParent();
     entry.scorch.removeFromParent();
@@ -696,11 +803,12 @@ export class Buildings3D {
       const stage = b.type === "farm" ? (b.depleted || b.cropAmount === 0 ? -1 : Math.max(0, Math.min(2, b.cropStage ?? 1))) : 0;
       const ageKey = b.type === "town_center" || b.type === "house" || b.type === "depot" || b.type === "stable" || b.type === "barracks" || b.type === "archery_range" || b.type === "watch_tower" || b.type === "blacksmith" || b.type === "siege_workshop" ? age : 0;
       const mask = b.type === "wall" || b.type === "gate" ? linkMask(state, b) : 0;
-      const key = `${b.type}|${faction}|${color}|${ageKey}|${stage}|${mask}|${b.size || 1}`;
+      const side = b.team === "player" ? "player" : "enemy";
+      const key = `${b.type}|${faction}|${side}|${color}|${ageKey}|${stage}|${mask}|${b.size || 1}`;
       let e = this.map.get(b.id);
       if (!e || e.key !== key) {
         if (e) this.remove(e);
-        const built = buildBuilding(b.type, color, Math.min(4, age), b.size || 1, stage, mask, faction);
+        const built = buildBuilding(b.type, color, Math.min(4, age), b.size || 1, stage, mask, faction, side);
         batchStaticMeshes(built.group, built.parts, key);
         const rising = new THREE.Group();
         if (b.type !== "farm") {
@@ -720,6 +828,7 @@ export class Buildings3D {
         const scorch = contactShadow(size * 1.21, size * 1.17);
         this.group.add(base, scorch);
         e = { group: built.group, rising, parts: built.parts, key, ring, base, scorch, dustT: 0, smokeT: 0, fireT: 0, b };
+        e.model = this.models.building(b.type, faction, size, rising, { side, color });
         this.group.add(e.group);
         this.map.set(b.id, e);
       }
@@ -756,6 +865,7 @@ export class Buildings3D {
       e.ring.visible = sel;
       if (sel) { e.ring.scale.set(size * 1.04, 1, size * 1.04); e.ring.position.y = 0.04; (e.ring.material as THREE.LineBasicMaterial).opacity = 0.7 + Math.sin(t * 6) * 0.3; }
       if (!e.group.visible) continue;
+      e.model?.update(dt, building ? "build" : "idle", scene.quality !== "low");
 
       if (building) {
         e.dustT -= dt;
