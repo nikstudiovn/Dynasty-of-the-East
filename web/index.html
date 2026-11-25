@@ -786,7 +786,8 @@ const updateBattleHud = initBattleHud();
     const pb = window.DOTEValley ? window.DOTEValley.playerBase(setup.mapSize, mapSeed) : { tx: 6, ty: 6 };
     const ptc = spawnBuilding("player", "town_center", pb.tx, pb.ty, 0);
     for (let i = 0; i < 5; i++) {
-      spawnUnit("player", "villager", pb.tx + 0.6 + (i % 3) * 0.75, pb.ty + fh(ptc) + 0.6 + Math.floor(i / 3) * 0.7, 0);
+      const exit = spawnExitPoint(ptc, "player");
+      if (exit) spawnUnit("player", "villager", exit.x, exit.y, 0);
     }
 
     const aiCorners = window.DOTEValley ? window.DOTEValley.aiCorners(setup.mapSize, mapSeed) : [
@@ -1009,8 +1010,14 @@ const updateBattleHud = initBattleHud();
   }
   function pathToBuilding(u, b, team) {
     team = team || u.team;
-    const g = approachPoint(b, u.x, u.y, team);
-    return findPath(u.x, u.y, g.x, g.y, team);
+    const goals = edgeTiles(b).filter(t => !isTileBlocked(t.x, t.y, team))
+      .map(t => ({ x: t.x + 0.5, y: t.y + 0.5 }))
+      .sort((a, z) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(z.x - u.x, z.y - u.y));
+    for (const goal of goals) {
+      const path = findPath(u.x, u.y, goal.x, goal.y, team, true);
+      if (path.length) return path;
+    }
+    return [];
   }
 
   function findDropoff(team, x, y, aiIndex) {
@@ -1320,7 +1327,7 @@ const updateBattleHud = initBattleHud();
         const resType = farmBldg ? "food" : cell?.res;
         const hasRes = farmBldg ? (farmBldg.cropAmount ?? FARM_CAPACITY) > 0 : (cell && cell.resAmt > 0);
         if (!hasRes) {
-          if (u.team === "enemy") {
+          if (u.team === "enemy" || farmBldg) {
             const drop = u.carryAmt > 0 && findDropoff(u.team, u.x, u.y, u.aiIndex);
             u.targetTile = null;
             u.task = drop ? "return" : "idle";
@@ -1341,14 +1348,14 @@ const updateBattleHud = initBattleHud();
           if (u.gatherTick >= 0.78) {
             u.gatherTick = 0;
             u.carryType = resType;
-            const amount = farmBldg ? Math.min(5, farmBldg.cropAmount ?? FARM_CAPACITY) : 5;
+            const amount = farmBldg ? Math.min(5, farmBldg.cropAmount ?? FARM_CAPACITY) : Math.min(5, cell.resAmt);
             u.carryAmt += amount;
             if (farmBldg) {
               farmBldg.cropAmount = (farmBldg.cropAmount ?? FARM_CAPACITY) - amount;
               farmBldg.depleted = farmBldg.cropAmount <= 0;
             }
             if (!farmBldg && cell) {
-              cell.resAmt -= 5;
+              cell.resAmt -= amount;
               if (cell.resAmt <= 0) { cell.res = null; cell.resAmt = 0; }
             }
             if (u.carryAmt >= 15) {
@@ -1406,7 +1413,7 @@ const updateBattleHud = initBattleHud();
           if (u.team === "player" && u.stance === "stand_ground" && !u.manualAtk) { u.task = "idle"; u.targetEntityId = null; continue; }
           if (!(u.repathCd > 0)) {
             if (naval && !isWaterway(state.grid[Math.floor(ty)]?.[Math.floor(tx)])) {
-              const near = nearestWater(tx, ty, def.range + (tBldg ? fmax(tBldg) * 0.55 : 0.35), u);
+              const near = nearestWater(tx, ty, reach + (tBldg ? Math.hypot(fw(tBldg), fh(tBldg)) / 2 : 0), u, tBldg, reach);
               u.path = near?.path ?? [];
             } else u.path = tBldg ? pathToBuilding(u, tBldg, u.team) : findPath(u.x, u.y, tx, ty);
             if (u.path.length === 0) {
@@ -1484,11 +1491,11 @@ const updateBattleHud = initBattleHud();
     }
   }
 
-  function nearestWater(x, y, radius, boat) {
+  function nearestWater(x, y, radius, boat, building, reach = radius) {
     const grid = state.grid, candidates = [];
     for (let ty = Math.floor(y - radius); ty <= Math.ceil(y + radius); ty++) {
       for (let tx = Math.floor(x - radius); tx <= Math.ceil(x + radius); tx++) {
-        if (Math.hypot(tx + 0.5 - x, ty + 0.5 - y) > radius || !isWaterway(grid[ty]?.[tx])) continue;
+        if (!isWaterway(grid[ty]?.[tx]) || (building ? footDist(building, tx + 0.5, ty + 0.5) : Math.hypot(tx + 0.5 - x, ty + 0.5 - y)) > reach) continue;
         candidates.push({ x: tx + 0.5, y: ty + 0.5 });
       }
     }
@@ -2151,7 +2158,7 @@ const updateBattleHud = initBattleHud();
 
   function isDockLand(cell) { return cell && !cell.bridge && ["grass", "dirt"].includes(cell.terrain); }
   function isSiteOccupied(x, y) {
-    return isTileBlocked(x, y) || state.buildings.some(b => b.type === "farm" &&
+    return isTileBlocked(x, y) || state.grid[y]?.[x]?.resAmt > 0 || state.buildings.some(b => b.type === "farm" &&
       inFoot(b, x, y)) ||
       (state.shrines ?? []).some(s => Math.floor(s.x) === x && Math.floor(s.y) === y);
   }
@@ -2164,7 +2171,6 @@ const updateBattleHud = initBattleHud();
         if (isSiteOccupied(tx + dx, ty + dy)) return false;
         const cell = state.grid[ty + dy][tx + dx];
         if (isWaterway(cell) || (state.buildMode === "dock" && !isDockLand(cell))) return false;
-        if (cell.res && cell.resAmt > 0) return false; // never pave over a mine / tree cluster
         if ((state.fog[ty + dy]?.[tx + dx] ?? 0) === 0) return false;
       }
     }
@@ -2247,22 +2253,11 @@ const updateBattleHud = initBattleHud();
   }
 
   function resumeConstruction(building, villagers) {
-    const center = { x: fcx(building), y: fcy(building) };
-    const approach = [];
-    for (const t of edgeTiles(building)) {
-      if (!isTileBlocked(t.x, t.y, "player")) approach.push({ x: t.x + 0.5, y: t.y + 0.5 });
-    }
-
     let assigned = 0;
     for (const villager of villagers) {
       let path = [];
       if (footDist(building, villager.x, villager.y) > 1.4) {
-        const candidates = [...approach].sort((a, b) => Math.hypot(a.x - villager.x, a.y - villager.y) -
-          Math.hypot(b.x - villager.x, b.y - villager.y));
-        for (const point of candidates) {
-          path = findPath(villager.x, villager.y, point.x, point.y, "player", true);
-          if (path.length) break;
-        }
+        path = pathToBuilding(villager, building, "player");
         if (!path.length) continue;
       }
       const previous = villager.task === "build" && villager.buildTargetId;
@@ -2321,7 +2316,7 @@ const updateBattleHud = initBattleHud();
       const u = state.units.find(x => x.id === uid && x.hp > 0 && x.team === "player" && x.type === "villager");
       if (!u) continue;
       if (!u.buildQueue) u.buildQueue = [];
-      if (u.task === "build" && u.buildTargetId) { u.buildQueue.push(b.id); } else { u.task = "build"; u.buildTargetId = b.id; u.path = findPath(u.x, u.y, fcx(b), fcy(b), "player"); }
+      if (u.task === "build" && u.buildTargetId) { u.buildQueue.push(b.id); } else { u.task = "build"; u.buildTargetId = b.id; u.path = pathToBuilding(u, b, "player"); }
     }
     if (!canAfford(def.cost)) { state.buildMode = null; canvas.classList.remove("build-mode"); }
       updateHud(); renderCommandDock();
