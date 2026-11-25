@@ -240,6 +240,7 @@ export class Terrain3D {
   private moss: InstLayer;
   private trunks: InstLayer;
   private canopies: InstLayer;
+  private fruit: InstLayer;
   private pines: InstLayer;
   private grass: InstLayer;
   private flowers: InstLayer;
@@ -275,6 +276,8 @@ export class Terrain3D {
 
     this.trunks = new InstLayer(this.res, branchedTrunkGeometry(), createPbrMaterial("mat_wood"), 160);
     this.canopies = new InstLayer(this.res, broadCanopyGeometry(), createPbrMaterial("mat_foliage"), 120, true, "canopy");
+    this.fruit = new InstLayer(this.res, new THREE.IcosahedronGeometry(1, 0),
+      new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.58 }), 160, false);
     this.pines = new InstLayer(this.res, pineCanopyGeometry(), createPbrMaterial("mat_foliage"), 200, true, "canopy");
     this.grass = new InstLayer(this.res, grassGeometry(),
       new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.93 }), 200, false, "grass");
@@ -673,6 +676,8 @@ export class Terrain3D {
     const grid = state.grid, fog = state.fog;
     const seed = state.mapSeed || 0;
     const stalks: Item[] = [], leaves: Item[] = [], rice: Item[] = [], bunds: Item[] = [], paddy: Item[] = [], riceCol: THREE.Color[] = [];
+    const fruits: Item[] = [], fruitColors: THREE.Color[] = [];
+    const fruitTint = [new THREE.Color("#ee6444"), new THREE.Color("#ffc154")];
     const trunks: Item[] = [], canopies: Item[] = [], canopyCol: THREE.Color[] = [], pines: Item[] = [], pineCol: THREE.Color[] = [];
     const boulders: Item[] = [], boulderCol: THREE.Color[] = [], slabs: Item[] = [], slabCol: THREE.Color[] = [];
     const crys: Item[] = [], moss: Item[] = [];
@@ -843,12 +848,28 @@ export class Terrain3D {
           continue;
         }
       }
+      if (variant === "fruit_tree") {
+        const k = hash2(x, y), px = x + 0.5, pz = y + 0.5;
+        const height = VILLAGER_H * (1.4 + 0.4 * k);
+        broadTree(px, pz, x, y, 0.57, height / 1.47, k);
+        canopyCol[canopyCol.length - 1] = new THREE.Color("#dbed8b");
+        const base = h(px, pz);
+        const count = Math.max(3, Math.ceil(9 * c.resAmt / 85));
+        for (let i = 0; i < count; i++) {
+          const angle = i * 2.39996 + k * TAU;
+          const radius = 0.14 + hash2(x + i, y) * 0.12;
+          fruits.push(item(px + Math.cos(angle) * radius, base + height * (0.61 + hash2(x, y + i) * 0.27),
+            pz + Math.sin(angle) * radius, x, y, angle, 0.045));
+          fruitColors.push(fruitTint[i % fruitTint.length]);
+        }
+        continue;
+      }
       const footprint2 = (cell: any) => cell?.resFootprint === 2 || cell?.resourceSize === 2;
       const legacyBig = variant === undefined && c.res !== "food" && hash2(x + seed % 97, y + 17) > (c.res === "wood" ? 0.78 : 0.69);
       const wantsBig = footprint2(c) || legacyBig || c.res === "food";
       const large = wantsBig && [[1, 0], [0, 1], [1, 1]].every(([dx, dy]) => {
         const o = grid[y + dy]?.[x + dx];
-        return o?.res === c.res && visible(x + dx, y + dy) && !grouped.has((y + dy) * MAP_N + x + dx) && (!footprint2(c) || footprint2(o));
+        return o?.res === c.res && o?.resVariant !== "fruit_tree" && visible(x + dx, y + dy) && !grouped.has((y + dy) * MAP_N + x + dx) && (!footprint2(c) || footprint2(o));
       });
       if (large) { grouped.add(y * MAP_N + x + 1); grouped.add((y + 1) * MAP_N + x); grouped.add((y + 1) * MAP_N + x + 1); }
       if (c.res === "wood") {
@@ -872,6 +893,7 @@ export class Terrain3D {
     }
     this.trunks.set(trunks);
     this.canopies.set(canopies, canopyCol);
+    this.fruit.set(fruits, fruitColors);
     this.pines.set(pines, pineCol);
     this.stalks.set(stalks); this.leaves.set(leaves); this.rice.set(rice, riceCol); this.bunds.set(bunds); this.paddy.set(paddy);
     this.boulders.set(boulders, boulderCol);
@@ -901,7 +923,7 @@ export class Terrain3D {
     for (const g of this.koiGeos) g.dispose();
     this.koiGeos = []; this.koi = [];
     this.bridges.traverse(o => { if ((o as THREE.Mesh).geometry && o !== this.bridges) (o as THREE.Mesh).geometry.dispose(); });
-    for (const l of [this.stalks, this.leaves, this.rice, this.boulders, this.slabs, this.crystals, this.trunks, this.canopies, this.pines, this.grass, this.flowers, this.pebbles]) l.dispose(true);
+    for (const l of [this.stalks, this.leaves, this.rice, this.boulders, this.slabs, this.crystals, this.trunks, this.canopies, this.fruit, this.pines, this.grass, this.flowers, this.pebbles]) l.dispose(true);
     for (const l of [this.bunds, this.paddy, this.moss]) l.dispose(false); // cached materials
     this.footprint.geometry.dispose(); (this.footprint.material as THREE.Material).dispose();
     this.footEdges.geometry.dispose(); (this.footEdges.material as THREE.Material).dispose();

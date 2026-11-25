@@ -1,6 +1,7 @@
 import { footprintOf, ringTiles } from "./footprint";
 import { stockFish } from "./naval";
-// Map generator for 48 / 64 / 96 tile maps and 4 map types. Pure data, no rendering.
+import { addContestedFish, addHomeInlets, makeDelta, makeDeltaBridges, makeHarbor } from "./waterMaps";
+// Map generator for 48 / 64 / 96 tile maps. Pure data, no rendering.
 //   river_valley     winding river + central lotus lake crossed by 3 / 4 / 5 arched wooden bridges
 //   open_plains      no river barrier, wide open ground (fast cavalry flanking)
 //   highland_passes  impassable rock ridges dividing the map, 3 narrow mountain passes
@@ -8,13 +9,15 @@ import { stockFish } from "./naval";
 // Seed 0 reproduces the original 48x48 lotus valley layout with stable NW player spawn.
 
 export type MapSize = 48 | 64 | 96;
-export type Biome = "river_delta" | "river_valley" | "open_plains" | "highland_passes";
+export type Biome = "naval_harbor" | "river_delta" | "river_valley" | "open_plains" | "highland_passes";
 export type MapType = Biome | "random";
 
 export const MAP_SIZES: MapSize[] = [48, 64, 96];
-export const MAP_TYPES: MapType[] = ["river_valley", "river_delta", "open_plains", "highland_passes", "random"];
+export const MAP_TYPES: MapType[] = ["river_valley", "river_delta", "naval_harbor", "open_plains", "highland_passes", "random"];
 
 export type ResourceVariant =
+  | "starter_rice"
+  | "fruit_tree"
   | "single_tree"
   | "forest"
   | "bamboo"
@@ -29,6 +32,9 @@ export interface ValleyCell {
   res: string | null;
   resAmt: number;
   bridge?: string;
+  dockReserve?: boolean;
+  shrineSite?: boolean;
+  fish?: number;
   resVariant?: ResourceVariant;
   resFootprint?: 1 | 2 | 3;
   resOrigin?: number;
@@ -164,17 +170,18 @@ export function generateValley(
     return false;
   };
 
-  if (biome === "river_valley" || biome === "river_delta") {
-    const delta = biome === "river_delta";
+  if (biome === "naval_harbor") {
+    makeHarbor(grid);
+  } else if (biome === "river_delta") {
+    makeDelta(grid);
+  } else if (biome === "river_valley") {
     for (let tx = 0; tx < n; tx++) {
       const riverY =
         n / 2 +
         Math.sin(tx * 0.22 / s + p0 * 0.1) * (2.6 * s) +
         Math.cos(tx * 0.09 / s + p1 * 0.1) * (1.2 * s);
       for (let ty = 0; ty < n; ty++) {
-        const branch = riverY + Math.sin(tx / n * Math.PI) * n * 0.15;
-        if (Math.abs(ty - riverY) < (delta ? 3.2 : 1.85) * Math.min(1.6, s) ||
-          (delta && Math.abs(ty - branch) < 2.3 * Math.min(1.6, s))) {
+        if (Math.abs(ty - riverY) < 1.85 * Math.min(1.6, s)) {
           grid[ty][tx].terrain = "water";
           grid[ty][tx].waterDepth = "deep";
           grid[ty][tx].elev = 0;
@@ -192,7 +199,7 @@ export function generateValley(
         }
       }
     }
-    const bridgeXs = delta ? [0.22, 0.5, 0.78].map(f => Math.round(f * n)) :
+    const bridgeXs =
       n >= 96
         ? [14, 32, 48, 64, 82]
         : n >= 64
@@ -200,12 +207,12 @@ export function generateValley(
           : [9, 24, 39];
     for (const bx of bridgeXs) {
       const bx2 = Math.max(4, Math.min(n - 5, Math.round(bx + (seed === 0 ? 0 : (r() - 0.5) * 3))));
-      for (let dx = delta ? 0 : -1; dx <= (delta ? 0 : 1); dx++) {
+      for (let dx = -1; dx <= 1; dx++) {
         const x = bx2 + dx;
         for (let ty = 0; ty < n; ty++) {
           if (grid[ty][x].terrain === "water") {
-            grid[ty][x].terrain = delta ? "bridge" : "dirt";
-            grid[ty][x].bridge = delta ? "v" : dx === 0 ? "center" : "edge";
+            grid[ty][x].terrain = "dirt";
+            grid[ty][x].bridge = dx === 0 ? "center" : "edge";
             grid[ty][x].waterDepth = undefined;
             grid[ty][x].elev = 0;
           }
@@ -244,7 +251,7 @@ export function generateValley(
 
   // Additional deep water ponds and shallow water pools (avoiding 4 spawn corners & bridges)
   const cornerSafeR = Math.round(9 * s);
-  const pondCount = n >= 96 ? 4 : n >= 64 ? 3 : 2;
+  const pondCount = biome === "river_delta" || biome === "naval_harbor" ? 0 : n >= 96 ? 4 : n >= 64 ? 3 : 2;
   for (let p = 0; p < pondCount; p++) {
     const px = Math.floor(10 + r() * (n - 20));
     const py = Math.floor(10 + r() * (n - 20));
@@ -315,10 +322,13 @@ export function generateValley(
     }
   }
 
+  if (biome === "river_delta" || biome === "naval_harbor") addHomeInlets(grid, allCorners);
+  if (biome === "river_delta") makeDeltaBridges(grid);
+
   const canPlace1x1 = (tx: number, ty: number): boolean => {
     if (tx < 1 || ty < 1 || tx >= n - 1 || ty >= n - 1) return false;
     const c = grid[ty][tx];
-    return (c.terrain === "grass" || c.terrain === "dirt") && !c.bridge && !c.res;
+    return (c.terrain === "grass" || c.terrain === "dirt") && !c.bridge && !c.dockReserve && !c.shrineSite && !c.res;
   };
 
   const goldOrigins: { x: number; y: number }[] = [];
@@ -373,6 +383,42 @@ export function generateValley(
       }
     }
   };
+
+  if (biome === "naval_harbor") {
+    const middle = n / 2;
+    place2x2Resource(middle - 4, middle - 1, "gold", 1150, "gold_big", true);
+    place2x2Resource(middle + 3, middle - 1, "stone", 1000, "stone_big", true);
+  }
+
+  // Mirrored offsets measured inward from the outside corner of each town hall.
+  const starter = footprintOf("town_center");
+  const plots = [
+    { offsets: [[0, 5], [1, 5], [0, 6], [1, 6]], variant: "starter_rice", stock: 115 },
+    { offsets: [[5, 0], [6, 0], [5, 1], [6, 1], [5, 2], [6, 2]], variant: "fruit_tree", stock: 85 },
+  ] as const;
+  for (const base of allCorners) {
+    const sx = base.tx < n / 2 ? 1 : -1, sy = base.ty < n / 2 ? 1 : -1;
+    const x0 = base.tx + (sx < 0 ? starter.w - 1 : 0);
+    const y0 = base.ty + (sy < 0 ? starter.h - 1 : 0);
+    for (const plot of plots) {
+      const targets = plot.offsets.map(([x, y]) => ({ x: x0 + sx * x, y: y0 + sy * y }));
+      const reserved = new Set(targets.map(({ x, y }) => y * n + x));
+      for (const target of targets) {
+        if (!canPlace1x1(target.x, target.y)) {
+          // Preserve water and existing terrain. Borrow the closest free land outside the exit ring.
+          const candidates = ringTiles({ tx: base.tx - 2, ty: base.ty - 2, w: starter.w + 4, h: starter.h + 4 })
+            .concat(ringTiles({ tx: base.tx - 3, ty: base.ty - 3, w: starter.w + 6, h: starter.h + 6 }))
+            .filter(({ x, y }) => !reserved.has(y * n + x) && canPlace1x1(x, y))
+            .sort((a, b) => (a.x - target.x) ** 2 + (a.y - target.y) ** 2 - ((b.x - target.x) ** 2 + (b.y - target.y) ** 2));
+          if (!candidates.length) continue;
+          Object.assign(target, candidates[0]);
+        }
+        Object.assign(grid[target.y][target.x], {
+          res: "food", resAmt: plot.stock, resVariant: plot.variant, resFootprint: 1,
+        });
+      }
+    }
+  }
 
   // Starter resources near each spawn corner
   for (const c of allCorners) {
@@ -433,7 +479,7 @@ export function generateValley(
     { x: Math.floor(n / 2 - 6), y: Math.floor(n / 2 - 4) },
     { x: Math.floor(n / 2 + 4), y: Math.floor(n / 2 + 2) },
   ];
-  let guardedPlaced = 0;
+  let guardedPlaced = biome === "naval_harbor" ? 2 : 0;
   for (const tgt of centerTargets) {
     if (guardedPlaced >= 2) break;
     for (let radius = 0; radius <= 6; radius++) {
@@ -516,7 +562,8 @@ export function generateValley(
     }
     break;
   }
-  stockFish(grid, biome === "river_delta");
+  if (biome === "river_delta" || biome === "naval_harbor") addContestedFish(grid);
+  else stockFish(grid, false);
   return { grid, size: n, biome, seed };
 }
  
