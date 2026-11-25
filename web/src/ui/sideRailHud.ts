@@ -1,8 +1,10 @@
 import "./sideRailHud.css";
 import { getIconSvg, resolveCommandIconKey, type SideRailIconKey } from "./sideRailIcons";
 
-const LS_COLLAPSED = "pixel_dynasty_rails_collapsed";
-const LS_LEFT_HANDED = "pixel_dynasty_left_handed";
+const LS_COLLAPSED = "dote_rails_collapsed";
+const LEGACY_COLLAPSED = "pixel_dynasty_rails_collapsed";
+const LS_LEFT_HANDED = "dote_left_handed";
+const LEGACY_LEFT_HANDED = "pixel_dynasty_left_handed";
 
 type BuildTab = "eco" | "mil" | "def";
 
@@ -29,9 +31,17 @@ const RIGHT_TACTIC_SPECS: GlobalBtnSpec[] = [
   { id: "btn-stance", icon: "stance", shortLabel: "Chủ động", tooltip: "Đổi thế trận quân" },
 ];
 
-function readPref(key: string): boolean {
+function readPref(key: string, legacyKey: string): boolean {
   try {
-    return window.localStorage.getItem(key) === "1";
+    const cur = window.localStorage.getItem(key);
+    if (cur !== null) return cur === "1";
+    const legacy = window.localStorage.getItem(legacyKey);
+    if (legacy !== null) {
+      window.localStorage.setItem(key, legacy);
+      window.localStorage.removeItem(legacyKey);
+      return legacy === "1";
+    }
+    return false;
   } catch {
     return false;
   }
@@ -41,7 +51,6 @@ function writePref(key: string, val: boolean): void {
   try {
     window.localStorage.setItem(key, val ? "1" : "0");
   } catch {
-    // Ignore storage quota or private mode errors
   }
 }
 
@@ -51,12 +60,8 @@ function classifyBuildTab(label: string): BuildTab {
     return "def";
   }
   if (
-    t.includes("trại lính") ||
-    t.includes("trại cung") ||
-    t.includes("lò rèn") ||
-    t.includes("chuồng") ||
-    t.includes("công xưởng") ||
-    t.includes("hoàng thành")
+    t.includes("trại lính") || t.includes("trại cung") || t.includes("lò rèn") ||
+    t.includes("chuồng") || t.includes("công xưởng") || t.includes("hoàng thành")
   ) {
     return "mil";
   }
@@ -71,15 +76,9 @@ function detectContextMode(buttons: HTMLButtonElement[]): "build" | "train" | "a
   if (
     labels.some(
       (l) =>
-        l.includes("sinh dân") ||
-        l.includes("lên ") ||
-        l.includes("binh") ||
-        l.includes("cung") ||
-        l.includes("nỏ") ||
-        l.includes("pháo") ||
-        l.includes("rèn") ||
-        l.includes("bán") ||
-        l.includes("mua")
+        l.includes("sinh dân") || l.includes("lên ") || l.includes("binh") ||
+        l.includes("cung") || l.includes("nỏ") || l.includes("pháo") ||
+        l.includes("rèn") || l.includes("bán") || l.includes("mua"),
     )
   ) {
     return "train";
@@ -88,30 +87,29 @@ function detectContextMode(buttons: HTMLButtonElement[]): "build" | "train" | "a
 }
 
 export function initSideRailHud(): void {
-  if (document.body.dataset.pdSideRailInit === "1") return;
+  if (document.body.dataset.doteSideRailInit === "1") return;
   const gameWrap = document.getElementById("game-wrap");
   if (!gameWrap) return;
 
-  document.body.dataset.pdSideRailInit = "1";
-  document.body.classList.add("pd-side-rail-active");
+  document.body.dataset.doteSideRailInit = "1";
+  document.body.classList.add("dote-side-rail-active");
 
-  let collapsed = readPref(LS_COLLAPSED);
-  let leftHanded = readPref(LS_LEFT_HANDED);
+  let collapsed = readPref(LS_COLLAPSED, LEGACY_COLLAPSED);
+  let leftHanded = readPref(LS_LEFT_HANDED, LEGACY_LEFT_HANDED);
   let drawerOpen = false;
   let activeTab: BuildTab = "eco";
 
   const applyPrefs = (): void => {
-    document.body.classList.toggle("pd-rails-collapsed", collapsed);
-    document.body.classList.toggle("pd-left-handed", leftHanded);
-    const lhBtn = document.getElementById("pd-btn-left-handed");
+    document.body.classList.toggle("dote-rails-collapsed", collapsed);
+    document.body.classList.toggle("dote-left-handed", leftHanded);
+    const lhBtn = document.getElementById("dote-btn-left-handed");
     if (lhBtn) {
       lhBtn.textContent = leftHanded ? "Thuận tay trái: BẬT" : "Thuận tay trái: TẮT";
     }
   };
 
-  // Tooltip element for ~400ms long-press
   const tooltipEl = document.createElement("div");
-  tooltipEl.className = "pd-rail-tooltip";
+  tooltipEl.className = "dote-rail-tooltip";
   gameWrap.appendChild(tooltipEl);
 
   let pressTimer: number | null = null;
@@ -124,8 +122,8 @@ export function initSideRailHud(): void {
   };
 
   const attachLongPress = (el: HTMLElement, getText: () => string): void => {
-    if (el.dataset.pdLongPress === "1") return;
-    el.dataset.pdLongPress = "1";
+    if (el.dataset.doteLongPress === "1") return;
+    el.dataset.doteLongPress = "1";
     el.addEventListener("pointerdown", () => {
       hideTooltip();
       pressTimer = window.setTimeout(() => {
@@ -150,26 +148,23 @@ export function initSideRailHud(): void {
     el.addEventListener("pointerleave", hideTooltip);
   };
 
-  // Build Left Rail
   const leftRail = document.createElement("aside");
-  leftRail.className = "pd-rail pd-rail-left";
+  leftRail.className = "dote-rail dote-rail-left";
   leftRail.setAttribute("aria-label", "Thanh lệnh toàn cục");
   const leftScroll = document.createElement("div");
-  leftScroll.className = "pd-rail-scroll";
+  leftScroll.className = "dote-rail-scroll";
   leftRail.appendChild(leftScroll);
 
-  // Build Right Rail
   const rightRail = document.createElement("aside");
-  rightRail.className = "pd-rail pd-rail-right";
+  rightRail.className = "dote-rail dote-rail-right";
   rightRail.setAttribute("aria-label", "Thanh lệnh ngữ cảnh");
   const rightScroll = document.createElement("div");
-  rightScroll.className = "pd-rail-scroll";
+  rightScroll.className = "dote-rail-scroll";
   rightRail.appendChild(rightScroll);
 
-  // Collapse Handle (shown when .pd-rails-collapsed is active)
   const edgeHandle = document.createElement("button");
   edgeHandle.type = "button";
-  edgeHandle.className = "pd-rail-handle";
+  edgeHandle.className = "dote-rail-handle";
   edgeHandle.setAttribute("aria-label", "Mở thanh lệnh");
   edgeHandle.innerHTML = getIconSvg("expand", 24);
   edgeHandle.addEventListener("click", () => {
@@ -178,28 +173,26 @@ export function initSideRailHud(): void {
     applyPrefs();
   });
 
-  // Compact Selection Pill at Bottom Center
   const selPill = document.createElement("div");
-  selPill.className = "pd-sel-pill";
+  selPill.className = "dote-sel-pill";
 
-  // Sliding Contextual Drawer
   const drawer = document.createElement("section");
-  drawer.className = "pd-rail-drawer";
+  drawer.className = "dote-rail-drawer";
   drawer.setAttribute("aria-label", "Bảng lệnh chi tiết");
 
   const drawerHeader = document.createElement("div");
-  drawerHeader.className = "pd-drawer-header";
+  drawerHeader.className = "dote-drawer-header";
   const drawerTitle = document.createElement("span");
   drawerTitle.textContent = "Lệnh Ngữ Cảnh";
   const drawerClose = document.createElement("button");
   drawerClose.type = "button";
-  drawerClose.className = "pd-drawer-close";
+  drawerClose.className = "dote-drawer-close";
   drawerClose.textContent = "×";
   drawerClose.setAttribute("aria-label", "Đóng ngăn kéo");
   drawerHeader.append(drawerTitle, drawerClose);
 
   const drawerTabs = document.createElement("div");
-  drawerTabs.className = "pd-drawer-tabs";
+  drawerTabs.className = "dote-drawer-tabs";
   const tabDefs: { id: BuildTab; label: string; icon: SideRailIconKey }[] = [
     { id: "eco", label: "Kinh tế", icon: "tab_eco" },
     { id: "mil", label: "Quân sự", icon: "tab_mil" },
@@ -208,32 +201,30 @@ export function initSideRailHud(): void {
   const tabButtons: Record<BuildTab, HTMLButtonElement> = {} as Record<BuildTab, HTMLButtonElement>;
 
   const drawerBody = document.createElement("div");
-  drawerBody.className = "pd-drawer-body";
+  drawerBody.className = "dote-drawer-body";
 
   drawer.append(drawerHeader, drawerTabs, drawerBody);
 
   const setDrawerOpen = (open: boolean): void => {
     drawerOpen = open;
-    drawer.classList.toggle("pd-drawer-open", open);
-    drawerBtn.classList.toggle("pd-active", open);
+    drawer.classList.toggle("dote-drawer-open", open);
+    drawerBtn.classList.toggle("dote-active", open);
   };
 
   drawerClose.addEventListener("click", () => setDrawerOpen(false));
 
-  // Drawer toggle button on Right Rail
   const drawerBtn = document.createElement("button");
   drawerBtn.type = "button";
-  drawerBtn.className = "pd-rail-btn";
-  drawerBtn.innerHTML = `${getIconSvg("tab_eco", 24)}<span class="pd-btn-lbl">Lệnh</span>`;
+  drawerBtn.className = "dote-rail-btn";
+  drawerBtn.innerHTML = `${getIconSvg("tab_eco", 24)}<span class="dote-btn-lbl">Lệnh</span>`;
   drawerBtn.addEventListener("click", () => setDrawerOpen(!drawerOpen));
   attachLongPress(drawerBtn, () => "Mở/Đóng bảng lệnh chi tiết");
 
-  // Collapse button on Right Rail
   const collapseBtn = document.createElement("button");
   collapseBtn.type = "button";
-  collapseBtn.className = "pd-rail-btn pd-rail-collapse-btn";
+  collapseBtn.className = "dote-rail-btn dote-rail-collapse-btn";
   collapseBtn.setAttribute("aria-label", "Thu gọn thanh lệnh");
-  collapseBtn.innerHTML = `${getIconSvg("collapse", 16)}<span class="pd-btn-lbl">Ẩn</span>`;
+  collapseBtn.innerHTML = `${getIconSvg("collapse", 16)}<span class="dote-btn-lbl">Ẩn</span>`;
   collapseBtn.addEventListener("click", () => {
     collapsed = true;
     setDrawerOpen(false);
@@ -245,19 +236,17 @@ export function initSideRailHud(): void {
   const decorateGlobalBtn = (spec: GlobalBtnSpec): HTMLElement | null => {
     const el = document.getElementById(spec.id);
     if (!el) return null;
-    el.classList.add("pd-rail-btn");
-    el.innerHTML = `${getIconSvg(spec.icon, 24)}<span class="pd-btn-lbl">${spec.shortLabel}</span>`;
+    el.classList.add("dote-rail-btn");
+    el.innerHTML = `${getIconSvg(spec.icon, 24)}<span class="dote-btn-lbl">${spec.shortLabel}</span>`;
     attachLongPress(el, () => el.getAttribute("title") || spec.tooltip);
     return el;
   };
 
-  // Reparent Left Rail global buttons (preserving IDs and click listeners)
   for (const spec of LEFT_RAIL_SPECS) {
     const btn = decorateGlobalBtn(spec);
     if (btn) leftScroll.appendChild(btn);
   }
 
-  // Reparent Right Rail contextual & tactical buttons
   rightScroll.appendChild(drawerBtn);
   for (const spec of RIGHT_TACTIC_SPECS) {
     const btn = decorateGlobalBtn(spec);
@@ -265,13 +254,11 @@ export function initSideRailHud(): void {
   }
   rightRail.appendChild(collapseBtn);
 
-  // Reparent Selection Portrait & Title into .pd-sel-pill
   const selPortrait = document.getElementById("sel-portrait");
   const selTitle = document.getElementById("sel-title");
   if (selPortrait) selPill.appendChild(selPortrait);
   if (selTitle) selPill.appendChild(selTitle);
 
-  // Reparent #cmd-buttons into .pd-drawer-body
   const cmdButtons = document.getElementById("cmd-buttons");
   if (cmdButtons) {
     drawerBody.appendChild(cmdButtons);
@@ -279,7 +266,6 @@ export function initSideRailHud(): void {
 
   gameWrap.append(leftRail, rightRail, drawer, selPill, edgeHandle);
 
-  // Filter / Decorate #cmd-buttons whenever renderCommandDock() updates it
   let isMutatingCmd = false;
   const applyTabFilter = (): void => {
     if (!cmdButtons) return;
@@ -289,13 +275,13 @@ export function initSideRailHud(): void {
     drawerTabs.style.display = mode === "build" ? "flex" : "none";
     if (mode === "build") {
       drawerTitle.textContent = "Xây Dựng";
-      drawerBtn.innerHTML = `${getIconSvg(activeTab === "eco" ? "tab_eco" : activeTab === "mil" ? "tab_mil" : "tab_def", 24)}<span class="pd-btn-lbl">Xây</span>`;
+      drawerBtn.innerHTML = `${getIconSvg(activeTab === "eco" ? "tab_eco" : activeTab === "mil" ? "tab_mil" : "tab_def", 24)}<span class="dote-btn-lbl">Xây</span>`;
     } else if (mode === "train") {
       drawerTitle.textContent = "Huấn Luyện & Lên Đời";
-      drawerBtn.innerHTML = `${getIconSvg("train", 24)}<span class="pd-btn-lbl">Luyện</span>`;
+      drawerBtn.innerHTML = `${getIconSvg("train", 24)}<span class="dote-btn-lbl">Luyện</span>`;
     } else {
       drawerTitle.textContent = "Quân Đội & Chiến Thuật";
-      drawerBtn.innerHTML = `${getIconSvg("attack_move", 24)}<span class="pd-btn-lbl">Quân</span>`;
+      drawerBtn.innerHTML = `${getIconSvg("attack_move", 24)}<span class="dote-btn-lbl">Quân</span>`;
     }
 
     for (const tb of Object.values(tabButtons)) {
@@ -304,11 +290,11 @@ export function initSideRailHud(): void {
 
     for (const btn of btns) {
       if (mode === "build") {
-        const label = btn.dataset.pdLabel || btn.textContent || "";
+        const label = btn.dataset.doteLabel || btn.textContent || "";
         const cat = classifyBuildTab(label);
-        btn.classList.toggle("pd-hidden-by-tab", cat !== activeTab);
+        btn.classList.toggle("dote-hidden-by-tab", cat !== activeTab);
       } else {
-        btn.classList.remove("pd-hidden-by-tab");
+        btn.classList.remove("dote-hidden-by-tab");
       }
     }
   };
@@ -316,7 +302,7 @@ export function initSideRailHud(): void {
   for (const t of tabDefs) {
     const tb = document.createElement("button");
     tb.type = "button";
-    tb.className = "pd-drawer-tab";
+    tb.className = "dote-drawer-tab";
     tb.dataset.tab = t.id;
     tb.innerHTML = `${getIconSvg(t.icon, 16)}<span>${t.label}</span>`;
     tb.addEventListener("click", () => {
@@ -333,14 +319,14 @@ export function initSideRailHud(): void {
     try {
       const btns = Array.from(cmdButtons.querySelectorAll<HTMLButtonElement>("button.act-btn"));
       for (const btn of btns) {
-        if (btn.dataset.pdDecorated !== "1") {
+        if (btn.dataset.doteDecorated !== "1") {
           const spans = btn.querySelectorAll("span");
           const labelText = (spans[0]?.textContent || btn.textContent || "").trim();
           const costText = (spans[1]?.textContent || "").trim();
-          btn.dataset.pdLabel = labelText;
-          btn.dataset.pdDecorated = "1";
+          btn.dataset.doteLabel = labelText;
+          btn.dataset.doteDecorated = "1";
           const iconKey = resolveCommandIconKey(labelText);
-          btn.innerHTML = `<span class="pd-cmd-icon">${getIconSvg(iconKey, 24)}</span><span class="pd-cmd-text"><span>${labelText}</span>${costText ? `<span class="act-cost">${costText}</span>` : ""}</span>`;
+          btn.innerHTML = `<span class="dote-cmd-icon">${getIconSvg(iconKey, 24)}</span><span class="dote-cmd-text"><span>${labelText}</span>${costText ? `<span class="act-cost">${costText}</span>` : ""}</span>`;
           attachLongPress(btn, () => (costText ? `${labelText} (${costText})` : labelText));
         }
       }
@@ -358,7 +344,6 @@ export function initSideRailHud(): void {
     observer.observe(cmdButtons, { childList: true });
   }
 
-  // Close drawer when tapping outside
   document.addEventListener("pointerdown", (e) => {
     if (!drawerOpen) return;
     const target = e.target as Node | null;
@@ -367,13 +352,12 @@ export function initSideRailHud(): void {
     setDrawerOpen(false);
   });
 
-  // Add Left-Handed toggle to #hud-settings
   const hudSettings = document.getElementById("hud-settings");
-  if (hudSettings && !document.getElementById("pd-btn-left-handed")) {
+  if (hudSettings && !document.getElementById("dote-btn-left-handed")) {
     const lhBtn = document.createElement("button");
     lhBtn.type = "button";
-    lhBtn.id = "pd-btn-left-handed";
-    lhBtn.className = "mini-btn pd-lh-toggle";
+    lhBtn.id = "dote-btn-left-handed";
+    lhBtn.className = "mini-btn dote-lh-toggle";
     lhBtn.addEventListener("click", () => {
       leftHanded = !leftHanded;
       writePref(LS_LEFT_HANDED, leftHanded);
