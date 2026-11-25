@@ -64,7 +64,7 @@ interface SaveSummary {
 
 function readLocalSaveSummary(): SaveSummary | null {
   try {
-    const raw = window.localStorage.getItem("pixel_dynasty_save_v1");
+    let raw = window.localStorage.getItem("dote_save_v1"); if (!raw) { const legacy = window.localStorage.getItem("pixel_dynasty_save_v1"); if (legacy) { raw = legacy; try { window.localStorage.setItem("dote_save_v1", legacy); window.localStorage.removeItem("pixel_dynasty_save_v1"); } catch {} } }
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Record<string, unknown> | null;
     if (!parsed || typeof parsed !== "object") return null;
@@ -90,7 +90,7 @@ function syncMenuOpenClass(): void {
     const pauseVisible = Boolean(
       pause && !pause.hidden && window.getComputedStyle(pause).display !== "none",
     );
-    document.body.classList.toggle("pd-menu-open", modalVisible || pauseVisible);
+    document.body.classList.toggle("dote-menu-open", modalVisible || pauseVisible);
   } catch {
     /* ignore */
   }
@@ -99,12 +99,12 @@ function syncMenuOpenClass(): void {
 function refreshLoadSaveButton(): void {
   const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
   if (!loadSaveBtn) return;
-  loadSaveBtn.classList.add("pd-btn", "pd-btn--save", "pd-menu-row", "pd-menu-row--save");
+  loadSaveBtn.classList.add("dote-btn", "dote-btn--save", "dote-menu-row", "dote-menu-row--save");
   const save = readLocalSaveSummary();
   if (save) {
     loadSaveBtn.innerHTML = `
       <span>Chơi tiếp</span>
-      <span class="pd-menu-row-sub">${save.factionName} · Đời ${save.age} · ${save.timeText}</span>
+      <span class="dote-menu-row-sub">${save.factionName} · Đời ${save.age} · ${save.timeText}</span>
     `;
   } else {
     loadSaveBtn.textContent = "Chơi tiếp";
@@ -112,24 +112,24 @@ function refreshLoadSaveButton(): void {
 }
 
 function upgradeBrandHeader(modalCard: HTMLElement): void {
-  if (modalCard.querySelector(".pd-brand-header")) return;
+  if (modalCard.querySelector(".dote-brand-header")) return;
   const titleEl = document.getElementById("modal-title");
   if (!titleEl || !modalCard.contains(titleEl)) return;
 
   if (/sprint/i.test(titleEl.textContent || "")) {
-    titleEl.textContent = "PIXEL DYNASTY";
+    titleEl.textContent = "DYNASTY OF THE EAST";
   }
 
   const subEl = document.getElementById("modal-sub");
   if (subEl && /sprint|nhạc ngũ cung/i.test(subEl.textContent || "")) {
-    subEl.textContent = "Triều Đại Pixel";
+    subEl.textContent = "Triều Đại Phương Đông";
   }
 
   const header = document.createElement("div");
-  header.className = "pd-brand-header";
+  header.className = "dote-brand-header";
 
   const row = document.createElement("div");
-  row.className = "pd-brand-row";
+  row.className = "dote-brand-row";
 
   const drum = document.createElement("span");
   drum.setAttribute("aria-hidden", "true");
@@ -149,21 +149,21 @@ function upgradeFactionButtons(): void {
 
   const buttons = row.querySelectorAll<HTMLButtonElement>(".opt-btn");
   buttons.forEach((btn) => {
-    if (btn.dataset.pdEnhanced === "1") return;
+    if (btn.dataset.doteEnhanced === "1") return;
     const key = (btn.dataset.val || "") as FactionKey;
     const meta = FACTION_META[key];
     if (!meta) return;
 
-    btn.dataset.pdEnhanced = "1";
-    btn.classList.add("pd-faction-card");
+    btn.dataset.doteEnhanced = "1";
+    btn.classList.add("dote-faction-card");
     btn.innerHTML = `
-      <span class="pd-crest">${meta.svg}</span>
-      <span class="pd-faction-info">
-        <span class="pd-faction-head">
-          <span class="pd-faction-name">${meta.name}</span>
-          <span class="pd-chip">${meta.chip}</span>
+      <span class="dote-crest">${meta.svg}</span>
+      <span class="dote-faction-info">
+        <span class="dote-faction-head">
+          <span class="dote-faction-name">${meta.name}</span>
+          <span class="dote-chip">${meta.chip}</span>
         </span>
-        <span class="pd-faction-stat">${meta.stat}</span>
+        <span class="dote-faction-stat">${meta.stat}</span>
       </span>
     `;
   });
@@ -182,7 +182,7 @@ function findDirectChild(root: HTMLElement, id: string): HTMLElement | null {
 function getActiveOptLabel(containerId: string, fallback: string): string {
   const active = document.querySelector<HTMLElement>(`#${containerId} .opt-btn.active`);
   if (!active) return fallback;
-  const name = active.querySelector(".pd-faction-name")?.textContent?.trim();
+  const name = active.querySelector(".dote-faction-name")?.textContent?.trim();
   if (name) return name;
   const firstNode = Array.from(active.childNodes).find((n) => n.nodeType === Node.TEXT_NODE);
   return firstNode?.textContent?.trim() || active.textContent?.trim() || fallback;
@@ -191,13 +191,13 @@ function getActiveOptLabel(containerId: string, fallback: string): string {
 function buildSettingProxyButton(targetId: string, fallbackLabel: string): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = "pd-btn pd-btn--ghost";
+  btn.className = "dote-btn dote-btn--ghost";
   const sync = (): void => {
     const src = document.getElementById(targetId);
     const txt = src?.textContent?.trim() || fallbackLabel;
     const parts = txt.split(":");
     if (parts.length >= 2) {
-      btn.innerHTML = `<span>${parts[0].trim()}</span><span style="color:var(--pd-gold-light)">${parts.slice(1).join(":").trim()}</span>`;
+      btn.innerHTML = `<span>${parts[0].trim()}</span><span style="color:var(--dote-gold-light)">${parts.slice(1).join(":").trim()}</span>`;
     } else {
       btn.textContent = txt;
     }
@@ -217,19 +217,19 @@ function buildSettingProxyButton(targetId: string, fallbackLabel: string): HTMLB
 function enhancePauseModal(): void {
   const pauseModal = document.getElementById("pause-modal");
   if (!pauseModal) return;
-  const card = pauseModal.querySelector<HTMLElement>(".pd-pause-card");
-  if (!card || card.dataset.pdEnhanced === "1") return;
-  card.dataset.pdEnhanced = "1";
+  const card = pauseModal.querySelector<HTMLElement>(".dote-pause-card");
+  if (!card || card.dataset.doteEnhanced === "1") return;
+  card.dataset.doteEnhanced = "1";
 
-  const actions = card.querySelector<HTMLElement>(".pd-pause-actions");
-  const quick = card.querySelector<HTMLElement>(".pd-pause-quick-settings");
+  const actions = card.querySelector<HTMLElement>(".dote-pause-actions");
+  const quick = card.querySelector<HTMLElement>(".dote-pause-quick-settings");
 
-  if (actions && quick && !card.querySelector(".pd-pause-body")) {
+  if (actions && quick && !card.querySelector(".dote-pause-body")) {
     const body = document.createElement("div");
-    body.className = "pd-pause-body";
+    body.className = "dote-pause-body";
 
     const quickLabel = document.createElement("div");
-    quickLabel.className = "pd-pause-col-label";
+    quickLabel.className = "dote-pause-col-label";
     quickLabel.textContent = "Cài đặt nhanh";
     quick.insertAdjacentElement("afterbegin", quickLabel);
 
@@ -242,8 +242,8 @@ export function enhanceModal(modalCard: HTMLElement): void {
   const setupPanel =
     modalCard.querySelector<HTMLElement>("#setup-panel") ??
     document.getElementById("setup-panel");
-  if (!setupPanel || setupPanel.dataset.pdTwoTier === "1") return;
-  setupPanel.dataset.pdTwoTier = "1";
+  if (!setupPanel || setupPanel.dataset.doteTwoTier === "1") return;
+  setupPanel.dataset.doteTwoTier = "1";
 
   upgradeBrandHeader(modalCard);
 
@@ -256,19 +256,19 @@ export function enhanceModal(modalCard: HTMLElement): void {
   const loadSaveBtn = document.getElementById("btn-load-save") as HTMLButtonElement | null;
 
   const homeMenu = document.createElement("div");
-  homeMenu.className = "pd-home-menu";
+  homeMenu.className = "dote-home-menu";
 
   const soloPage = document.createElement("div");
-  soloPage.className = "pd-page pd-page-solo";
+  soloPage.className = "dote-page dote-page-solo";
 
   const onlinePage = document.createElement("div");
-  onlinePage.className = "pd-page pd-page-online";
+  onlinePage.className = "dote-page dote-page-online";
 
   const settingsPage = document.createElement("div");
-  settingsPage.className = "pd-page pd-page-settings";
+  settingsPage.className = "dote-page dote-page-settings";
 
   const footerSummary = document.createElement("span");
-  footerSummary.className = "pd-footer-summary";
+  footerSummary.className = "dote-footer-summary";
 
   const updateSummary = (): void => {
     const f = getActiveOptLabel("opt-faction", "Đại Việt");
@@ -284,8 +284,8 @@ export function enhanceModal(modalCard: HTMLElement): void {
     onlinePage.hidden = page !== "online";
     settingsPage.hidden = page !== "settings";
     const isSub = page !== "home";
-    modalCard.classList.toggle("pd-modal-wide", isSub);
-    modalCard.classList.toggle("pd-modal-subpage", isSub);
+    modalCard.classList.toggle("dote-modal-wide", isSub);
+    modalCard.classList.toggle("dote-modal-subpage", isSub);
     if (page === "home") refreshLoadSaveButton();
     if (page === "solo") updateSummary();
   };
@@ -298,34 +298,34 @@ export function enhanceModal(modalCard: HTMLElement): void {
   const makeRowBtn = (label: string, extraCls: string, onClick: () => void): HTMLButtonElement => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `pd-btn pd-menu-row ${extraCls}`.trim();
+    btn.className = `dote-btn dote-menu-row ${extraCls}`.trim();
     btn.textContent = label;
     btn.addEventListener("click", onClick);
     return btn;
   };
 
   homeMenu.append(
-    makeRowBtn("Chơi mới", "pd-btn--primary", () => setPage("solo")),
+    makeRowBtn("Chơi mới", "dote-btn--primary", () => setPage("solo")),
     makeRowBtn("Chơi online", "", () => setPage("online")),
-    makeRowBtn("Cài đặt", "pd-btn--ghost", () => setPage("settings")),
+    makeRowBtn("Cài đặt", "dote-btn--ghost", () => setPage("settings")),
   );
 
   const makeTopbar = (title: string, metaText = ""): HTMLElement => {
     const bar = document.createElement("div");
-    bar.className = "pd-page-topbar";
+    bar.className = "dote-page-topbar";
 
     const back = document.createElement("button");
     back.type = "button";
-    back.className = "pd-btn pd-btn--back";
+    back.className = "dote-btn dote-btn--back";
     back.textContent = "← Quay lại";
     back.addEventListener("click", () => setPage("home"));
 
     const h = document.createElement("h2");
-    h.className = "pd-page-title";
+    h.className = "dote-page-title";
     h.textContent = title;
 
     const meta = document.createElement("span");
-    meta.className = "pd-page-meta";
+    meta.className = "dote-page-meta";
     meta.textContent = metaText;
 
     bar.append(back, h, meta);
@@ -333,11 +333,11 @@ export function enhanceModal(modalCard: HTMLElement): void {
   };
 
   const soloBody = document.createElement("div");
-  soloBody.className = "pd-page-body";
+  soloBody.className = "dote-page-body";
   const soloLeft = document.createElement("div");
-  soloLeft.className = "pd-col";
+  soloLeft.className = "dote-col";
   const soloRight = document.createElement("div");
-  soloRight.className = "pd-col";
+  soloRight.className = "dote-col";
 
   const moved = new Set<HTMLElement>();
   const moveTo = (el: HTMLElement | null, target: HTMLElement): void => {
@@ -363,10 +363,10 @@ export function enhanceModal(modalCard: HTMLElement): void {
   soloBody.append(soloLeft, soloRight);
 
   const soloFooter = document.createElement("div");
-  soloFooter.className = "pd-page-footer";
+  soloFooter.className = "dote-page-footer";
   soloFooter.appendChild(footerSummary);
   if (startBtn) {
-    startBtn.classList.add("pd-btn", "pd-btn--primary");
+    startBtn.classList.add("dote-btn", "dote-btn--primary");
     soloFooter.appendChild(startBtn);
   }
 
@@ -383,35 +383,35 @@ export function enhanceModal(modalCard: HTMLElement): void {
   });
 
   const onlineBody = document.createElement("div");
-  onlineBody.className = "pd-page-body";
+  onlineBody.className = "dote-page-body";
 
   const onlineLeft = document.createElement("div");
-  onlineLeft.className = "pd-col";
+  onlineLeft.className = "dote-col";
 
   const statusPill = document.createElement("span");
-  statusPill.className = "pd-status-pill";
+  statusPill.className = "dote-status-pill";
   statusPill.textContent = "Trạng thái máy chủ: Sẵn sàng kiểm tra";
 
   const roomFeedback = document.createElement("p");
   roomFeedback.textContent = "Nhập mã phòng 4 ký tự để tham gia hoặc tạo phòng mới cùng bạn bè.";
 
   const joinCard = document.createElement("div");
-  joinCard.className = "pd-card-box";
+  joinCard.className = "dote-card-box";
   joinCard.innerHTML = `<h3>Phòng trực tuyến</h3>`;
   joinCard.appendChild(statusPill);
 
   const inputRow = document.createElement("div");
-  inputRow.className = "pd-room-input-row";
+  inputRow.className = "dote-room-input-row";
   const codeInput = document.createElement("input");
   codeInput.type = "text";
   codeInput.maxLength = 4;
   codeInput.placeholder = "ABCD";
-  codeInput.className = "pd-input";
+  codeInput.className = "dote-input";
   codeInput.setAttribute("aria-label", "Mã phòng 4 ký tự");
 
   const joinBtn = document.createElement("button");
   joinBtn.type = "button";
-  joinBtn.className = "pd-btn pd-btn--primary";
+  joinBtn.className = "dote-btn dote-btn--primary";
   joinBtn.textContent = "Vào phòng";
   joinBtn.addEventListener("click", () => {
     const code = codeInput.value.trim().toUpperCase();
@@ -427,16 +427,16 @@ export function enhanceModal(modalCard: HTMLElement): void {
   onlineLeft.appendChild(joinCard);
 
   const onlineRight = document.createElement("div");
-  onlineRight.className = "pd-col";
+  onlineRight.className = "dote-col";
   const createCard = document.createElement("div");
-  createCard.className = "pd-card-box";
+  createCard.className = "dote-card-box";
   createCard.innerHTML = `
     <h3>Tạo phòng mới</h3>
     <p>Hỗ trợ tạo phòng mã mời 4 ký tự qua máy chủ trực tuyến hoặc chơi mạng LAN trên iOS.</p>
   `;
   const createRoomBtn = document.createElement("button");
   createRoomBtn.type = "button";
-  createRoomBtn.className = "pd-btn";
+  createRoomBtn.className = "dote-btn";
   createRoomBtn.textContent = "Tạo mã phòng";
   createRoomBtn.addEventListener("click", () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -450,12 +450,12 @@ export function enhanceModal(modalCard: HTMLElement): void {
 
   const pingBtn = document.createElement("button");
   pingBtn.type = "button";
-  pingBtn.className = "pd-btn pd-btn--ghost";
+  pingBtn.className = "dote-btn dote-btn--ghost";
   pingBtn.textContent = "Kiểm tra máy chủ";
   pingBtn.addEventListener("click", () => {
     statusPill.textContent = "Đang kiểm tra máy chủ...";
     try {
-      const health = (window as unknown as { PDServerHealth?: { checkHealth?: () => Promise<boolean> } }).PDServerHealth;
+      const health = (window as unknown as { DOTEServerHealth?: { checkHealth?: () => Promise<boolean> } }).DOTEServerHealth;
       if (health && typeof health.checkHealth === "function") {
         health.checkHealth()
           .then((ok) => {
@@ -479,15 +479,15 @@ export function enhanceModal(modalCard: HTMLElement): void {
   onlinePage.append(makeTopbar("Chơi online", "Phòng 4 ký tự"), onlineBody);
 
   const settingsBody = document.createElement("div");
-  settingsBody.className = "pd-page-body";
+  settingsBody.className = "dote-page-body";
 
   const settingsLeft = document.createElement("div");
-  settingsLeft.className = "pd-col";
+  settingsLeft.className = "dote-col";
   const settingsCard = document.createElement("div");
-  settingsCard.className = "pd-card-box";
+  settingsCard.className = "dote-card-box";
   settingsCard.innerHTML = `<h3>Âm thanh & Đồ họa</h3>`;
   const settingsList = document.createElement("div");
-  settingsList.className = "pd-settings-list";
+  settingsList.className = "dote-settings-list";
   settingsList.append(
     buildSettingProxyButton("btn-music", "Nhạc: Bật"),
     buildSettingProxyButton("btn-sound", "Âm: Bật"),
@@ -499,14 +499,14 @@ export function enhanceModal(modalCard: HTMLElement): void {
   settingsLeft.appendChild(settingsCard);
 
   const settingsRight = document.createElement("div");
-  settingsRight.className = "pd-col";
+  settingsRight.className = "dote-col";
   const guideCard = document.createElement("div");
-  guideCard.className = "pd-card-box";
+  guideCard.className = "dote-card-box";
   guideCard.innerHTML = `
     <h3>Hướng dẫn điều khiển</h3>
-    <div class="pd-guide-list">
+    <div class="dote-guide-list">
       ${QUICK_GUIDE_ITEMS.map(
-        (item) => `<div class="pd-guide-item"><strong>${item.title}</strong><span>${item.desc}</span></div>`,
+        (item) => `<div class="dote-guide-item"><strong>${item.title}</strong><span>${item.desc}</span></div>`,
       ).join("")}
     </div>
   `;
@@ -538,21 +538,21 @@ function isSetupHidden(): boolean {
 }
 
 function renderEndgameScorecard(modalCard: HTMLElement, tipEl: HTMLElement): void {
-  const existing = modalCard.querySelector(".pd-rank-banner");
+  const existing = modalCard.querySelector(".dote-rank-banner");
   const endgame = isSetupHidden();
-  modalCard.classList.toggle("pd-modal-endgame", endgame);
+  modalCard.classList.toggle("dote-modal-endgame", endgame);
 
   const startBtn = document.getElementById("btn-start");
   if (!endgame) {
     if (existing) existing.remove();
-    const soloFooter = modalCard.querySelector<HTMLElement>(".pd-page-footer");
+    const soloFooter = modalCard.querySelector<HTMLElement>(".dote-page-footer");
     if (startBtn && soloFooter && !soloFooter.contains(startBtn)) {
       soloFooter.appendChild(startBtn);
     }
     return;
   }
 
-  modalCard.classList.remove("pd-modal-subpage", "pd-modal-wide");
+  modalCard.classList.remove("dote-modal-subpage", "dote-modal-wide");
 
   if (startBtn && !modalCard.querySelector(":scope > #btn-start")) {
     tipEl.insertAdjacentElement("afterend", startBtn);
@@ -600,27 +600,27 @@ function renderEndgameScorecard(modalCard: HTMLElement, tipEl: HTMLElement): voi
   const pct = (v: number): number => Math.max(8, Math.min(100, Math.round((v / maxVal) * 100)));
 
   const banner = existing ?? document.createElement("div");
-  banner.className = "pd-rank-banner";
+  banner.className = "dote-rank-banner";
   banner.innerHTML = `
-    <div class="pd-medal-wrap" title="Xếp hạng ${rank}">
+    <div class="dote-medal-wrap" title="Xếp hạng ${rank}">
       ${RANK_MEDALS[rank]}
-      <span class="pd-medal-label">${rankTitles[rank]}</span>
+      <span class="dote-medal-label">${rankTitles[rank]}</span>
     </div>
-    <div class="pd-bars">
-      <div class="pd-bar-row">
-        <span class="pd-bar-label">Kinh tế</span>
-        <div class="pd-bar-track"><div class="pd-bar-fill" style="width:${pct(econ)}%"></div></div>
-        <span class="pd-bar-val">${econ}</span>
+    <div class="dote-bars">
+      <div class="dote-bar-row">
+        <span class="dote-bar-label">Kinh tế</span>
+        <div class="dote-bar-track"><div class="dote-bar-fill" style="width:${pct(econ)}%"></div></div>
+        <span class="dote-bar-val">${econ}</span>
       </div>
-      <div class="pd-bar-row">
-        <span class="pd-bar-label">Quân sự</span>
-        <div class="pd-bar-track"><div class="pd-bar-fill" style="width:${pct(mil)}%"></div></div>
-        <span class="pd-bar-val">${mil}</span>
+      <div class="dote-bar-row">
+        <span class="dote-bar-label">Quân sự</span>
+        <div class="dote-bar-track"><div class="dote-bar-fill" style="width:${pct(mil)}%"></div></div>
+        <span class="dote-bar-val">${mil}</span>
       </div>
-      <div class="pd-bar-row">
-        <span class="pd-bar-label">Công trình</span>
-        <div class="pd-bar-track"><div class="pd-bar-fill" style="width:${pct(bld)}%"></div></div>
-        <span class="pd-bar-val">${bld}</span>
+      <div class="dote-bar-row">
+        <span class="dote-bar-label">Công trình</span>
+        <div class="dote-bar-track"><div class="dote-bar-fill" style="width:${pct(bld)}%"></div></div>
+        <span class="dote-bar-val">${bld}</span>
       </div>
     </div>
   `;

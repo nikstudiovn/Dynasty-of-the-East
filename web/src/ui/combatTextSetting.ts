@@ -8,8 +8,8 @@ let listening = false;
 function paint(btn: HTMLButtonElement): void {
   const on = isFloatingTextEnabled();
   const value = on ? "Bật" : "Tắt";
-  if (btn.classList.contains("pd-btn")) {
-    btn.innerHTML = `<span>Số chiến đấu</span><span style="color:var(--pd-gold-light)">${value}</span>`;
+  if (btn.classList.contains("dote-btn")) {
+    btn.innerHTML = `<span>Số chiến đấu</span><span style="color:var(--dote-gold-light)">${value}</span>`;
   } else {
     btn.textContent = `Số chiến đấu: ${value}`;
   }
@@ -34,7 +34,7 @@ export function createLobbyCombatTextButton(): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.id = "btn-settings-combat-text";
-  btn.className = "pd-btn pd-btn--ghost";
+  btn.className = "dote-btn dote-btn--ghost";
   bindCombatTextButton(btn);
   return btn;
 }

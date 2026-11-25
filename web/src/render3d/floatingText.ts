@@ -2,13 +2,18 @@
 // A fixed pool of 40 labels is reused (one label per gameplay event); world positions are projected every
 // frame. The on/off preference lives here so the HUD, pause menu and lobby buttons share one source of truth.
 
-export const FLOATING_TEXT_KEY = "pixel_dynasty_floating_text";
-const EVENT = "pd-floating-text-change";
+export const FLOATING_TEXT_KEY = "dote_floating_text";
+const LEGACY_FLOATING_TEXT_KEY = "pixel_dynasty_floating_text";
+const EVENT = "dote-floating-text-change";
 
 let enabled = true;
 try {
   const raw = window.localStorage.getItem(FLOATING_TEXT_KEY);
-  if (raw === "0") enabled = false;
+  const legacy = raw === null ? window.localStorage.getItem(LEGACY_FLOATING_TEXT_KEY) : null;
+  enabled = (raw ?? legacy) !== "0";
+  if (raw === null && (legacy === "0" || legacy === "1")) {
+    window.localStorage.setItem(FLOATING_TEXT_KEY, legacy);
+  }
 } catch {
   /* storage blocked: keep the in-memory default for this session */
 }
@@ -67,7 +72,7 @@ export class FloatingText {
 
   draw(ctx: CanvasRenderingContext2D, project: Project, height: (x: number, z: number) => number, visible: (x: number, z: number) => boolean): void {
     // hidden (not paused) while a menu is open or the option is off — older labels included
-    if (!enabled || document.body.classList.contains("pd-menu-open")) return;
+    if (!enabled || document.body.classList.contains("dote-menu-open")) return;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "800 13px -apple-system, 'SF Pro Rounded', system-ui, sans-serif";

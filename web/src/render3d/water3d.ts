@@ -39,7 +39,7 @@ export class WaterSurface {
   });
 
   constructor() {
-    this.material.customProgramCacheKey = () => "pd-water-pbr";
+    this.material.customProgramCacheKey = () => "dote-water-pbr";
     this.material.onBeforeCompile = shader => {
       Object.assign(shader.uniforms, this.uniforms);
       shader.vertexShader = `attribute float aDepth, aPier, aShallow;
