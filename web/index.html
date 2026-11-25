@@ -2469,8 +2469,6 @@ const updateBattleHud = initBattleHud();
       spend(def.cost);
       const b = spawnBuilding("player", state.buildMode, tx, ty, 0, true);
     sfxBuild(); recomputeFog(); if (state.stats) state.stats.buildingsBuilt++; ejectUnits(b);
-    const linear = b.type === "wall" || b.type === "gate";
-    if (window.DOTEGfx && !linear) window.DOTEGfx.villager.registerBuild(b);
     showToast(`Đã đặt móng ${def.name}`);
     for (const uid of state.selectedIds) {
       const u = state.units.find(x => x.id === uid && x.hp > 0 && x.team === "player" && x.type === "villager");
@@ -2829,7 +2827,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
         const gfx = window.DOTEGfx;
         if (gfx) {
           gfx.vfx.update(dt, state, cam);
-          gfx.villager.update(dt, state);
+          gfx.villager.update(paused && !isOnlineMode() ? 0 : dt, state);
           gfx.atmosphere.update(dt, canvas.width, canvas.height);
         }
         updateAbilityButton();
@@ -2884,7 +2882,7 @@ function checkLocalSave() { const btnLoad = document.getElementById("btn-load-sa
     init3D();
     resize();
     if (window.DOTEInput) window.DOTEInput.install({ canvas, cam, minZoom: zoomMin, maxZoom: zoomMax, view: R3D || undefined, onPinchStart: cancelCanvasGesture });
-    if (window.DOTEGfx) window.DOTEGfx.villager.init({ findPath, clink: () => cue("work"), thock: () => cue("work") });
+    if (window.DOTEGfx) window.DOTEGfx.villager.init({ clink: () => cue("work"), thock: () => cue("work") });
     initGame();
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(loop);

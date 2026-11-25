@@ -1,6 +1,7 @@
 import { healthColor } from "../ui/battleStatus";
 // Dynasty of the East 3D — procedural animated units, villager work actions, selection rings and 3D projectiles.
 import type { ModelRegistry, ModelVisual } from "./modelRegistry";
+import { fcx, fcy, fw, fh } from "../sim/footprint";
 import { NAVAL_TYPES } from "../sim/naval";
 import * as THREE from "three";
 import { box, cyl, cone, sphere, geo, mat, mesh, shade, WATER_LEVEL, standHeight, Env3D, MAP_N, contactShadow, disposeTree, smoothstep, renderFaction, hash2, fxGuard, shareMaterial, type Faction } from "./common";
@@ -65,6 +66,9 @@ function trailMask(): THREE.CanvasTexture {
 interface Rig {
   model?: ModelVisual;
   root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group;
+  gait?: number; stride?: number;
+  villagePose?: Float32Array;
+  elbowL?: THREE.Group; elbowR?: THREE.Group;
   legL: THREE.Group | null; legR: THREE.Group | null;
   tools: Record<string, THREE.Object3D>; carry: Record<string, THREE.Object3D>;
   /** Villager animation state of the last frame (one of VILLAGER_ANIMS). */
@@ -108,7 +112,7 @@ function newRig(type: string, key: string, faction: Faction): Rig {
 
 type Armor = "none" | "scale" | "leather" | "lamellar";
 type Headgear = "auto" | "steel" | "bronze" | "fur" | "hood" | "band";
-interface HumanOpts { armor?: Armor; legs?: boolean; head?: Headgear; robe?: boolean; accent?: string }
+interface HumanOpts { armor?: Armor; legs?: boolean; head?: Headgear; robe?: boolean; accent?: string; helmetTint?: string }
 
 /** Humanoid torso/head/limbs into `parent` (feet at y=0, head centre y=0.44). */
 function humanoid(r: Rig, parent: THREE.Group, tunic: string, o: HumanOpts = {}): void {
@@ -145,7 +149,7 @@ function humanoid(r: Rig, parent: THREE.Group, tunic: string, o: HumanOpts = {})
   if (head === "auto" && !civilian) head = faction === "trung_nguyen" ? "bronze" : faction === "bac_cuong" ? "fur" : "auto";
   if (head === "steel") {
     // steel helmet (mũ trụ): dome, brim, spike and team plume
-    const s = steel();
+    const s = steel(o.helmetTint);
     parent.add(mesh(geo("steel-helm", () => new THREE.SphereGeometry(0.078, 10, 6, 0, TAU, 0, Math.PI * 0.55)), s, 0, 0.462, 0));
     parent.add(mesh(cyl(0.088, 0.088, 0.012, 12), s, 0, 0.47, 0, false));
     for (const sign of [-1, 1]) parent.add(mesh(box(0.016, 0.07, 0.05), s, sign * 0.066, 0.43, 0.005, false));
@@ -210,7 +214,80 @@ parent.add(mesh(box(0.176, 0.022, 0.118), cloth("#2b3654"), 0, 0.248, 0, false))
   parent.add(r.armL, r.armR);
 }
 
-function hand(arm: THREE.Group, obj: THREE.Object3D): THREE.Object3D { obj.position.y = -0.18; arm.add(obj); return obj; }
+const VILLAGER_CLOTH: Record<Faction, string> = {
+  dai_viet: "#48382f", trung_nguyen: "#777063", bac_cuong: "#756343",
+  goryeo: "#d1c3a6", fuso: "#38475f",
+};
+
+function taperedPart(top: number, bottom: number, length: number, depth: number, material: THREE.Material, y: number): THREE.Mesh {
+  const part = mesh(cyl(top, bottom, length, 8), material, 0, y, 0);
+  part.scale.z = depth;
+  return part;
+}
+
+function civilianRig(r: Rig, team: string): void {
+  const faction = r.faction, body = r.body;
+  const fabric = cloth(VILLAGER_CLOTH[faction]), darker = cloth(shade(VILLAGER_CLOTH[faction], -0.25));
+  const indigo = cloth("#303641"), skin = skinM(), hair = cloth("#302720");
+  const sash = cloth(mute(team, 0.45)), felt = fur("#bba686"), straw = pbr("mat_bamboo", "#dbc396");
+  body.add(taperedPart(0.105, 0.083, 0.16, 0.65, fabric, 0.28));
+  body.add(taperedPart(0.082, 0.1, faction === "dai_viet" ? 0.065 : 0.105, 0.68, darker, 0.184));
+  body.add(taperedPart(0.091, 0.092, faction === "dai_viet" ? 0.012 : 0.028, 0.74, sash, 0.227));
+  if (faction !== "dai_viet" && faction !== "bac_cuong") {
+    const collar = mesh(box(0.025, 0.12, 0.012), faction === "fuso" ? indigo : cloth("#bcb09c"), 0.012, 0.313, 0.064, false);
+    collar.rotation.z = -0.57;
+    body.add(collar);
+  }
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Group();
+    leg.position.set(side * 0.046, 0.175, 0);
+    leg.add(taperedPart(0.043, 0.035, 0.112, 0.9, indigo, -0.057));
+    leg.add(taperedPart(0.032, 0.027, 0.054, 0.85, faction === "dai_viet" ? skin : darker, -0.137));
+    const shoe = mesh(sphere(0.5, 8, 5), faction === "dai_viet" ? skin : leather("#3b3027"), 0, -0.158, 0.018);
+    shoe.scale.set(0.065, 0.035, 0.09);
+    leg.add(shoe);
+    body.add(leg);
+    const arm = new THREE.Group(), elbow = new THREE.Group();
+    arm.position.set(side * 0.092, 0.352, 0);
+    elbow.position.y = -0.091;
+    arm.add(taperedPart(0.039, 0.029, 0.097, 0.86, fabric, -0.045), elbow);
+    elbow.add(taperedPart(0.03, 0.023, 0.064, 0.84, darker, -0.029));
+    elbow.add(mesh(sphere(0.024, 8, 5), skin, 0, -0.074, 0));
+    if (side < 0) { r.legL = leg; r.armL = arm; r.elbowL = elbow; }
+    else { r.legR = leg; r.armR = arm; r.elbowR = elbow; }
+    body.add(arm);
+  }
+  const head = mesh(sphere(0.5, 10, 7), skin, 0, 0.444, 0.008);
+  head.scale.set(0.134, 0.155, 0.13);
+  body.add(head, mesh(sphere(0.062, 9, 6), hair, 0, 0.479, -0.014));
+  for (const side of [-1, 1]) body.add(mesh(sphere(0.005, 5, 4), hair, side * 0.024, 0.45, 0.069, false));
+  if (faction === "dai_viet" || faction === "goryeo") {
+    body.add(mesh(cone(faction === "dai_viet" ? 0.145 : 0.128, 0.093, 12), straw, 0, 0.54, 0));
+    for (const side of [-1, 1]) {
+      const strap = mesh(box(0.006, 0.078, 0.006), darker, side * 0.052, 0.459, 0.042, false);
+      strap.rotation.z = -side * 0.42;
+      body.add(strap);
+    }
+  } else if (faction === "trung_nguyen") {
+    body.add(mesh(sphere(0.073, 9, 6), darker, 0, 0.509, -0.012));
+    body.add(mesh(cyl(0.07, 0.074, 0.017, 10), cloth("#a29582"), 0, 0.492, 0));
+    body.add(mesh(sphere(0.027, 8, 5), hair, 0, 0.563, -0.029));
+  } else if (faction === "bac_cuong") {
+    body.add(mesh(cone(0.077, 0.091, 9), darker, 0, 0.547, -0.008));
+    body.add(mesh(cyl(0.087, 0.085, 0.029, 10), felt, 0, 0.514, 0));
+    body.add(taperedPart(0.072, 0.096, 0.033, 0.81, felt, 0.355));
+    for (const side of [-1, 1]) {
+      const flap = mesh(sphere(0.5, 8, 5), felt, side * 0.069, 0.466, -0.012);
+      flap.scale.set(0.04, 0.093, 0.063);
+      body.add(flap);
+    }
+  } else {
+    body.add(mesh(cyl(0.087, 0.128, 0.05, 12), straw, 0, 0.533, 0));
+    body.add(mesh(box(0.048, 0.012, 0.012), cloth("#dfd0b5"), 0, 0.226, 0.074, false));
+  }
+}
+
+function hand(arm: THREE.Group, obj: THREE.Object3D, offset = -0.18): THREE.Object3D { obj.position.y = offset; arm.add(obj); return obj; }
 
 function tool(kind: string): THREE.Group {
   const g = new THREE.Group(), wm = woodM(), sm = steel();
@@ -301,30 +378,222 @@ function bowGroup(radius: number, team: string): { bow: THREE.Group; string: THR
 }
 
 /** Articulated horse: neck/head pivot, mane, swinging tail, four legs with hip + knee joints and hooves. */
+/** Preview of the Đại Việt reference: rounded leaf plates, a bronze finial and dark horse tack. */
+/** Batch the decorative plates on one rigid part without changing its animation hierarchy. */
+function addArmorPlates(parent: THREE.Group, plates: THREE.Mesh[]): void {
+  const layers = new Map<THREE.Material, THREE.Mesh[]>();
+  for (const plate of plates) {
+    const material = plate.material as THREE.Material;
+    const layer = layers.get(material);
+    if (layer) layer.push(plate);
+    else layers.set(material, [plate]);
+  }
+  for (const [material, layer] of layers) {
+    const batch = new THREE.InstancedMesh(layer[0].geometry, material, layer.length);
+    layer.forEach((plate, index) => {
+      plate.updateMatrix();
+      batch.setMatrixAt(index, plate.matrix);
+    });
+    parent.add(batch);
+  }
+}
+
+function vietLeafArmor(rider: THREE.Group): void {
+  const rim = pbr("mat_bronze", "#c98d58");
+  const dark = steel("#434348");
+  const leaves = [pbr("mat_bronze", "#8b7057"), pbr("mat_bronze", "#aa8868"), steel("#84746b")];
+  const plates: THREE.Mesh[] = [];
+  const plate = geo("viet-cavalry-leaf", () => {
+    const shape = new THREE.Shape();
+    shape.moveTo(-.013, .011); shape.lineTo(.013, .011);
+    shape.lineTo(.012, -.004); shape.quadraticCurveTo(0, -.023, -.012, -.004);
+    shape.closePath();
+    return new THREE.ExtrudeGeometry(shape, { depth: .003, bevelEnabled: false, curveSegments: 3 });
+  });
+  for (let row = 0; row < 5; row++) for (let col = 0; col < 6; col++) {
+    const x = (col - 2.5) * .024 + (row % 2 ? .005 : 0);
+    const leaf = mesh(plate, leaves[(row + col) % leaves.length], x, .352 - row * .025, .063 - Math.abs(x) * .14, false);
+    leaf.rotation.y = x * 4;
+    plates.push(leaf);
+  }
+  rider.add(mesh(box(.175,.03,.127), rim, 0,.229,0,false), mesh(sphere(.023,8,5), rim, 0,.23,.073,false));
+  for (const side of [-1,1]) {
+    for (let level = 0; level < 3; level++) {
+      const shoulder = mesh(box(.078,.02,.105), leaves[level], side*(.094 + .007*level), .378-level*.021, 0);
+      shoulder.rotation.z = -side*.25;
+      rider.add(shoulder);
+    }
+    for (let row = 0; row < 3; row++) for (let col = 0; col < 2; col++) {
+      const skirt = mesh(plate, leaves[(row + col) % 3], side*(.073 + col*.026), .204-row*.022, .062);
+      skirt.rotation.y = side*.45;
+      plates.push(skirt);
+    }
+    for (let level = 0; level < 3; level++) {
+      rider.add(mesh(box(.015,.018,.058), dark, side*.067,.456-level*.018,-.012,false));
+    }
+  }
+  addArmorPlates(rider, plates);
+  rider.add(mesh(cyl(.083,.086,.012,12), rim, 0,.475,0,false));
+  rider.add(mesh(cone(.014,.062,6),rim,0,.569,0,false));
+  const helmetBand = mesh(box(.012,.073,.016), rim,0,.511,.061,false);
+  helmetBand.rotation.x = -.34;
+  rider.add(helmetBand);
+}
+
+const MOUNT_STYLE: Record<Faction, { coat: string; armor: Armor; tunic: string; helmet: string }> = {
+  dai_viet: { coat: "#74492f", armor: "none", tunic: "#46342c", helmet: "#57545b" },
+  trung_nguyen: { coat: "#777e85", armor: "lamellar", tunic: "#525a58", helmet: "#7c858c" },
+  bac_cuong: { coat: "#795434", armor: "leather", tunic: "#665738", helmet: "#7b7363" },
+  goryeo: { coat: "#343539", armor: "scale", tunic: "#464d54", helmet: "#626c78" },
+  fuso: { coat: "#28272a", armor: "scale", tunic: "#343850", helmet: "#353b50" },
+};
+
+function mountBarding(parent: THREE.Group, faction: Faction, team: string): void {
+  const frame = faction === "fuso" ? steel("#626c85") : steel("#939798");
+  const dark = faction === "fuso" ? cloth("#363953") : steel("#4c555d");
+  if (faction === "bac_cuong") {
+    for (const side of [-1, 1]) {
+      const strap = mesh(box(0.013, 0.145, 0.024), leather("#8e6441"), side * 0.079, 0.312, 0.126, false);
+      strap.rotation.x = -0.65;
+      parent.add(strap);
+    }
+    return;
+  }
+  const plates: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    const flap = mesh(box(0.018, 0.12, 0.22), dark, side * 0.088, 0.323, -0.044);
+    flap.rotation.z = side * 0.16;
+    parent.add(flap);
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 4; col++) {
+        const plate = mesh(box(0.012, 0.04, 0.046), (col + row) % 3 === 0 ? dark : frame,
+          side * (0.094 + row * 0.004), 0.358 - row * 0.035, -0.12 + col * 0.047, false);
+        plate.rotation.z = side * (faction === "goryeo" ? 0.28 : 0.12);
+        plates.push(plate);
+      }
+    }
+  }
+  addArmorPlates(parent, plates);
+  const chest = taperedPart(0.077, 0.1, 0.125, 0.34, dark, 0.26);
+  chest.position.z = 0.18;
+  parent.add(chest);
+  parent.add(mesh(box(0.14, 0.016, 0.03), cloth(team), 0, 0.314, 0.191, false));
+}
+
+function riderDetails(rider: THREE.Group, faction: Faction): void {
+  if (faction === "dai_viet") {
+    vietLeafArmor(rider);
+  } else if (faction === "fuso") {
+    const crest = mesh(geo("fuso-mounted-crest", () => new THREE.TorusGeometry(0.049, 0.009, 4, 12, Math.PI)),
+      steel("#d5ccac"), 0, 0.518, 0.071);
+    crest.rotation.z = Math.PI;
+    rider.add(crest);
+  } else if (faction === "bac_cuong") {
+    const shield = mesh(cyl(0.078, 0.075, 0.019, 12), leather("#74543c"), -0.14, 0.25, 0.025);
+    shield.rotation.z = Math.PI / 2;
+    rider.add(shield, mesh(sphere(0.026, 8, 5), steel(), -0.147, 0.25, 0.025, false));
+  } else {
+    const layered = faction === "goryeo" ? steel("#7d8792") : steel("#919aa0");
+    for (const side of [-1, 1]) for (let row = 0; row < 3; row++) {
+      const layer = mesh(box(0.067, 0.035, 0.087), layered, side * (0.095 + row * 0.006), 0.347 - row * 0.026, 0.002, false);
+      layer.rotation.z = -side * 0.33;
+      rider.add(layer);
+    }
+  }
+}
+
+function seatedLeg(rider: THREE.Group, side: number): THREE.Group {
+  const hip = new THREE.Group(), shin = new THREE.Group();
+  hip.position.set(side * 0.079, 0.197, 0);
+  hip.rotation.z = side * 0.36;
+  hip.add(taperedPart(0.04, 0.032, 0.1, 0.9, cloth(PANTS), -0.043), shin);
+  shin.position.set(0, -0.086, 0.019);
+  shin.rotation.x = 0.24;
+  shin.add(taperedPart(0.029, 0.023, 0.105, 0.83, leather(PAL.leatherDark), -0.048));
+  shin.add(mesh(box(0.046, 0.03, 0.077), leather(PAL.leatherDark), 0, -0.097, 0.02));
+  const stirrup = mesh(geo("mounted-stirrup", () => new THREE.TorusGeometry(0.029, 0.004, 4, 8)), steel(), side * 0.006, -0.092, 0.02, false);
+  stirrup.rotation.y = Math.PI / 2;
+  shin.add(stirrup);
+  rider.add(hip);
+  return hip;
+}
+
 function horse(r: Rig, parent: THREE.Group, team: string, steppe: boolean): THREE.Group {
-  const coat = steppe ? "#9a7b55" : "#6a4730", hm = fur(coat), dm = fur(shade(coat, -0.45)), hoofM = hide("#2b2420");
+  const viet = r.faction === "dai_viet" && !steppe;
+  const coat = steppe ? "#9a7b55" : MOUNT_STYLE[r.faction].coat, hm = fur(coat), dm = fur(shade(coat, -0.45)), hoofM = hide("#2b2420");
   const h = new THREE.Group();
   if (steppe) h.scale.setScalar(0.9);
   const torso = mesh(sphere(0.5, 10, 7), hm, 0, 0.31, 0); torso.scale.set(0.18, 0.18, 0.46); h.add(torso);
   const neck = new THREE.Group(); neck.position.set(0, 0.36, 0.17); neck.rotation.x = 0.55; h.add(neck);
-  neck.add(mesh(box(0.09, 0.22, 0.1), hm, 0, 0.1, 0));
+  {
+    const muscle = mesh(sphere(.5, 8, 5), hm, 0,.103,-.007);
+    muscle.scale.set(.113,.27,.148);
+    neck.add(muscle);
+  }
   for (let k = 0; k < 4; k++) neck.add(mesh(box(0.025, 0.06, 0.045), dm, 0, 0.03 + k * 0.05, -0.05, false)); // mane
   const head = new THREE.Group(); head.position.set(0, 0.21, 0); head.rotation.x = 0.05; neck.add(head);
-  head.add(mesh(box(0.08, 0.08, 0.18), hm, 0, 0, 0.06));
-  head.add(mesh(box(0.07, 0.06, 0.05), dm, 0, -0.01, 0.16, false));
+  {
+    const skull = mesh(sphere(.5, 8, 5), hm, 0,.005,.048);
+    skull.scale.set(.102,.093,.159);
+    const muzzle = mesh(sphere(.5, 8, 5), dm, 0,-.017,.139);
+    muzzle.scale.set(.077,.066,.08);
+    head.add(skull,muzzle);
+  }
   for (const s of [-1, 1]) head.add(mesh(cone(0.015, 0.05, 4), hm, s * 0.025, 0.06, -0.01, false));
+  if (viet) {
+    const rim = pbr("mat_bronze", "#c58b58"), lacquer = steel("#262329");
+    const facePlate = mesh(geo("viet-horse-faceplate", () => {
+      const shape = new THREE.Shape();
+      shape.moveTo(-.034,.050); shape.lineTo(.034,.050); shape.lineTo(.028,-.039);
+      shape.lineTo(0,-.058); shape.lineTo(-.028,-.039); shape.closePath();
+      return new THREE.ExtrudeGeometry(shape, { depth: .008, bevelEnabled: false });
+    }), rim, 0,.030,.146);
+    facePlate.rotation.x = .78;
+    head.add(facePlate);
+    const noseBand = mesh(box(.086,.015,.028), lacquer,0,-.016,.141,false);
+    head.add(noseBand);
+    for (const side of [-1,1]) {
+      const tack = mesh(box(.009,.02,.126), leather("#75513c"),side*.044,.006,.048,false);
+      tack.rotation.x = -.14;
+      head.add(tack, mesh(sphere(.008,7,5), lacquer,side*.041,.028,.053,false));
+    }
+    const breastplate = mesh(geo("viet-horse-breastplate", () => {
+      const shape = new THREE.Shape();
+      shape.moveTo(-.116,.091); shape.quadraticCurveTo(0,.055,.116,.091);
+      shape.lineTo(.099,-.085); shape.quadraticCurveTo(0,-.147,-.099,-.085);
+      shape.closePath();
+      return new THREE.ExtrudeGeometry(shape,{depth:.012,bevelEnabled:false,curveSegments:5});
+    }),rim,0,.267,.169);
+    h.add(breastplate);
+    const inner = new THREE.Mesh(breastplate.geometry, lacquer);
+    inner.position.set(0,.268,.182); inner.scale.set(.88,.86,1); h.add(inner);
+    h.add(mesh(box(.017,.144,.01), rim,0,.261,.197,false));
+    for(const side of [-1,1]){
+      const clothFlap = mesh(box(.018,.117,.194), cloth(shade(team,-.14)),side*.092,.355,-.035);
+      clothFlap.rotation.z = side*.20;
+      h.add(clothFlap,mesh(box(.017,.02,.16),rim,side*.104,.306,-.033,false));
+    }
+  }
+  if (!viet) {
+    for (const side of [-1, 1]) {
+      head.add(mesh(box(0.009, 0.014, 0.11), leather(), side * 0.043, -0.012, 0.051, false));
+      head.add(mesh(sphere(0.007, 6, 4), hide("#211b18"), side * 0.045, 0.019, 0.059, false));
+    }
+    head.add(mesh(box(0.08, 0.013, 0.034), leather(), 0, -0.019, 0.145, false));
+    if (!steppe) mountBarding(h, r.faction, team);
+  }
   r.tools.neck = neck;
   const tail = new THREE.Group(); tail.position.set(0, 0.36, -0.23); h.add(tail);
-  const tm = mesh(box(0.035, 0.2, 0.03), dm, 0, -0.1, 0); tail.add(tm); tail.rotation.x = -0.45;
+  const tm = taperedPart(0.023, 0.012, 0.21, 0.77, dm, -0.1); tail.add(tm); tail.rotation.x = -0.45;
   r.tools.tail = tail;
   // tack: leather saddle on a team saddle cloth
   h.add(mesh(box(0.2, 0.012, 0.18), cloth(team), 0, 0.41, -0.02, false));
   h.add(mesh(box(0.12, 0.035, 0.12), leather(), 0, 0.43, -0.02));
   for (const [x, z] of [[-0.055, 0.15], [0.055, 0.15], [-0.055, -0.15], [0.055, -0.15]]) {
     const hip = new THREE.Group(); hip.position.set(x, 0.27, z);
-    hip.add(mesh(box(0.05, 0.13, 0.055), hm, 0, -0.065, 0));
+    hip.add(taperedPart(0.037, 0.024, 0.134, 0.9, hm, -0.065));
     const knee = new THREE.Group(); knee.position.y = -0.13; hip.add(knee);
-    knee.add(mesh(box(0.035, 0.12, 0.035), dm, 0, -0.06, 0));
+    knee.add(taperedPart(0.023, 0.016, 0.122, 0.8, dm, -0.06));
     knee.add(mesh(box(0.042, 0.022, 0.05), hoofM, 0, -0.125, 0.004, false));
     h.add(hip); r.legs4.push(hip); r.knees.push(knee);
   }
@@ -420,11 +689,12 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
   const cape = mute(team);
   switch (type) {
     case "villager": {
-      humanoid(r, b, mute(shade(team, -0.05), 0.3));
-      for (const k of ["axe", "pick", "sickle", "hammer", "spear", "knife"]) { r.tools[k] = hand(r.armR, tool(k)); r.tools[k].visible = false; }
-      r.tools.basket = hand(r.armL, tool("basket")); r.tools.basket.visible = false;
+      civilianRig(r, team);
+      for (const k of ["axe", "pick", "sickle", "hammer", "spear", "knife"]) { r.tools[k] = hand(r.elbowR!, tool(k), -0.074); r.tools[k].visible = false; }
+      r.tools.basket = hand(r.elbowL!, tool("basket"), -0.074); r.tools.basket.visible = false;
       for (const k of ["wood", "food", "gold", "stone", "meat", "fruit"]) { r.carry[k] = carryBundle(k); b.add(r.carry[k]); }
-      r.height = faction === "dai_viet" ? 0.572 : 0.6;
+      r.villagePose = new Float32Array(12);
+      r.height = 0.6;
       break;
     }
     case "fishing_boat":
@@ -508,11 +778,20 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
     case "cavalry":
     case "horse_archer": {
       const steppe = type === "horse_archer";
-      horse(r, b, team, steppe);
-      const rider = new THREE.Group(); rider.position.set(0, steppe ? 0.23 : 0.25, -0.02); rider.scale.setScalar(0.85);
-      humanoid(r, rider, cape, steppe ? { armor: "leather", head: "fur", accent: team } : { armor: "scale", head: "steel", accent: team });
-      rider.add(mesh(box(0.2, 0.05, 0.09), cloth(PANTS), 0, 0.17, 0.02)); // seated legs
-      for (const s of [-1, 1]) rider.add(mesh(box(0.045, 0.12, 0.06), leather(PAL.leatherDark), s * 0.11, 0.1, 0.03, false));
+      const mount = horse(r, b, team, steppe);
+      const rider = new THREE.Group();
+      rider.position.set(0, steppe ? 0.235 : 0.263, -0.02);
+      rider.scale.setScalar(0.85);
+      const style = MOUNT_STYLE[faction];
+      humanoid(r, rider, style.tunic, {
+        armor: steppe ? "leather" : style.armor, head: steppe || faction === "bac_cuong" ? "fur" : "steel",
+        legs: false, accent: team, helmetTint: style.helmet,
+      });
+      r.tools.rider = rider;
+      r.tools.hipL = seatedLeg(rider, -1);
+      r.tools.hipR = seatedLeg(rider, 1);
+      const viet = !steppe && faction === "dai_viet";
+      if (!steppe) riderDetails(rider, faction);
       if (!steppe) {
         const capeM = mesh(box(0.19, 0.24, 0.02), cloth(team), 0, 0.27, -0.075, false); capeM.rotation.x = 0.25; rider.add(capeM);
         r.tools.cape = capeM;
@@ -520,7 +799,7 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
         lance.add(mesh(cyl(0.01, 0.011, 0.9, 5), woodM(), 0, 0.2, 0));
         lance.add(mesh(cone(0.02, 0.12, 4), steel(), 0, 0.71, 0));
         const tassel = mesh(cone(0.028, 0.06, 6), cloth(team), 0, 0.62, 0, false); tassel.rotation.x = Math.PI; lance.add(tassel);
-        lance.rotation.x = 1.0;
+        lance.rotation.x = 0.16;
         r.tools.weapon = hand(r.armR, lance);
       } else {
         const { bow, string } = bowGroup(0.13, team);
@@ -529,9 +808,9 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
         r.tools.string = string;
         rider.add(mesh(cyl(0.024, 0.02, 0.16, 6), leather(), 0.07, 0.3, -0.08));
       }
-      b.add(rider);
+      mount.add(rider);
       if (steppe) pennant(rider, -0.07, 0.28, -0.08, team, 0.42);
-      else flag(rider, -0.08, 0.3, -0.07, team, 0.4);
+      else if (!viet) flag(rider, -0.08, 0.3, -0.07, team, 0.4);
       r.height = 0.95;
       break;
     }
@@ -1003,8 +1282,10 @@ export class Units3D {
       if (!r || r.key !== key) {
         if (r) this.disposeRig(r);
         r = buildUnit(u.type, color, faction);
-        r.model = this.models.creature("units", u.type, r.height, r.root, r.body,
-          { side: u.team === "player" ? "player" : "enemy", color });
+        if (u.type !== "villager" && !r.tools.rider) {
+          r.model = this.models.creature("units", u.type, r.height, r.root, r.body,
+            { side: u.team === "player" ? "player" : "enemy", color });
+        }
         this.group.add(r.root);
         this.rigs.set(u.id, r);
       }
@@ -1033,6 +1314,11 @@ export class Units3D {
         const tx = target.x !== undefined ? target.x : target.tx + (target.w ?? target.size ?? 1) / 2;
         const tz = target.y !== undefined && target.x !== undefined ? target.y : target.ty + (target.h ?? target.size ?? 1) / 2;
         want = Math.atan2(tx - u.x, tz - u.y);
+      } else if (u.type === "villager" && u.task === "build" && u.buildTargetId != null && byId.has(u.buildTargetId)) {
+        const foundation = byId.get(u.buildTargetId);
+        const dx = THREE.MathUtils.clamp(u.x, foundation.tx + 0.03, foundation.tx + fw(foundation) - 0.03) - u.x;
+        const dz = THREE.MathUtils.clamp(u.y, foundation.ty + 0.03, foundation.ty + fh(foundation) - 0.03) - u.y;
+        want = Math.hypot(dx, dz) > 0.01 ? Math.atan2(dx, dz) : Math.atan2(fcx(foundation) - u.x, fcy(foundation) - u.y);
       } else if (u.type === "villager" && u.workStyle && u.workStyle !== "idle" && u.targetTile) {
         want = Math.atan2(u.targetTile.tx + 0.5 - u.x, u.targetTile.ty + 0.5 - u.y);
       } else if (u.type === "villager" && u.task === "hunt" && u.huntFace) {
@@ -1273,7 +1559,7 @@ export class Units3D {
     }
 
     switch (r.type) {
-      case "villager": this.animVillager(r, u, state, moving, t, target); break;
+      case "villager": this.animVillager(r, u, state, moving, t, dt, target); break;
       case "swordsman": case "spearman":
         if (inMelee) {
           const recover = smoothstep(0.05, 0.9, r.melee);
@@ -1308,25 +1594,48 @@ export class Units3D {
         break;
       }
       case "cavalry": case "horse_archer": {
-        // stride follows the real ground speed, so Phi Mã (faster) visibly gallops harder
-        const gal = moving ? r.walk * 1.4 : 0;
-        r.legs4.forEach((l, i) => {
-          const ph = gal + (i < 2 ? 0 : Math.PI) + (i % 2) * 0.6;
-          l.rotation.x = moving ? Math.sin(ph) * 0.7 : 0;
-          const knee = r.knees[i];
-          if (knee) knee.rotation.x = moving ? Math.max(0, -Math.cos(ph)) * 0.9 * (i < 2 ? 1 : -1) : 0;
-        });
-        r.body.position.y = moving ? Math.abs(Math.sin(gal)) * 0.05 : 0;
-        r.body.rotation.x = moving ? Math.sin(gal) * 0.05 + (ability ? 0.05 : 0) : 0;
-        if (r.tools.neck) r.tools.neck.rotation.x = 0.55 + (moving ? Math.sin(gal * 2) * 0.08 + (speed > 2 ? 0.15 : 0) : Math.sin(t * 0.7 + u.id) * 0.05);
-        if (r.tools.tail) { r.tools.tail.rotation.x = -0.45 - (moving ? 0.5 : 0) + Math.sin(t * 2 + u.id) * 0.08; r.tools.tail.rotation.z = Math.sin(t * (moving ? 7 : 1.6)) * 0.15; }
-        if (r.tools.cape) r.tools.cape.rotation.x = 0.25 + (moving ? 0.45 + Math.sin(t * 9) * 0.08 : Math.sin(t * 1.5) * 0.04);
-        if (r.type === "cavalry" && inMelee) r.armR.rotation.x = -0.6 + smoothstep(0.05, 0.9, r.melee) * 0.5;
-        if (r.type === "horse_archer" && (r.atk > 0 || inMelee)) {
-          const draw = smoothstep(0.8, 0.05, cooldown) * (1 - r.atk);
-          r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.2 - draw * 0.54;
-          if (r.tools.string) r.tools.string.position.y = -draw * 0.06;
-        } else if (r.tools.string) r.tools.string.position.y = 0;
+        const ease = 1 - Math.exp(-dt * 11);
+        r.gait = THREE.MathUtils.lerp(r.gait ?? 0, moving ? Math.min(1, speed / 1.35) : 0, ease);
+        r.stride = (r.stride ?? 0) + dt * (4 + speed * 4.8) * r.gait;
+        const phase = r.stride, gait = r.gait;
+        const gallop = smoothstep(1.3, 2.4, speed);
+        const windup = inMelee ? smoothstep(0.44, 0.05, cooldown) * (1 - r.melee) : 0;
+        const impact = inMelee ? smoothstep(0.42, 0.96, r.melee) : 0;
+        for (let i = 0; i < r.legs4.length; i++) {
+          const trotOffset = i === 0 || i === 3 ? 0 : Math.PI;
+          const gallopOffset = (i < 2 ? 0 : 2.1) + (i % 2) * 0.62;
+          const hoofPhase = phase + THREE.MathUtils.lerp(trotOffset, gallopOffset, gallop);
+          r.legs4[i].rotation.x = Math.sin(hoofPhase) * gait * (0.45 + gallop * 0.22);
+          r.knees[i].rotation.x = Math.max(0, -Math.cos(hoofPhase)) * gait * (i < 2 ? 0.8 : -0.78);
+        }
+        const bob = Math.cos(phase * 2);
+        r.body.position.y = (1 - bob) * gait * 0.023 + Math.sin(t * 2 + u.id) * 0.003 * (1 - gait);
+        r.body.rotation.x = Math.sin(phase) * gait * 0.062 + (ability ? 0.05 : 0) - impact * 0.068;
+        r.body.rotation.z = Math.sin(phase) * gait * 0.026;
+        r.tools.neck.rotation.x = 0.55 + bob * gait * 0.068 - impact * 0.11;
+        r.tools.tail.rotation.x = -0.45 - gait * 0.49 + Math.sin(t * 2 + u.id) * 0.08;
+        r.tools.tail.rotation.z = Math.sin(t * 2 + phase * 0.4) * (0.11 + gait * 0.06);
+        if (r.tools.cape) r.tools.cape.rotation.x = 0.25 + gait * 0.53 + Math.sin(t * 2 + phase) * (0.035 + gait * 0.06);
+        const rider = r.tools.rider;
+        rider.rotation.x = -r.body.rotation.x * 0.57 + gait * 0.09 + impact * 0.21 - windup * 0.07;
+        rider.rotation.z = -r.body.rotation.z * 0.55;
+        r.tools.hipL.rotation.x = -0.31 + bob * gait * 0.075;
+        r.tools.hipR.rotation.x = -0.31 + bob * gait * 0.075;
+        r.armL.rotation.x = -0.91 + bob * gait * 0.09;
+        r.armR.rotation.x = -0.92 + bob * gait * 0.08;
+        if (r.type === "cavalry") {
+          r.armR.rotation.x += windup * 0.35 - impact * 0.53;
+          r.armR.position.z = impact * 0.095 - windup * 0.045;
+          // Arm and lance rotate together; the tip lowers from upright into a thrust.
+          r.tools.weapon.rotation.x = 0.92 + gait * 0.23 - windup * 0.55 + impact * 2.05;
+        } else {
+          const draw = inMelee ? windup : 0;
+          const release = r.atk;
+          r.armL.rotation.x -= 0.57 * Math.max(draw, release);
+          r.armR.rotation.x -= 0.72 * draw;
+          r.armR.rotation.y = draw * 0.46 - release * 0.23;
+          r.tools.string.position.y = -draw * 0.06;
+        }
         break;
       }
       case "war_elephant": {
@@ -1377,8 +1686,9 @@ export class Units3D {
     }
   }
 
-  private animVillager(r: Rig, u: any, state: any, moving: boolean, t: number, target: any): void {
+  private animVillager(r: Rig, u: any, state: any, moving: boolean, t: number, dt: number, target: any): void {
     const anim = villagerAnimState(u, state, moving, target);
+    const previousAnim = r.anim;
     r.anim = anim;
     const phase = u.workPhase || 0, k = phase / TAU;
     // slow wind-up, fast strike that lands as the phase wraps (same moment the 2D sim plays the hit)
@@ -1398,6 +1708,8 @@ export class Units3D {
     for (const key in r.carry) r.carry[key].visible = key === load;
 
     r.body.rotation.y = 0; r.body.rotation.z = 0; r.armR.rotation.z = 0; r.armL.rotation.z = 0;
+    r.elbowL!.rotation.x = -0.14;
+    r.elbowR!.rotation.x = -0.16;
     switch (anim) {
       case "idle": {
         // slow breathing and a gentle look-around
@@ -1409,18 +1721,28 @@ export class Units3D {
         break;
       }
       case "walk":
+        r.elbowL!.rotation.x = -0.22 + sw * 0.11; r.elbowR!.rotation.x = -0.22 - sw * 0.11;
         r.armL.rotation.x = -sw * 0.55; r.armR.rotation.x = sw * 0.55;
         r.body.rotation.y = sw * 0.06;
         break;
       case "carry_walk":
+        r.elbowL!.rotation.x = -0.42; r.elbowR!.rotation.x = -0.36;
         if (load === "wood" || load === "meat" || load === "food") { r.armR.rotation.x = -2.6; r.armR.rotation.z = 0.25; r.armL.rotation.x = -sw * 0.35; }
         else if (load === "fruit") { r.armL.rotation.x = -1.05; r.armR.rotation.x = -1.05; r.armL.rotation.z = -0.35; r.armR.rotation.z = 0.35; }
         else { r.armL.rotation.x = -0.6; r.armR.rotation.x = -0.6; r.body.rotation.x = 0.12; } // ore basket: lean into the straps
         if (r.legL && r.legR) { r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8; } // shorter, heavier steps
         r.body.position.y = moving ? Math.abs(Math.sin(r.walk)) * 0.012 : 0;
         break;
-      case "chop": r.armR.rotation.x = -0.3 - strike * 2.3; r.armL.rotation.x = -0.4 - strike * 1.6; r.body.rotation.x = (1 - strike) * 0.15; r.body.rotation.y = (1 - strike) * 0.25; break;
-      case "mine": r.armR.rotation.x = -0.4 - strike * 2.7; r.armL.rotation.x = -0.4 - strike * 2.4; r.body.rotation.x = (1 - strike) * 0.22; break;
+      case "chop":
+        r.armR.rotation.set(-0.45 - strike * 1.86, 0.23 * (1 - strike), -0.1);
+        r.armL.rotation.x = -0.45 - strike * 1.28;
+        r.elbowR!.rotation.x = -0.13 - strike * 0.44;
+        r.body.rotation.x = 0.17 - strike * 0.13; r.body.rotation.y = (1 - strike) * 0.27;
+        break;
+      case "mine":
+        r.armR.rotation.x = -0.56 - strike * 2.01; r.armL.rotation.x = -0.72 - strike * 1.45;
+        r.elbowR!.rotation.x = -0.12 - strike * 0.46; r.body.rotation.x = (1 - strike) * 0.32;
+        break;
       case "farm": // gặt lúa: deep bow, sickle sweeps low across the paddy
         r.armR.rotation.x = -1.1; r.armR.rotation.y = (strike - 0.5) * 1.6; r.armL.rotation.x = -0.9 + strike * 0.3; r.body.rotation.x = 0.42;
         break;
@@ -1440,7 +1762,19 @@ export class Units3D {
           if (r.legL && r.legR) { r.legL.rotation.x = -0.35; r.legR.rotation.x = 0.25; }
         }
         break;
-      case "build": r.armR.rotation.x = -0.5 - strike * 1.8; r.armL.rotation.x = -0.5; r.body.rotation.x = 0.1; break;
+      case "build": {
+        // The sim wraps workPhase on the hammer impact. Hold the raised pose briefly before the downstroke.
+        const lift = smoothstep(0.1, 0.63, k) * (1 - smoothstep(0.79, 1, k));
+        r.armR.rotation.x = -0.64 - lift * 1.9;
+        r.elbowR!.rotation.x = -0.08 - lift * 0.5;
+        r.armL.rotation.x = -0.85;
+        r.elbowL!.rotation.x = -0.36;
+        r.body.rotation.x = 0.38 - lift * 0.45;
+        r.body.rotation.y = lift * 0.16;
+        r.legL!.rotation.x = -0.29;
+        r.legR!.rotation.x = 0.24;
+        break;
+      }
       case "attack": { // self-defence: overhead swing with the axe, timed on the attack cooldown like soldiers
         const sws = Math.max(r.melee, thrust);
         r.armR.rotation.x = -2.4 + sws * 2.0; r.armL.rotation.x = -0.6; r.body.rotation.x = -0.06 + sws * 0.2;
@@ -1449,6 +1783,7 @@ export class Units3D {
       }
       case "flee": // sprint: forward lean, pumping arms, longer stride
         r.body.rotation.x = 0.2;
+        r.elbowL!.rotation.x = -0.75; r.elbowR!.rotation.x = -0.75;
         r.armL.rotation.x = -sw * 1.1 - 0.3; r.armR.rotation.x = sw * 1.1 - 0.3;
         if (r.legL && r.legR) { r.legL.rotation.x = sw * 0.95; r.legR.rotation.x = -sw * 0.95; }
         r.body.position.y = Math.abs(Math.sin(r.walk)) * 0.035;
@@ -1456,16 +1791,32 @@ export class Units3D {
       case "death": break; // the rig is dropped from state.units on death; startDeath() plays the fall + fade
     }
 
+    // Blend through task transitions while keeping the hammer's fast downstroke readable.
+    const pose = r.villagePose!;
+    const blend = previousAnim === undefined ? 1 : 1 - Math.exp(-dt * (anim === "build" ? 36 : 21));
+    r.body.rotation.x = pose[0] += (r.body.rotation.x - pose[0]) * blend;
+    r.body.rotation.y = pose[1] += (r.body.rotation.y - pose[1]) * blend;
+    r.body.position.y = pose[2] += (r.body.position.y - pose[2]) * blend;
+    r.armL.rotation.x = pose[3] += (r.armL.rotation.x - pose[3]) * blend;
+    r.armR.rotation.x = pose[4] += (r.armR.rotation.x - pose[4]) * blend;
+    r.armR.rotation.y = pose[5] += (r.armR.rotation.y - pose[5]) * blend;
+    r.armL.rotation.z = pose[6] += (r.armL.rotation.z - pose[6]) * blend;
+    r.armR.rotation.z = pose[7] += (r.armR.rotation.z - pose[7]) * blend;
+    r.elbowL!.rotation.x = pose[8] += (r.elbowL!.rotation.x - pose[8]) * blend;
+    r.elbowR!.rotation.x = pose[9] += (r.elbowR!.rotation.x - pose[9]) * blend;
+    r.legL!.rotation.x = pose[10] += (r.legL!.rotation.x - pose[10]) * blend;
+    r.legR!.rotation.x = pose[11] += (r.legR!.rotation.x - pose[11]) * blend;
+
     const fxStyle = anim === "farm" || anim === "forage" ? "harvest" : anim;
     if (anim === "chop" || anim === "mine" || anim === "farm" || anim === "forage" || anim === "build") {
-      if (phase < r.lastPhase) this.strikeFx(r, u, state, fxStyle);
+      if (previousAnim === anim && phase < r.lastPhase) this.strikeFx(r, u, state, fxStyle);
       r.lastPhase = phase;
     } else r.lastPhase = 0;
   }
 
   /** Procedural death (no glTF clip): topple over, then fade out and sink. Materials are cloned per rig so the fade never touches shared ones. */
   private startDeath(r: Rig, t: number): boolean {
-    if (!r.legL || this.dying.size >= 20) return false;
+    if ((!r.legL && !r.tools.rider) || this.dying.size >= 20) return false;
     const clones = new Map<THREE.Material, THREE.Material>();
     r.root.traverse(o => {
       const m = o as THREE.Mesh;

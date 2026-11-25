@@ -1,3 +1,5 @@
+import { fcx, fcy, footDist, inFoot } from "../sim/footprint";
+
 // Dynasty of the East — villager work animations & tool VFX.
 // Every villager carries `workStyle` ("chop" | "mine" | "harvest" | "build" | "carry" | "idle")
 // and `workPhase` (radians). A strike fires each time the phase wraps past 2π.
@@ -11,7 +13,6 @@ const INK = "#1A120E";
 export type WorkStyle = "chop" | "mine" | "harvest" | "build" | "carry" | "idle";
 
 export interface Hooks {
-  findPath?: (sx: number, sy: number, gx: number, gy: number) => any[];
   clink?: () => void;
   thock?: () => void;
 }
@@ -41,7 +42,7 @@ function emit(kind: number, x: number, y: number, vx: number, vy: number, life: 
 export function activeParticles(): number { let n = 0; for (let i = 0; i < MAXP; i++) if (pk[i]) n++; return n; }
 
 export function reset(): void {
-  pk.fill(0); shake.clear(); sites.length = 0;
+  pk.fill(0); shake.clear();
 }
 
 // ---- bamboo shake --------------------------------------------------------
@@ -51,16 +52,6 @@ export function shakeX(tx: number, ty: number): number {
   const s = shake.get(tileKey(tx, ty)) ?? 0;
   if (s <= 0.02) return 0;
   return Math.round(Math.sin(performance.now() * 0.06) * 2.2 * s);
-}
-
-// ---- build sites ---------------------------------------------------------
-interface Site { cx: number; cy: number; size: number; ttl: number; work: number; helper: any; b: any; }
-const sites: Site[] = [];
-// Kept outside the unit objects so state.units stays JSON-serialisable (Save/Load).
-const siteOf = new WeakMap<object, Site | null>();
-export function registerBuild(b: any): void {
-  const size = b.size || 1;
-  sites.push({ cx: b.tx + size / 2, cy: b.ty + size / 2, size, ttl: 7, work: 2.6, helper: null, b });
 }
 
 // ---- helpers -------------------------------------------------------------
@@ -88,17 +79,18 @@ function thock() {
 const RATE: Record<string, number> = { chop: TAU / 0.78, mine: TAU / 0.78, harvest: TAU / 0.78, build: TAU / 0.6, carry: 7.5, idle: 0 };
 
 function farmAt(state: any, tx: number, ty: number): any {
-  for (const b of state.buildings) if (b.type === "farm" && b.tx === tx && b.ty === ty) return b;
+  for (const b of state.buildings) if (b.type === "farm" && inFoot(b, tx, ty) && b.hp > 0 && (b.progress ?? 1) >= 1) return b;
   return null;
 }
 
 function classify(u: any, state: any): WorkStyle {
   if (u.task === "return" && u.carryAmt > 0) return "carry";
   if (u.task === "hunt" && u.huntBusy) return "harvest";
-  if (u.task === "build" && siteOf.get(u)) {
-    const s = siteOf.get(u) as Site;
-    if (u.path.length === 0 && Math.hypot(s.cx - u.x, s.cy - u.y) <= s.size / 2 + 2.4) return "build";
-    return "idle";
+  if (u.task === "build" && u.buildTargetId != null) {
+    if (u.path.length) return "idle";
+    const foundation = state.buildings.find((b: any) => b.id === u.buildTargetId);
+    return foundation && foundation.team === u.team && foundation.hp > 0 && (foundation.progress ?? 1) < 1 &&
+      footDist(foundation, u.x, u.y) <= 1.4 ? "build" : "idle";
   }
   if (u.task === "gather" && u.targetTile && u.path.length === 0) {
     const { tx, ty } = u.targetTile;
@@ -115,9 +107,12 @@ function classify(u: any, state: any): WorkStyle {
 
 function strike(u: any, state: any, style: WorkStyle) {
   if (style === "build") {
-    const s = siteOf.get(u) as Site;
-    if (!s || !seen(state, s.cx, s.cy)) return;
-    const bx = isoX(s.cx, s.cy), by = isoY(s.cx, s.cy) - 6;
+    const foundation = u.buildTargetId == null ? null : state.buildings.find((b: any) => b.id === u.buildTargetId);
+    if (!foundation) return;
+    const x = (u.x * 3 + fcx(foundation)) / 4;
+    const y = (u.y * 3 + fcy(foundation)) / 4;
+    if (!seen(state, x, y)) return;
+    const bx = isoX(x, y), by = isoY(x, y) - 6;
     for (let k = 0; k < 4; k++) emit(P.Chip, bx + (Math.random() - 0.5) * 18, by, (Math.random() - 0.5) * 60, -55 - Math.random() * 40, 0.5);
     for (let k = 0; k < 2; k++) emit(P.Dust, bx + (Math.random() - 0.5) * 22, by + 8, (Math.random() - 0.5) * 20, -12, 0.7);
     thock();
@@ -151,31 +146,6 @@ export function update(dt: number, state: any): void {
     const next = value - dt * 4.5;
     if (next <= 0.02) shake.delete(key);
     else shake.set(key, next);
-  }
-
-  // build sites: recruit the nearest idle player villager
-  for (let i = sites.length - 1; i >= 0; i--) {
-    const s = sites[i];
-    s.ttl -= dt;
-    if (s.helper && (s.helper.hp <= 0 || s.helper.task !== "build")) { siteOf.set(s.helper, null); s.helper = null; }
-    if (!s.helper && s.ttl > 0) {
-      let best: any = null, bd = 12;
-      for (const u of state.units) {
-        if (u.type !== "villager" || u.team !== "player" || u.hp <= 0 || u.garrisoned) continue;
-        if (u.task !== "idle" || u.path.length > 0 || siteOf.get(u)) continue;
-        const d = Math.hypot(u.x - s.cx, u.y - s.cy);
-        if (d < bd) { bd = d; best = u; }
-      }
-      if (best && hooks.findPath) {
-        best.task = "build"; siteOf.set(best, s); s.helper = best;
-        best.path = hooks.findPath(best.x, best.y, s.cx, s.cy);
-      }
-    }
-    if (s.helper && s.helper.workStyle === "build") s.work -= dt;
-    if (s.work <= 0 || s.ttl <= -1 || (s.ttl <= 0 && !s.helper)) {
-      if (s.helper) { s.helper.task = "idle"; siteOf.set(s.helper, null); }
-      sites.splice(i, 1);
-    }
   }
 
   for (const u of state.units) {
