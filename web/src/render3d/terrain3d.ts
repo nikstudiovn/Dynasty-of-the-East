@@ -751,8 +751,8 @@ export class Terrain3D {
     };
 
     // --- mines: bevelled dark rock studded with low-roughness gold crystals, or layered slate outcrops
-    const mine = (cx: number, cz: number, x: number, y: number, gold: boolean, big: boolean, amt: number) => {
-      const n = big ? 8 : 3, spread = big ? 0.6 : 0.2;
+    const mine = (cx: number, cz: number, x: number, y: number, gold: boolean, big: boolean, amt: number, span = 2) => {
+      const n = big ? (span === 3 ? 12 : 8) : 3, spread = big ? (span === 3 ? 1.1 : 0.6) : 0.2;
       const rot = hash2(x + seed % 57, y) * TAU;
       for (let i = 0; i < n; i++) {
         const a = rot + i * 2.399, r = i === 0 ? 0 : spread * (0.55 + hash2(x + i, y) * 0.45);
@@ -816,6 +816,15 @@ export class Terrain3D {
       if (!c.res || !visible(x, y) || grouped.has(y * MAP_N + x)) continue;
       const amt = Math.max(0.55, Math.min(1, (c.resAmt || 200) / 260));
       const variant: string | undefined = c.resVariant;
+      if (c.res === "gold" && c.resFootprint === 3 && c.resOrigin === y * MAP_N + x) {
+        const cells = Array.from({ length: 9 }, (_, i) => ({ x: x + i % 3, y: y + Math.floor(i / 3) }));
+        if (cells.every(t => visible(t.x, t.y) && grid[t.y]?.[t.x]?.res === "gold" &&
+            grid[t.y][t.x].resOrigin === c.resOrigin)) {
+          for (const t of cells) grouped.add(t.y * MAP_N + t.x);
+          mine(x + 1.5, y + 1.5, x, y, true, true, 1, 3);
+          continue;
+        }
+      }
       const footprint2 = (cell: any) => cell?.resFootprint === 2 || cell?.resourceSize === 2;
       const legacyBig = variant === undefined && c.res !== "food" && hash2(x + seed % 97, y + 17) > (c.res === "wood" ? 0.78 : 0.69);
       const wantsBig = footprint2(c) || legacyBig || c.res === "food";

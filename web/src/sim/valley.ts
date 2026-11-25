@@ -1,3 +1,4 @@
+import { footprintOf, ringTiles } from "./footprint";
 import { stockFish } from "./naval";
 // Map generator for 48 / 64 / 96 tile maps and 4 map types. Pure data, no rendering.
 //   river_valley     winding river + central lotus lake crossed by 3 / 4 / 5 arched wooden bridges
@@ -29,7 +30,8 @@ export interface ValleyCell {
   resAmt: number;
   bridge?: string;
   resVariant?: ResourceVariant;
-  resFootprint?: 1 | 2;
+  resFootprint?: 1 | 2 | 3;
+  resOrigin?: number;
   elev?: number;
   waterDepth?: "shallow" | "deep";
   treasureGuarded?: boolean;
@@ -319,6 +321,7 @@ export function generateValley(
     return (c.terrain === "grass" || c.terrain === "dirt") && !c.bridge && !c.res;
   };
 
+  const goldOrigins: { x: number; y: number }[] = [];
   const place2x2Resource = (
     tx: number,
     ty: number,
@@ -344,6 +347,7 @@ export function generateValley(
         if (treasureGuarded) c.treasureGuarded = true;
       }
     }
+    if (res === "gold" && !treasureGuarded) goldOrigins.push({ x: tx, y: ty });
     return true;
   };
 
@@ -462,6 +466,55 @@ export function generateValley(
 
   if (biome === "open_plains") for (const row of grid) for (const cell of row) {
     if (cell.terrain === "water") { cell.terrain = "grass"; cell.waterDepth = "shallow"; }
+  }
+  // Starter resources generated for the old smaller base can overlap the new
+  // foundation or its exit lane. Relocate those cells without deleting stock.
+  const startFoot = footprintOf("town_center");
+  for (const base of allCorners) {
+    const reserved = { tx: base.tx - 1, ty: base.ty - 1, w: startFoot.w + 2, h: startFoot.h + 2 };
+    const outside = ringTiles(reserved).concat(ringTiles({
+      tx: reserved.tx - 1, ty: reserved.ty - 1, w: reserved.w + 2, h: reserved.h + 2,
+    }));
+    for (let ty = reserved.ty; ty < reserved.ty + reserved.h; ty++) {
+      for (let tx = reserved.tx; tx < reserved.tx + reserved.w; tx++) {
+        const cell = grid[ty][tx];
+        if (!cell.res || cell.resFootprint !== 1) continue;
+        const choices = outside.filter(p => canPlace1x1(p.x, p.y));
+        choices.sort((a, b) => (a.x - tx) ** 2 + (a.y - ty) ** 2 - (b.x - tx) ** 2 - (b.y - ty) ** 2);
+        const point = choices[0];
+        if (!point) continue;
+        Object.assign(grid[point.y][point.x], {
+          res: cell.res, resAmt: cell.resAmt, resVariant: cell.resVariant, resFootprint: cell.resFootprint,
+        });
+        cell.res = null; cell.resAmt = 0;
+        delete cell.resVariant; delete cell.resFootprint;
+      }
+    }
+  }
+
+  // Expand at most one inland mine on larger maps. Preserve the original gold
+  // budget and PRNG order, and leave an open approach along every side.
+  if (n >= 64) for (const { x, y } of goldOrigins) {
+    const walkable = (tx: number, ty: number) => {
+      const c = grid[ty]?.[tx];
+      return c && !c.res && !c.bridge && !c.waterDepth && (c.terrain === "grass" || c.terrain === "dirt");
+    };
+    const additions = [[2, 0], [2, 1], [0, 2], [1, 2], [2, 2]];
+    if (additions.some(([dx, dy]) => !walkable(x + dx, y + dy) || nearAnyCorner(x + dx, y + dy, clearR + 2))) continue;
+    const lane = [0, 1, 2];
+    if (!lane.some(i => walkable(x - 1, y + i)) || !lane.some(i => walkable(x + 3, y + i)) ||
+        !lane.some(i => walkable(x + i, y - 1)) || !lane.some(i => walkable(x + i, y + 3))) continue;
+    const original = [grid[y][x], grid[y][x + 1], grid[y + 1][x], grid[y + 1][x + 1]];
+    const budget = original.reduce((sum, cell) => sum + cell.resAmt, 0);
+    for (let i = 0; i < 9; i++) {
+      const cell = grid[y + Math.floor(i / 3)][x + i % 3];
+      cell.res = "gold";
+      cell.resVariant = "gold_big";
+      cell.resFootprint = 3;
+      cell.resOrigin = y * n + x;
+      cell.resAmt = Math.floor(budget / 9) + Number(i < budget % 9);
+    }
+    break;
   }
   stockFish(grid, biome === "river_delta");
   return { grid, size: n, biome, seed };

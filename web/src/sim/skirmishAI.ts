@@ -50,7 +50,7 @@ interface Match {
   shrines?: Shrine[];
   mapSize: number;
   mapSeed?: number;
-  grid: { terrain: string; res: ResourceKey | null; resAmt: number }[][];
+  grid: { terrain: string; res: ResourceKey | null; resAmt: number; bridge?: string }[][];
   units: Unit[];
   buildings: Building[];
   aiStates: Brain[];
@@ -156,7 +156,7 @@ function construction(state: Match, rules: Rules, base: Building, buildings: Bui
       for (let y = ty; y < ty + fp.h && valid; y++) {
         for (let x = tx; x < tx + fp.w; x++) {
           const cell = state.grid[y]?.[x];
-          if (!cell || cell.res || cell.terrain === "bridge" || rules.blocked(x, y) ||
+          if (!cell || cell.res || (cell.terrain === "bridge" || cell.bridge) || rules.blocked(x, y) ||
               buildings.some(b => b.type === "farm" && inFoot(b, x, y))) { valid = false; break; }
         }
       }
