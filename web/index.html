@@ -483,6 +483,8 @@
             <button class="opt-btn active" data-val="dai_viet">Đại Việt<small>Tượng Binh · +15% Lúa/Tre</small></button>
             <button class="opt-btn" data-val="trung_nguyen">Trung Nguyên<small>Nỏ Liên Châu · -15% Lên đời</small></button>
             <button class="opt-btn" data-val="bac_cuong">Bắc Cương<small>Thiết Kỵ Xạ · Kỵ +10% tốc</small></button>
+                      <button class="opt-btn" data-val="goryeo">Cao Ly<small>Hỏa Xa · +15% Công trình/Thuyền</small></button>
+              <button class="opt-btn" data-val="fuso">Phù Tang<small>Samurai · +20% Cá · +12% Bộ binh</small></button>
           </div>
         </div>
 
@@ -595,7 +597,7 @@ const updateBattleHud = initBattleHud();
       towerRangeBonus: 0,
       cavSpeedMult: 1.1,
       uniqueUnit: "horse_archer"
-    }
+    }, goryeo: { name: "Cao Ly", color: "#7C3AED", trim: "#DDD6FE", foodWoodMult: 1.0, vilSpeedMult: 1.0, ageCostMult: 1.0, techCostMult: 1.0, towerRangeBonus: 0, cavSpeedMult: 1.0, bldHpMult: 1.15, shipMult: 1.15, uniqueUnit: "hwacha" }, fuso: { name: "Phù Tang", color: "#E11D48", trim: "#FDE047", foodWoodMult: 1.0, vilSpeedMult: 1.0, ageCostMult: 1.0, techCostMult: 1.0, towerRangeBonus: 0, cavSpeedMult: 1.0, fishMult: 1.2, infMult: 1.12, uniqueUnit: "samurai" }
   };
 
   const AI_COLORS = ["#2563EB", "#9333EA", "#EA580C"];
@@ -610,7 +612,7 @@ const updateBattleHud = initBattleHud();
   const ABILITIES = {
     war_elephant: { name: "Xung Phong", duration: 4 },
     chuko_nu: { name: "Mưa Tên", duration: 5 },
-    horse_archer: { name: "Phi Mã", duration: 6 }
+    horse_archer: { name: "Phi Mã", duration: 6 }, hwacha: { name: "Hỏa Xa Loạt", duration: 3 }, samurai: { name: "Võ Sĩ Đạo", duration: 8 }
   };
   const UNIT_DEFS = {
     fishing_boat: { name: "Thuyền Chài", hp: 75, atk: 0, range: 0, vision: 6, speed: 2, cost: { food: 0, wood: 55, gold: 0, stone: 0 }, age: 1, role: "eco" },
@@ -625,12 +627,12 @@ const updateBattleHud = initBattleHud();
     cavalry: { name: "Kỵ Binh", hp: 120, atk: 12, range: 1.2, vision: 6, speed: 2.75, cost: { food: 60, wood: 0, gold: 60, stone: 0 }, age: 3, role: "cavalry", bonusRanged: 1.4, bonusSiege: 1.4 },
     horse_archer: { name: "Thiết Kỵ Xạ", hp: 90, atk: 10, range: 5.0, vision: 7, speed: 2.65, cost: { food: 0, wood: 45, gold: 55, stone: 0 }, age: 3, role: "cavalry", proj: "arrow", bonusInf: 1.25, factionOnly: "bac_cuong" },
     war_elephant: { name: "Tượng Binh", hp: 300, atk: 22, range: 1.3, vision: 6, speed: 1.55, cost: { food: 110, wood: 0, gold: 80, stone: 0 }, age: 3, role: "elephant", splash: 1.6, bonusBuilding: 2.0, factionOnly: "dai_viet" },
-    catapult: { name: "Pháo Thạch", hp: 130, atk: 38, range: 7.8, vision: 8, speed: 1.2, cost: { food: 0, wood: 140, gold: 110, stone: 0 }, age: 3, role: "siege", proj: "boulder", splash: 2.1, bonusBuilding: 2.5 }
+    catapult: { name: "Pháo Thạch", hp: 130, atk: 38, range: 7.8, vision: 8, speed: 1.2, cost: { food: 0, wood: 140, gold: 110, stone: 0 }, age: 3, role: "siege", proj: "boulder", splash: 2.1, bonusBuilding: 2.5, hwacha: { name: "Hỏa Xa", hp: 115, atk: 24, range: 6.8, vision: 8, speed: 1.5, cost: { food: 0, wood: 110, gold: 90, stone: 0 }, age: 3, role: "siege", proj: "rocket", splash: 2.2, burst: 3, factionOnly: "goryeo" }, samurai: { name: "Samurai", hp: 145, atk: 16, range: 1.3, vision: 6, speed: 2.25, cost: { food: 75, wood: 0, gold: 55, stone: 0 }, age: 3, role: "infantry", bonusInf: 1.3, factionOnly: "fuso" } }
   };
 
   let dockClockAcc = 0;
   const AGE_RESEARCH_SEC = { 2: 45, 3: 60, 4: 75 };
-  const TRAIN_TIMES = { fishing_boat: 8, galley: 11, fire_ship: 12, healer: 9, villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14 };
+  const TRAIN_TIMES = { fishing_boat: 8, galley: 11, fire_ship: 12, healer: 9, villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14, hwacha: 12, samurai: 9 };
 
   const BLDG_DEFS = {
     dock: { name: "Bến Thuyền", size: 1, hp: 550, vision: 6, cost: { food: 0, wood: 100, gold: 0, stone: 0 }, pop: 0, age: 1 },
@@ -772,7 +774,7 @@ const updateBattleHud = initBattleHud();
       selectedIds: [],
       selectedBuildingId: null,
       buildMode: null,
-      controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, garrisonedCount: 0, bellActive: false, aiStates: Array.from({ length: setup.aiCount }, (_, i) => ({ idx: i + 1, age: 1 })),
+      controlGroups: { 1: [], 2: [], 3: [] }, assignGroupMode: false, garrisonedCount: 0, bellActive: false, aiStates: Array.from({ length: setup.aiCount }, (_, i) => ({ idx: i + 1, age: 1, factionId: Object.keys(FACTIONS).filter(f => f !== setup.faction)[i % (Object.keys(FACTIONS).length - 1)] })),
       aiWave: 0
     };
 
