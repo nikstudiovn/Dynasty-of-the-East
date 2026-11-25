@@ -65,10 +65,34 @@ export function addHomeInlets(grid: ValleyCell[][], bases: readonly BasePos[]): 
 
 export function addContestedFish(grid: ValleyCell[][]): void {
   const n = grid.length, middle = n / 2;
-  for (const x of [-8, -5, 5, 8].map(dx => middle + dx)) {
+  for (const x of [-0.17, -0.105, 0.105, 0.17].map(dx => middle + Math.round(n * dx))) {
     for (const y of [middle - 2, middle + 2]) {
       const cell = grid[y][x];
       if (cell.terrain === "water" && cell.waterDepth === "deep" && !cell.fish) cell.fish = CONTESTED_FISH_STOCK;
     }
   }
+}
+
+/** The central island has a single north/south land route and water on both sides. */
+export function makeHarbor(grid: ValleyCell[][]): void {
+  const n = grid.length, middle = n / 2;
+  const halfWater = Math.round(n * 0.19);
+  const islandX = Math.round(n * 0.12), islandY = Math.round(n * 0.085);
+  for (let y = middle - halfWater; y <= middle + halfWater; y++) {
+    for (let x = 0; x < n; x++) {
+      const dx = x - middle, dy = y - middle;
+      const island = Math.abs(dx) <= islandX && Math.abs(dy) <= islandY &&
+        Math.abs(dx) / islandX + Math.abs(dy) / islandY <= 1.55;
+      const cell = grid[y][x];
+      if (island) {
+        cell.terrain = "dirt";
+        cell.elev = 0.09;
+      } else if (x === middle) {
+        cell.terrain = "bridge";
+        cell.bridge = "v";
+        cell.elev = 0;
+      } else openWater(cell);
+    }
+  }
+  grid[middle][middle].shrineSite = true;
 }

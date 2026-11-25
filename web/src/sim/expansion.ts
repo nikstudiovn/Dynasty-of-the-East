@@ -14,7 +14,12 @@ export function counterMultiplier(attacker: string, target: string, building: bo
   return 1;
 }
 
-export function placeShrines(size: number, grid: { terrain: string; res: unknown }[][]): Shrine[] {
+export function placeShrines(size: number, grid: { terrain: string; res: unknown; shrineSite?: boolean }[][]): Shrine[] {
+  const authored: Shrine[] = [];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    if (grid[y][x].shrineSite) authored.push({ x: x + 0.5, y: y + 0.5, owner: null, contender: null, capture: 0, income: 0 });
+  }
+  if (authored.length) return authored;
   const mid = size / 2 - 0.5;
   const starts = size === 48 ? [mid] : [mid - size / 5, mid + size / 5];
   const shrines: Shrine[] = [];
