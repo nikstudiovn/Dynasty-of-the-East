@@ -15,6 +15,8 @@ export const MAP_SIZES: MapSize[] = [48, 64, 96];
 export const MAP_TYPES: MapType[] = ["river_valley", "river_delta", "open_plains", "highland_passes", "random"];
 
 export type ResourceVariant =
+  | "starter_rice"
+  | "fruit_tree"
   | "single_tree"
   | "forest"
   | "bamboo"
@@ -373,6 +375,36 @@ export function generateValley(
       }
     }
   };
+
+  // Mirrored offsets measured inward from the outside corner of each town hall.
+  const starter = footprintOf("town_center");
+  const plots = [
+    { offsets: [[0, 5], [1, 5], [0, 6], [1, 6]], variant: "starter_rice", stock: 115 },
+    { offsets: [[5, 0], [6, 0], [5, 1], [6, 1], [5, 2], [6, 2]], variant: "fruit_tree", stock: 85 },
+  ] as const;
+  for (const base of allCorners) {
+    const sx = base.tx < n / 2 ? 1 : -1, sy = base.ty < n / 2 ? 1 : -1;
+    const x0 = base.tx + (sx < 0 ? starter.w - 1 : 0);
+    const y0 = base.ty + (sy < 0 ? starter.h - 1 : 0);
+    for (const plot of plots) {
+      const targets = plot.offsets.map(([x, y]) => ({ x: x0 + sx * x, y: y0 + sy * y }));
+      const reserved = new Set(targets.map(({ x, y }) => y * n + x));
+      for (const target of targets) {
+        if (!canPlace1x1(target.x, target.y)) {
+          // Preserve water and existing terrain. Borrow the closest free land outside the exit ring.
+          const candidates = ringTiles({ tx: base.tx - 2, ty: base.ty - 2, w: starter.w + 4, h: starter.h + 4 })
+            .concat(ringTiles({ tx: base.tx - 3, ty: base.ty - 3, w: starter.w + 6, h: starter.h + 6 }))
+            .filter(({ x, y }) => !reserved.has(y * n + x) && canPlace1x1(x, y))
+            .sort((a, b) => (a.x - target.x) ** 2 + (a.y - target.y) ** 2 - ((b.x - target.x) ** 2 + (b.y - target.y) ** 2));
+          if (!candidates.length) continue;
+          Object.assign(target, candidates[0]);
+        }
+        Object.assign(grid[target.y][target.x], {
+          res: "food", resAmt: plot.stock, resVariant: plot.variant, resFootprint: 1,
+        });
+      }
+    }
+  }
 
   // Starter resources near each spawn corner
   for (const c of allCorners) {
