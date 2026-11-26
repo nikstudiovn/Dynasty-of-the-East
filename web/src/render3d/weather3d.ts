@@ -16,10 +16,10 @@ interface LightPreset {
 
 const DAY_PRESET: LightPreset = {
   sunColor: new THREE.Color(0xffd5a0),
-  sunIntensity: 2.15,
+  sunIntensity: 2.45,
   hemiSky: new THREE.Color(0x9eafc7),
   hemiGround: new THREE.Color(0x777269),
-  hemiIntensity: 1.25,
+  hemiIntensity: 0.95,
   fogColor: new THREE.Color(0x6e7d87),
   lanternBoost: 0.0,
 };
@@ -69,7 +69,10 @@ export class Weather3D {
   private readonly daySky = new THREE.Color("#597387");
   private readonly duskSky = new THREE.Color("#4b5c80");
   private readonly nightSky = new THREE.Color("#171f37");
-
+  readonly fogTint = new THREE.Color(0xd8e0e8);
+  riverMistOpacity = 0;
+  private readonly sunsetFogTint = new THREE.Color(0xcfa79a);
+  private readonly nightFogTint = new THREE.Color(0x6b7fa8);
   constructor() {
     this.rainSeeds = new Float32Array(RAIN_COUNT * 3);
     for (let i = 0; i < RAIN_COUNT; i++) {
@@ -188,12 +191,17 @@ export class Weather3D {
     this.zenith.copy(this.daySky).lerp(this.duskSky, Math.min(1, this.lanternBoost / 0.65))
       .lerp(this.nightSky, Math.max(0, (this.lanternBoost - 0.65) / 0.35));
     scene.environmentIntensity = 0.70 - this.lanternBoost * 0.38 - mistWeight * 0.09 + rainWeight * 0.07;
-
+    const goldenWeight = Math.max(0, Math.min(1, this.lanternBoost / 0.65) * (1 - night));
+  const angle = (1 - goldenWeight * 0.72) * 1.15;
+  const az = 0.55 + this.lanternBoost * 2.1;
+  (scene as THREE.Scene & { setSunArc?: (x: number, y: number, z: number) => void }).setSunArc?.(Math.cos(az) * Math.cos(angle) * 38, Math.max(10, Math.sin(angle) * 38), Math.sin(az) * Math.cos(angle) * 38);
+    this.fogTint.setHex(0xd8e0e8).lerp(this.sunsetFogTint, Math.min(1, this.lanternBoost / 0.65)).lerp(this.nightFogTint, night);
+    this.riverMistOpacity = Math.min(0.42, mistWeight * 0.34 + goldenWeight * 0.16 + rainWeight * 0.08);
     this.ensureRain(scene);
     if (this.rainLines && this.rainGeo && this.rainMat) {
       if (rainWeight > 0.02) {
         this.rainLines.visible = true;
-        this.rainMat.opacity = 0.36 * rainWeight;
+         this.rainMat.opacity = 0.36 * rainWeight;       
         const attr = this.rainGeo.getAttribute("position") as THREE.BufferAttribute;
         const arr = attr.array as Float32Array;
         const half = RAIN_AREA * 0.5;
