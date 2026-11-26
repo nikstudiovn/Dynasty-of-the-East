@@ -1051,10 +1051,12 @@ window.DOTEConsole = {
   }
 
   function getPopStats(team) {
-    const pop = state.units.filter(u => u.team === team).length;
-  if (team === "player" && state.devPopCap > 0) return { pop, cap: state.devPopCap };
-    const cap = Math.min(POPULATION_LIMIT, state.buildings.filter(b => b.team === team).reduce((s, b) => s + (BLDG_DEFS[b.type].pop || 0), 0));
-    return { pop, cap };
+    const pop = state.units.filter(u => u.team === team && u.hp > 0).length;
+    const owned = state.buildings.filter(b => b.team === team && b.hp > 0);
+    const queued = owned.reduce((sum, b) => sum + (b.trainQueue?.length ?? 0), 0);
+    const cap = team === "player" && state.devPopCap > 0 ? state.devPopCap :
+      Math.min(POPULATION_LIMIT, owned.reduce((sum, b) => sum + ((b.progress ?? 1) >= 1 ? (BLDG_DEFS[b.type].pop || 0) : 0), 0));
+    return { pop, cap, queued, hasSpace: pop + queued < cap };
   }
 
   function adjustedCost(cost, mult) {
@@ -1307,7 +1309,8 @@ window.DOTEConsole = {
               if (!u.buildTargetId) u.task = "idle";
             }
           }
-          if (state.selectedBuildingId === b.id) renderCommandDock();
+          if (b.team === "player" && BLDG_DEFS[b.type].pop > 0) { updateHud(); renderCommandDock(); }
+          else if (state.selectedBuildingId === b.id) renderCommandDock();
         }
       }
       continue;
@@ -1675,9 +1678,15 @@ window.DOTEConsole = {
       }
     }
 
-   for (const u of state.units) { if (u.team === "enemy" && u.hp <= 0 && state.stats) state.stats.enemiesKilled++; }  state.units = state.units.filter(u => u.hp > 0);
+    const lostPlayerUnit = state.units.some(u => u.team === "player" && u.hp <= 0);
+    const lostPlayerBuilding = state.buildings.some(b => b.team === "player" && b.hp <= 0);
+    for (const u of state.units) if (u.team === "enemy" && u.hp <= 0 && state.stats) state.stats.enemiesKilled++;
+    state.units = state.units.filter(u => u.hp > 0);
     state.buildings = state.buildings.filter(b => b.hp > 0);
     state.selectedIds = state.selectedIds.filter(id => state.units.some(u => u.id === id));
+    if (lostPlayerUnit) state.garrisonedCount = state.units.filter(u => u.team === "player" && u.garrisoned).length;
+    if (lostPlayerBuilding && !state.buildings.some(b => b.id === state.selectedBuildingId)) state.selectedBuildingId = null;
+    if (lostPlayerUnit || lostPlayerBuilding) { updateHud(); renderCommandDock(); }
 
     const playerTc = state.buildings.find(b => b.team === "player" && b.type === "town_center");
     const enemyTcs = state.buildings.filter(b => b.team === "enemy" && b.type === "town_center");
@@ -2114,8 +2123,10 @@ window.DOTEConsole = {
     document.getElementById("res-gold").textContent = Math.floor(state.resources.gold);
     document.getElementById("res-stone").textContent = Math.floor(state.resources.stone);
     document.getElementById("dote-herbal-badge").hidden = !state.herbalMedicine;
-    const { pop, cap } = getPopStats("player");
-    document.getElementById("res-pop").textContent = `${pop}/${cap}`; for (const n of [1, 2, 3]) { const alive = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = alive; const b = document.getElementById(`btn-grp-${n}`); if (b) { const label = b.querySelector(".dote-btn-lbl"); (label || b).textContent = `Đạo ${n} (${alive.length})`; } }
+    const { pop, cap, queued } = getPopStats("player");
+    const population = document.getElementById("res-pop");
+    population.textContent = `${pop}/${cap}`;
+    population.parentElement.title = queued ? `Dân số · ${queued} chỗ đã giữ cho hàng chiêu mộ` : "Dân số"; for (const n of [1, 2, 3]) { const alive = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = alive; const b = document.getElementById(`btn-grp-${n}`); if (b) { const label = b.querySelector(".dote-btn-lbl"); (label || b).textContent = `Đạo ${n} (${alive.length})`; } }
   }
 
   function researchUpgrade(kind) {
@@ -2196,10 +2207,10 @@ window.DOTEConsole = {
         details.textContent += " Công trình đang xây.";
         return;
       }
-      const { pop, cap } = getPopStats("player");
+      const { hasSpace } = getPopStats("player");
 
       if (selBldg.type === "town_center") {
-        addBtn("Sinh Dân Làng", "50 Thực", pop < cap && canAfford(UNIT_DEFS.villager.cost), false, () => trainFrom(selBldg, "villager"));
+        addBtn("Sinh Dân Làng", "50 Thực", hasSpace && canAfford(UNIT_DEFS.villager.cost), false, () => trainFrom(selBldg, "villager"));
         if (state.age < 4) {
           const next = AGES[state.age];
           const c = adjustedCost(next.cost, state.faction.ageCostMult);
@@ -2208,12 +2219,12 @@ window.DOTEConsole = {
           else addBtn(`Lên ${next.name.split(" · ")[1]}`, `${formatCost(c)} · ${AGE_RESEARCH_SEC[next.age]}s`, canAfford(c), false, () => advanceAge(selBldg));
         }
       } else if (selBldg.type === "barracks") {
-        addBtn("Đao Binh", "50T 15V", pop < cap && canAfford(UNIT_DEFS.swordsman.cost), false, () => trainFrom(selBldg, "swordsman"));
-        addBtn("Trường Thương", state.age >= 2 ? "35T 25G" : "Cần Đời 2", state.age >= 2 && pop < cap && canAfford(UNIT_DEFS.spearman.cost), false, () => trainFrom(selBldg, "spearman"));
+        addBtn("Đao Binh", "50T 15V", hasSpace && canAfford(UNIT_DEFS.swordsman.cost), false, () => trainFrom(selBldg, "swordsman"));
+        addBtn("Trường Thương", state.age >= 2 ? "35T 25G" : "Cần Đời 2", state.age >= 2 && hasSpace && canAfford(UNIT_DEFS.spearman.cost), false, () => trainFrom(selBldg, "spearman"));
       } else if (selBldg.type === "archery_range") {
-        addBtn("Cung Thủ", "25G 35V", pop < cap && canAfford(UNIT_DEFS.archer.cost), false, () => trainFrom(selBldg, "archer"));
+        addBtn("Cung Thủ", "25G 35V", hasSpace && canAfford(UNIT_DEFS.archer.cost), false, () => trainFrom(selBldg, "archer"));
         if (state.factionId === "trung_nguyen") {
-          addBtn("Nỏ Liên Châu", state.age >= 3 ? "30G 40V" : "Cần Đời 3", state.age >= 3 && pop < cap && canAfford(UNIT_DEFS.chuko_nu.cost), false, () => trainFrom(selBldg, "chuko_nu"));
+          addBtn("Nỏ Liên Châu", state.age >= 3 ? "30G 40V" : "Cần Đời 3", state.age >= 3 && hasSpace && canAfford(UNIT_DEFS.chuko_nu.cost), false, () => trainFrom(selBldg, "chuko_nu"));
         }
       } else if (selBldg.type === "blacksmith") {
         const atkLv = state.upgrades.attack;
@@ -2231,24 +2242,24 @@ window.DOTEConsole = {
           addBtn("Giáp Tối Đa (+6)", "Đã xong", false, false, () => {});
         }
       } else if (selBldg.type === "stable") {
-        addBtn("Kỵ Binh", "60T 60V", pop < cap && canAfford(UNIT_DEFS.cavalry.cost), false, () => trainFrom(selBldg, "cavalry"));
-        if (state.factionId === "dai_viet") addBtn("Tượng Binh", "110T 80V", pop < cap && canAfford(UNIT_DEFS.war_elephant.cost), false, () => trainFrom(selBldg, "war_elephant"));
-        else if (state.factionId === "bac_cuong") addBtn("Thiết Kỵ Xạ", "45G 55V", pop < cap && canAfford(UNIT_DEFS.horse_archer.cost), false, () => trainFrom(selBldg, "horse_archer"));
+        addBtn("Kỵ Binh", "60T 60V", hasSpace && canAfford(UNIT_DEFS.cavalry.cost), false, () => trainFrom(selBldg, "cavalry"));
+        if (state.factionId === "dai_viet") addBtn("Tượng Binh", "110T 80V", hasSpace && canAfford(UNIT_DEFS.war_elephant.cost), false, () => trainFrom(selBldg, "war_elephant"));
+        else if (state.factionId === "bac_cuong") addBtn("Thiết Kỵ Xạ", "45G 55V", hasSpace && canAfford(UNIT_DEFS.horse_archer.cost), false, () => trainFrom(selBldg, "horse_archer"));
       } else if (selBldg.type === "siege_workshop") {
-        addBtn("Pháo Thạch", "140G 110V", pop < cap && canAfford(UNIT_DEFS.catapult.cost), false, () => trainFrom(selBldg, "catapult"));
+        addBtn("Pháo Thạch", "140G 110V", hasSpace && canAfford(UNIT_DEFS.catapult.cost), false, () => trainFrom(selBldg, "catapult"));
       } else if (selBldg.type === "imperial_citadel") {
         const uKey = state.faction.uniqueUnit;
         const uDef = UNIT_DEFS[uKey];
-        addBtn(uDef.name, formatCost(uDef.cost), pop < cap && canAfford(uDef.cost), false, () => trainFrom(selBldg, uKey));
+        addBtn(uDef.name, formatCost(uDef.cost), hasSpace && canAfford(uDef.cost), false, () => trainFrom(selBldg, uKey));
       } else if (selBldg.type === "dock") {
         for (const key of NAVAL_TYPES) {
           const def = UNIT_DEFS[key];
           addBtn(def.name, state.age < def.age ? `Cần Đời ${def.age}` : formatCost(def.cost),
-            state.age >= def.age && pop < cap && canAfford(def.cost), false, () => trainFrom(selBldg, key));
+            state.age >= def.age && hasSpace && canAfford(def.cost), false, () => trainFrom(selBldg, key));
         }
       } else if (selBldg.type === "temple") {
         const def = UNIT_DEFS.healer;
-        addBtn(def.name, formatCost(def.cost), pop < cap && canAfford(def.cost), false, () => trainFrom(selBldg, "healer"));
+        addBtn(def.name, formatCost(def.cost), hasSpace && canAfford(def.cost), false, () => trainFrom(selBldg, "healer"));
         const herbs = { wood: 85, gold: 90 };
         addBtn("Thảo Dược", state.herbalMedicine ? "Đã nghiên cứu" : formatCost(herbs), !state.herbalMedicine && canAfford(herbs), false, () => {
           if (state.herbalMedicine || !canAfford(herbs)) return;
@@ -2271,11 +2282,10 @@ window.DOTEConsole = {
         const workers = farmWorkers(selBldg).length;
         const queued = selBldg.trainQueue?.length ?? 0;
         const openSlots = workers + queued < FARM_MAX_WORKERS;
-        const pendingPopulation = state.buildings.reduce((sum, b) => sum + (b.team === "player" ? b.trainQueue?.length ?? 0 : 0), 0);
         const cost = UNIT_DEFS.villager.cost;
         details.textContent += ` ${workers}/${FARM_MAX_WORKERS} dân canh tác${queued ? ` · ${queued} chờ chiêu mộ` : ""}.`;
         addBtn("Chiêu mộ Dân Làng", openSlots ? formatCost(cost) : "Đã đủ chỗ",
-          openSlots && pop + pendingPopulation < cap && canAfford(cost), false, () => trainFrom(selBldg, "villager"));
+          openSlots && hasSpace && canAfford(cost), false, () => trainFrom(selBldg, "villager"));
         if (selBldg.depleted || selBldg.cropAmount === 0) {
           const wood = farmReplantWoodCost(selBldg);
           addBtn("Canh tác lại", `${wood} Gỗ`, state.resources.wood >= wood, false, () => {
@@ -2284,7 +2294,7 @@ window.DOTEConsole = {
         } else if ((selBldg.cropGrowth ?? 1) < 1) details.textContent += " Lúa đang mọc.";
       }
       if (window.DOTETactics && window.DOTETactics.canRally(selBldg.type)) {
-        title.textContent += selBldg.rallyPoint ? " · Cờ tập kết đã đặt" : " · Chạm đất để đặt cờ tập kết";
+        details.textContent += selBldg.rallyPoint ? " Đã đặt cờ tập kết." : " Chạm ô đất trống để đặt cờ tập kết.";
         if (selBldg.rallyPoint) addBtn("Gỡ cờ tập kết", "", true, false, () => { selBldg.rallyPoint = null; renderCommandDock(); });
       }
       return;
@@ -2460,9 +2470,11 @@ window.DOTEConsole = {
   function trainFrom(bldg, unitType) {
   if ((bldg.progress ?? 1) < 1) { showToast("Công trình đang xây!"); return; }
     const def = UNIT_DEFS[unitType];
-    const { pop, cap } = getPopStats("player");
-    const queued = state.buildings.reduce((count, b) => count + (b.team === "player" ? b.trainQueue?.length ?? 0 : 0), 0);
-    if (pop + queued >= cap) { showToast("Đầy dân số — hãy xây thêm Nhà Ngói!"); return; }
+    const { hasSpace, queued } = getPopStats("player");
+    if (!hasSpace) {
+      showToast(queued ? "Đã hết chỗ dân số, tính cả quân đang chờ chiêu mộ." : "Đầy dân số — hãy xây thêm Nhà Ngói!");
+      return;
+    }
     if (bldg.type === "farm" && (unitType !== "villager" ||
       farmWorkers(bldg).length + (bldg.trainQueue?.length ?? 0) >= FARM_MAX_WORKERS)) {
       showToast("Ruộng đã đủ 3 chỗ canh tác."); return;

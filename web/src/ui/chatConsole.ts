@@ -85,11 +85,8 @@ function injectStyles(): void {
     }
 
     #btn-dote-chat {
-      position: fixed;
-      top: calc(env(safe-area-inset-top, 0px) + 12px);
-      left: calc(env(safe-area-inset-left, 0px) + 188px);
-      width: 38px;
-      height: 38px;
+      position: relative;
+      flex-shrink: 0;
       border-radius: 10px;
       border: 1px solid rgba(196, 204, 216, 0.45);
       background: rgba(30, 32, 37, 0.88);
@@ -133,9 +130,10 @@ function injectStyles(): void {
 
     #dote-chat-toasts {
       position: fixed;
-      top: calc(env(safe-area-inset-top, 0px) + 56px);
-      left: calc(env(safe-area-inset-left, 0px) + 188px);
-      width: min(360px, calc(100vw - 208px));
+      top: var(--dote-chat-top, calc(env(safe-area-inset-top, 0px) + 64px));
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(360px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
       display: flex;
       flex-direction: column;
       gap: 4px;
@@ -169,7 +167,7 @@ function injectStyles(): void {
 
     #dote-chat-drawer {
       position: fixed;
-      top: calc(env(safe-area-inset-top, 0px) + 8px);
+      top: var(--dote-chat-top, calc(env(safe-area-inset-top, 0px) + 64px));
       left: 50%;
       transform: translateX(-50%);
       width: min(560px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
@@ -355,17 +353,13 @@ function stopEventPropagation(el: HTMLElement): void {
 }
 
 function syncVisualViewport(): void {
-  if (!drawerEl) return;
+  if (!drawerEl || !rootEl) return;
   const vv = window.visualViewport;
-  if (!vv) {
-    drawerEl.style.top = '';
-    drawerEl.style.maxHeight = '';
-    return;
-  }
-  const topOffset = Math.max(8, Math.round(vv.offsetTop + 8));
-  const maxH = Math.max(160, Math.round(vv.height - 20));
-  drawerEl.style.top = `${topOffset}px`;
-  drawerEl.style.maxHeight = `${Math.min(maxH, Math.round(window.innerHeight * 0.65))}px`;
+  const hudBottom = document.querySelector('.top-hud')?.getBoundingClientRect().bottom ?? 0;
+  const top = Math.ceil(Math.max(hudBottom, vv?.offsetTop ?? 0) + 8);
+  const bottom = (vv?.offsetTop ?? 0) + (vv?.height ?? window.innerHeight);
+  rootEl.style.setProperty('--dote-chat-top', `${top}px`);
+  drawerEl.style.maxHeight = `max(0px, min(calc(${Math.floor(bottom - top)}px - env(safe-area-inset-bottom, 0px) - 8px), 65vh))`;
 }
 
 function syncDevUI(): void {
@@ -589,6 +583,7 @@ export function initChatConsole(): void {
   btnEl = document.createElement('button');
   btnEl.id = 'btn-dote-chat';
   btnEl.type = 'button';
+  btnEl.className = 'icon-btn';
   btnEl.title = 'Chat & Console (Enter)';
   btnEl.setAttribute('aria-label', 'Mở khung Chat và Console');
   btnEl.innerHTML = `
@@ -680,8 +675,13 @@ export function initChatConsole(): void {
 
   inputRow.append(inputEl, sendBtn);
   drawerEl.append(header, logEl, chipsEl, inputRow);
-  rootEl.append(btnEl, toastBoxEl, drawerEl);
+  rootEl.append(toastBoxEl, drawerEl);
   document.body.appendChild(rootEl);
+  (document.querySelector('#game-wrap .top-right') ?? rootEl).appendChild(btnEl);
+  const topHud = document.querySelector('#game-wrap .top-hud');
+  if (topHud && typeof ResizeObserver !== 'undefined') new ResizeObserver(syncVisualViewport).observe(topHud);
+  window.addEventListener('resize', syncVisualViewport);
+  syncVisualViewport();
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && isOpen) {
