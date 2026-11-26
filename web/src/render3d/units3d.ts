@@ -632,7 +632,7 @@ const f = r.faction;
   if (f === "trung_nguyen" && !fishing && !fire) b.add(mesh(box(width * 0.62, 0.11, length * 0.22), hullM, 0, 0.27, -length * 0.36));
   if (f === "bac_cuong" && !fishing && !fire) addArmorPlates(b, [-0.28, 0, 0.28].map((z) => mesh(box(width * 0.82, 0.03, 0.04), steel(), 0, 0.14, length * z)));
   if (f === "goryeo" && !fishing) {
-    addArmorPlates(b, [-1, 1].flatMap((s) => [-0.24, 0, 0.24].map((z) => mesh(box(0.03, 0.12, length * 0.2), pbr("mat_goryeo_plate", "#6c8294"), s * width * 0.4, 0.17, length * z))));
+    addArmorPlates(b, [-1, 1].flatMap((s) => [-0.24, 0, 0.24].map((z) => mesh(box(0.03, 0.12, length * 0.2), pbr("mat_steel", "#6c8294"), s * width * 0.4, 0.17, length * z))));
     if (!fire) { const shell = mesh(cyl(width * 0.42, width * 0.44, length * 0.68, 8), steel("#4a5562"), 0, 0.24, 0); shell.rotation.x = Math.PI / 2; shell.scale.set(1, 1, 0.45); b.add(shell); }
     const dragon = new THREE.Group(); dragon.position.set(0, 0.2, length * 0.5);
     const neck = taperedPart(0.04, 0.07, 0.16, 0.8, steel("#4a5562"), 0); neck.rotation.x = 0.5; dragon.add(neck);
