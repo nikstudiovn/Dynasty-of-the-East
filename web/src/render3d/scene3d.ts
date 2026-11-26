@@ -70,6 +70,8 @@ export class Scene3D {
   readonly camera: THREE.PerspectiveCamera;
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
+readonly sunOffset = SUN_OFFSET.clone();
+readonly lanternLights: THREE.PointLight[] = [];
   readonly terrainPbr = new TerrainPbr();
   readonly weather = new Weather3D();
   readonly sky: ReturnType<typeof makeSky>;
@@ -127,13 +129,13 @@ export class Scene3D {
     this.probe = new THREE.PerspectiveCamera(36, 1, 0.01, 50);
 
     // Cool skylight and a muted ground bounce keep shadowed faces readable.
-    this.hemi = new THREE.HemisphereLight(0x9eafc7, 0x777269, 1.25);
+    this.hemi = new THREE.HemisphereLight(0x9eafc7, 0x777269, 0.95 /* 1.25 */);
     this.scene.add(this.hemi);
 
     // Low key light casts long shadows. The shadow frustum follows the
     // camera target (snapped to a texel grid so shadows never shimmer while panning).
     const sun = new THREE.DirectionalLight(0xffc98a, 2.6);
-    sun.position.copy(this.target).add(SUN_OFFSET);
+    sun.position.copy(this.target).add(this.sunOffset /* SUN_OFFSET); */);
     sun.target.position.copy(this.target);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -145,16 +147,48 @@ export class Scene3D {
     this.sun = sun;
     this.scene.add(sun, sun.target);
 
-    // faint cool rim light from behind so silhouettes pop against the meadow
-    const rim = new THREE.DirectionalLight(0x9fb8ff, 0.35);
+    // faint cool rim light from behind so silhouett0.55 /* es pop against the meadow
+  const rim = new THREE.DirectionalLight(0x9fb8ff, 0.55);
+  //
+ //    const rim = new THREE.DirectionalLight(0x9fb8ff,0.55 /*  0); ); ); ////// */.); //35);
     rim.position.set(MAP_N / 2 + 26, 14, MAP_N / 2 + 22);
     rim.target.position.set(MAP_N / 2, 0, MAP_N / 2);
     this.rim = rim;
     this.scene.add(rim, rim.target);
     this.setQuality("auto");
+  for (let i = 0; i < 3; i++) {
+    const l = new THREE.PointLight(0xffa64d, 0, 12, 1.8);
+    this.scene.add(l);
+    this.lanternLights.push(l);
+  }
   }
 
   private rim!: THREE.DirectionalLight;
+
+setSunArc(x: number, y: number, z: number): void {
+  this.sunOffset.set(x, y, z);
+}
+
+updateLanterns(positions: ReadonlyArray<{ x: number; y?: number; z: number }>, boost = 0): void {
+  if (boost <= 0.01 || positions.length === 0) {
+    for (const l of this.lanternLights) l.intensity = 0;
+    return;
+  }
+  const tx = this.target.x, tz = this.target.z;
+  const ranked = positions
+    .map((p) => ({ p, d2: (p.x - tx) * (p.x - tx) + (p.z - tz) * (p.z - tz) }))
+    .sort((a, b) => a.d2 - b.d2);
+  for (let i = 0; i < this.lanternLights.length; i++) {
+    const l = this.lanternLights[i];
+    const item = ranked[i];
+    if (item) {
+      l.position.set(item.p.x, item.p.y ?? 1.4, item.p.z);
+      l.intensity = boost * 2.4;
+    } else {
+      l.intensity = 0;
+    }
+  }
+}
 
   /** Called after common.setMapSize(): zoom-out limit and rim light follow the map size. */
   applyMapSize(n: number): void {
@@ -297,14 +331,24 @@ export class Scene3D {
     const tex = this.sun.castShadow ? SHADOW_R * 2 / this.sun.shadow.mapSize.x : 0.1;
     const fx = Math.round(this.target.x / tex) * tex, fz = Math.round(this.target.z / tex) * tex;
     this.sun.target.position.set(fx, 0, fz);
-    this.sun.position.set(fx + SUN_OFFSET.x, SUN_OFFSET.y, fz + SUN_OFFSET.z);
-    this.sun.target.updateMatrixWorld();
-    if (this.quality === "medium") {
+    this.sun.position.set(fx + this.sunOffset.x, this.sunOffset.y, fz + this.sunOffset.z);
+    //
+  //   this.sun.position.set(fx + SUN_OFFSET.x, SUN_OFFSET.y, fz + SUN_OFFSET.z);
+    this.sun.target.updateMatrixWorld()
+    if (this.quality === "medium") {;
+ //    if (this.quality === "medium" {) 
+      this.shadowElapsed += dt;
+      const shadowAccum = this.shadowElapsed;
+      if (shadowAccum >= 0.055) {
+        this.renderer.shadowMap.needsUpdate = true;
+        this.shadowElapsed = shadowAccum % 0.055;
+      }
+    } /*{
       this.shadowElapsed += dt;
       if (this.shadowElapsed >= 1 / 30) {
         this.renderer.shadowMap.needsUpdate = true;
         this.shadowElapsed %= 1 / 30;
-      }
+      } */
     }
     this.sky.position.set(this.camera.position.x, 0, this.camera.position.z);
     this.weather.update(dt, this.scene, this.sun, this.hemi, this.target.x, this.target.z);
