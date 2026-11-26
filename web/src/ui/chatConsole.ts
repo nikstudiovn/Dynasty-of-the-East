@@ -337,9 +337,12 @@ function injectStyles(): void {
     .dote-chat-send:hover {
       background: rgba(82, 88, 100, 0.95);
     }
+  body.dote-menu-open #btn-dote-chat, body.dote-menu-open #dote-chat-toasts, body.dote-menu-open #dote-chat-drawer, body.dote-menu-open #dote-chat-drawer.open, body:has(#modal:not(.hidden)) #btn-dote-chat, body:has(#modal:not(.hidden)) #dote-chat-toasts, body:has(#modal:not(.hidden)) #dote-chat-drawer, body:has(#modal:not(.hidden)) #dote-chat-drawer.open { display: none !important; visibility: hidden !important; pointer-events: none !important; }
   `;
   document.head.appendChild(style);
 }
+function isMenuOpen(): boolean { if (document.body.classList.contains('dote-menu-open')) return true; const modal = document.getElementById('modal'); if (modal && !modal.classList.contains('hidden') && window.getComputedStyle(modal).display !== 'none') return true; const pause = document.getElementById('pause-modal') as HTMLElement | null; if (pause && !pause.hidden && window.getComputedStyle(pause).display !== 'none') return true; return false; }
+
 
 function stopEventPropagation(el: HTMLElement): void {
   const stop = (e: Event): void => {
@@ -448,7 +451,7 @@ export function pushChatMessage(
 }
 
 export function openChatConsole(): void {
-  if (!initialized) initChatConsole();
+  if (!initialized) initChatConsole(); if (isMenuOpen()) return;
   if (isOpen) return;
   isOpen = true;
   hasUnread = false;
@@ -688,7 +691,7 @@ export function initChatConsole(): void {
     }
     if (e.key === 'Enter' && !isOpen) {
       const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
+      const tag = target?.tagName; if (isMenuOpen()) return;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
         return;
       }
@@ -696,7 +699,8 @@ export function initChatConsole(): void {
       openChatConsole();
     }
   });
-
+  const menuObserver = new MutationObserver(() => { if (isOpen && isMenuOpen()) closeChatConsole(); }); menuObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  
   window.visualViewport?.addEventListener('resize', syncVisualViewport);
   window.visualViewport?.addEventListener('scroll', syncVisualViewport);
 
