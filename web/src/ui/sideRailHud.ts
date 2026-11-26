@@ -1,5 +1,5 @@
 import "./sideRailHud.css";
-import { getIconSvg, resolveCommandIconKey, type SideRailIconKey } from "./sideRailIcons";
+import { getIconSvg, portraitIcon, resolveCommandIconKey, type SideRailIconKey } from "./sideRailIcons";
 
 const LS_COLLAPSED = "dote_rails_collapsed";
 const LEGACY_COLLAPSED = "pixel_dynasty_rails_collapsed";
@@ -299,7 +299,11 @@ export function initSideRailHud(): void {
     const mode = detectContextMode(btns);
 
     drawerTabs.style.display = mode === "build" ? "flex" : "none";
-    if (mode === "build") {
+    if (cmdButtons.dataset.buildingName) {
+      drawerTitle.textContent = cmdButtons.dataset.buildingName;
+      const icon = portraitIcon(cmdButtons.dataset.buildingIcon);
+      drawerBtn.innerHTML = `${getIconSvg(icon, 24)}<span class="dote-btn-lbl">Nhà</span>`;
+    } else if (mode === "build") {
       drawerTitle.textContent = "Xây Dựng";
       drawerBtn.innerHTML = `${getIconSvg(tabDefs.find(tab => tab.id === activeTab)!.icon, 24)}<span class="dote-btn-lbl">Xây</span>`;
     } else if (mode === "train") {
@@ -368,7 +372,12 @@ export function initSideRailHud(): void {
     const observer = new MutationObserver(() => {
       decorateCmdButtons();
     });
-    observer.observe(cmdButtons, { childList: true });
+    observer.observe(cmdButtons, { childList: true, attributes: true, attributeFilter: ["data-building-name"] });
+    cmdButtons.addEventListener("dote:show-building", () => {
+      applyTabFilter();
+      drawerBody.scrollTop = 0;
+      setDrawerOpen(true);
+    });
   }
 
   document.addEventListener("pointerdown", (e) => {

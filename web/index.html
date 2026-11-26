@@ -459,9 +459,6 @@
         </div>
       </div>
       <div id="dote-command-timers" hidden>
-        <div data-timer="build" hidden><span></span><progress max="1"></progress></div>
-        <div data-timer="train" hidden><span></span><progress max="1"></progress></div>
-        <div data-timer="age" hidden><span></span><progress max="1"></progress></div>
         <div data-timer="ability" hidden><span></span><progress max="1"></progress></div>
         <div data-timer="effect" hidden><span></span><progress max="1"></progress></div>
       </div>
@@ -551,6 +548,7 @@ import { getIconSvg, portraitIcon } from "./src/ui/sideRailIcons";
 import { issueRetreatFromHud } from "./src/ui/retreatCommand";
 import { POPULATION_LIMIT, FARM_CAPACITY, counterMultiplier, placeShrines, stepShrines } from "./src/sim/expansion";
 import { NAVAL_TYPES, isWaterway, coastalWater, findWaterPath } from "./src/sim/naval";
+import { canAssignFarmWorker, FARM_MAX_WORKERS, FARM_GROWTH_SEC, farmReplantWoodCost, replantFarm, REPAIR_WOOD_PER_HP, stepBuildingRepair } from "./src/sim/construction";
 import { fw, fh, fcx, fcy, fmax, inFoot, ringTiles, edgeTiles, footprintOf, footDist } from "./src/sim/footprint";
 import { stepMoveOrder, issueRetreat, finishRetreat, resumeMove } from "./src/sim/commands";
 import { initBattleHud } from "./src/ui/battleHud";
@@ -632,7 +630,6 @@ const updateBattleHud = initBattleHud();
     catapult: { name: "Pháo Thạch", hp: 130, atk: 38, range: 7.8, vision: 8, speed: 1.2, cost: { food: 0, wood: 140, gold: 110, stone: 0 }, age: 3, role: "siege", proj: "boulder", splash: 2.1, bonusBuilding: 2.5, hwacha: { name: "Hỏa Xa", hp: 115, atk: 24, range: 6.8, vision: 8, speed: 1.5, cost: { food: 0, wood: 110, gold: 90, stone: 0 }, age: 3, role: "siege", proj: "rocket", splash: 2.2, burst: 3, factionOnly: "goryeo" }, samurai: { name: "Samurai", hp: 145, atk: 16, range: 1.3, vision: 6, speed: 2.25, cost: { food: 75, wood: 0, gold: 55, stone: 0 }, age: 3, role: "infantry", bonusInf: 1.3, factionOnly: "fuso" } }
   };
 
-  let dockClockAcc = 0;
   const AGE_RESEARCH_SEC = { 2: 45, 3: 60, 4: 75 };
   const TRAIN_TIMES = { fishing_boat: 8, galley: 11, fire_ship: 12, healer: 9, villager: 5, swordsman: 7, spearman: 7, archer: 7, chuko_nu: 7, cavalry: 10, horse_archer: 10, war_elephant: 12, catapult: 14, hwacha: 12, samurai: 9 };
 
@@ -830,7 +827,7 @@ const updateBattleHud = initBattleHud();
     const def = BLDG_DEFS[type];
     const fp = footprintOf(type, def.size);
     const b = { id: nextId++, team, aiIndex, type, tx, ty, size: Math.max(fp.w, fp.h), w: fp.w, h: fp.h, hp: underConstruction ? Math.max(10, Math.round(def.hp * 0.1)) : def.hp, maxHp: def.hp, atkCooldown: 0, progress: underConstruction ? 0 : 1, trainQueue: [] };
-    if (type === "farm") { b.cropAmount = FARM_CAPACITY; b.maxFood = FARM_CAPACITY; }
+    if (type === "farm") { b.cropAmount = FARM_CAPACITY; b.maxFood = FARM_CAPACITY; b.cropGrowth = underConstruction ? 0 : 1; }
     state.buildings.push(b);
     for (let dy = 0; dy < fp.h; dy++) {
       for (let dx = 0; dx < fp.w; dx++) {
@@ -924,7 +921,27 @@ const updateBattleHud = initBattleHud();
       const o = typeof cmd === "object" && cmd ? cmd : { command: cmd, unitIds, x, z };
       if (o.command === "retreat") return issueRetreatCommand(o.unitIds, o.x, o.z ?? o.y);
       console.warn("[DOTE] unknown command", o.command); return 0;
-    }, repairSelectedOrNearest(buildingId) { if (!state || state.gameOver) return 0; const b = buildingId != null ? state.buildings.find(x => x.id === buildingId && x.team === "player" && x.hp > 0 && (x.progress ?? 1) >= 1 && x.hp < x.maxHp) : state.buildings.find(x => x.team === "player" && x.hp > 0 && (x.progress ?? 1) >= 1 && x.hp < x.maxHp); if (!b) return 0; let vils = state.units.filter(u => state.selectedIds.includes(u.id) && u.team === "player" && u.type === "villager" && u.hp > 0); if (!vils.length) { const n = state.units.filter(u => u.team === "player" && u.type === "villager" && u.hp > 0).sort((a, c) => footDist(b, a.x, a.y) - footDist(b, c.x, c.y))[0]; if (n) vils = [n]; } let assigned = 0; for (const u of vils) { let path = []; if (footDist(b, u.x, u.y) > 1.45) { path = pathToBuilding(u, b, "player"); if (!path.length) continue; } u.task = "repair"; u.buildTargetId = b.id; u.targetTile = null; u.targetId = null; u.path = path; assigned++; } return assigned; }, reseedFarm(farmId) { if (!state || state.gameOver) return false; const f = state.buildings.find(x => x.id === farmId && x.team === "player" && x.type === "farm" && x.hp > 0); if (!f || state.resources.wood < 30) return false; state.resources.wood -= 30; f.cropAmount = f.maxCrop || 300; f.depleted = false; return true; }, toggleFarmAutoReseed(farmId) { if (!state || state.gameOver) return null; const f = state.buildings.find(x => x.id === farmId && x.team === "player" && x.type === "farm" && x.hp > 0); if (!f) return null; f.autoReseed = !(f.autoReseed ?? true); return f.autoReseed; },
+    },
+    repairSelectedOrNearest(buildingId) {
+      if (!state || state.gameOver) return 0;
+      const building = state.buildings.find(b => (buildingId == null || b.id === buildingId) &&
+        b.team === "player" && b.hp > 0 && b.hp < b.maxHp && (b.progress ?? 1) >= 1);
+      if (!building) return 0;
+      const villagers = state.units.filter(u => u.team === "player" && u.type === "villager" && u.hp > 0 && !u.garrisoned);
+      const selected = villagers.filter(u => state.selectedIds.includes(u.id));
+      if (selected.length) return orderRepair(building, selected);
+      villagers.sort((a, b) => footDist(building, a.x, a.y) - footDist(building, b.x, b.y));
+      for (const villager of villagers) if (orderRepair(building, [villager])) return 1;
+      return 0;
+    },
+    reseedFarm(farmId) {
+      if (!state || state.gameOver) return false;
+      const farm = state.buildings.find(b => b.id === farmId && b.team === "player" && b.type === "farm");
+      const planted = replantFarm(state, farm);
+      if (planted) { updateHud(); renderCommandDock(); }
+      return planted;
+    },
+
   };
 window.DOTEConsole = {
   isOnline() {
@@ -1258,11 +1275,6 @@ window.DOTEConsole = {
   dt *= (state.devSimSpeed || 1);
     if (!state.running || state.gameOver) return; if (state.stats) state.stats.elapsedSec += dt;
     tickAgeResearch(dt);
-    if (state.selectedBuildingId != null) {
-      const sb = state.buildings.find(b => b.id === state.selectedBuildingId);
-      if (sb && sb.type === "town_center" && (state.ageResearch || sb.trainQueue?.length)) { dockClockAcc += dt; if (dockClockAcc >= 1) { dockClockAcc = 0; renderCommandDock(); } }
-    }
-
     fogTick += dt;
     if (fogTick >= 0.25) { fogTick = 0; recomputeFog(); }
 
@@ -1300,15 +1312,34 @@ window.DOTEConsole = {
       }
       continue;
     }
+    if (b.type === "farm" && (b.cropGrowth ?? 1) < 1 && !b.depleted) {
+      b.cropGrowth = Math.min(1, b.cropGrowth + dt / FARM_GROWTH_SEC);
+      if (b.cropGrowth === 1 && state.selectedBuildingId === b.id) renderCommandDock();
+    }
+    if (b.hp < b.maxHp && b.team === "player" && state.resources.wood > 0) {
+      const workers = state.units.filter(u => u.type === "villager" && u.team === b.team && u.hp > 0 && !u.garrisoned &&
+        u.task === "repair" && u.buildTargetId === b.id && !u.path.length && footDist(b, u.x, u.y) <= 1.45);
+      if (workers.length) {
+        const healed = stepBuildingRepair(b, workers.length, dt, state.faction?.buildRepairSpeedMult ?? 1,
+          state.resources.wood / REPAIR_WOOD_PER_HP);
+        const previousWood = Math.floor(state.resources.wood);
+        state.resources.wood = Math.max(0, state.resources.wood - healed * REPAIR_WOOD_PER_HP);
+        if (Math.floor(state.resources.wood) !== previousWood) document.getElementById("res-wood").textContent = Math.floor(state.resources.wood);
+        if (b.hp >= b.maxHp && state.selectedBuildingId === b.id) renderCommandDock();
+      }
+    }
     if (b.trainQueue?.length > 0) {
       b.trainQueue[0].remaining -= dt;
       if (b.trainQueue[0].remaining <= 0) {
         const exit = b.type === "dock" ? coastalWater(state.grid, b.tx, b.ty, fw(b), fh(b))[0] : spawnExitPoint(b, b.team);
-        if (!exit) { b.trainQueue[0].remaining = 2; continue; }
+        if (!exit || (b.type === "farm" && farmWorkers(b).length >= FARM_MAX_WORKERS)) {
+          b.trainQueue[0].remaining = 2; continue;
+        }
         const item = b.trainQueue.shift();
         const nu = spawnUnit(b.team, item.type, exit.x, exit.y, b.aiIndex || 0);
         if (state.stats && b.team === "player") state.stats.unitsTrained++;
-        if (b.rallyPoint && window.DOTETactics) window.DOTETactics.applyRally(nu, b, (uu, gx, gy) => findPath(uu.x, uu.y, gx, gy, NAVAL_TYPES.has(uu.type) ? "water" : b.team));
+        if (b.type === "farm" && item.type === "villager") assignFarmWorker(b, nu);
+        else if (b.rallyPoint && window.DOTETactics) window.DOTETactics.applyRally(nu, b, (uu, gx, gy) => findPath(uu.x, uu.y, gx, gy, NAVAL_TYPES.has(uu.type) ? "water" : b.team));
         if (b.team === "player") { cue(b.type === "dock" ? "launch" : "train"); showToast(`Đã chiêu mộ ${UNIT_DEFS[item.type].name}`); updateHud(); }
         if (state.selectedBuildingId === b.id) renderCommandDock();
       }
@@ -1453,17 +1484,45 @@ window.DOTEConsole = {
         u.path = pathToBuilding(u, tb, u.team);
       }
       continue;
-    } if (u.type === "villager" && u.task === "repair" && u.buildTargetId) { const tb = state.buildings.find(b => b.id === u.buildTargetId && b.team === u.team && b.hp > 0 && (b.progress ?? 1) >= 1 && b.hp < b.maxHp); if (!tb) { u.buildTargetId = null; u.task = "idle"; } else if (footDist(tb, u.x, u.y) > 1.45) { u.path = pathToBuilding(u, tb, u.team); } else { const repairersHere = state.units.filter(v => v.type === "villager" && v.team === u.team && v.hp > 0 && v.task === "repair" && v.buildTargetId === tb.id && footDist(tb, v.x, v.y) <= 1.45).length || 1; const mult = u.team === "player" ? (state.faction?.buildRepairSpeedMult ?? 1) : 1; const rate = 18 * mult * dt; const woodCost = Math.min(state.resources.wood, rate * 0.15); if (u.team === "player" && woodCost > 0) state.resources.wood = Math.max(0, state.resources.wood - woodCost); if (window.DOTEBuild?.stepBuildingRepair) { window.DOTEBuild.stepBuildingRepair(tb, repairersHere, dt * mult / repairersHere); } else { tb.hp = Math.min(tb.maxHp, tb.hp + rate); } if (tb.hp >= tb.maxHp) { tb.hp = tb.maxHp; u.buildTargetId = null; u.task = "idle"; } } continue; }
+    }
+    if (u.type === "villager" && u.task === "repair") {
+      const target = state.buildings.find(b => b.id === u.buildTargetId && b.team === u.team && b.hp > 0 &&
+        (b.progress ?? 1) >= 1 && b.hp < b.maxHp);
+      if (!target) { u.task = "idle"; u.buildTargetId = null; }
+      else if (footDist(target, u.x, u.y) > 1.45 && !(u.repathCd > 0)) {
+        u.path = pathToBuilding(u, target, u.team);
+        u.repathCd = 0.8;
+      }
+      continue;
+    }
     if (u.type === "villager" && u.task === "gather" && u.targetTile) {
         const { tx, ty } = u.targetTile;
         const cell = state.grid[ty]?.[tx];
         const farmBldg = state.buildings.find(b => b.type === "farm" && inFoot(b, tx, ty) &&
           b.team === u.team && b.hp > 0 && (b.progress ?? 1) >= 1 &&
-          (u.team !== "enemy" || b.aiIndex === u.aiIndex));
-        const resType = farmBldg ? "food" : cell?.res; if (farmBldg && (farmBldg.cropAmount ?? FARM_CAPACITY) <= 0) { if (u.team === "player" && (farmBldg.autoReseed ?? true) && state.resources.wood >= 30) { state.resources.wood -= 30; farmBldg.cropAmount = farmBldg.maxCrop || 300; farmBldg.depleted = false; } else { farmBldg.depleted = true; } }
-        const hasRes = farmBldg ? (farmBldg.cropAmount ?? FARM_CAPACITY) > 0 : (cell && cell.resAmt > 0);
+          (u.team !== "enemy" || (b.aiIndex ?? 0) === (u.aiIndex ?? 0)));
+        const resType = farmBldg ? "food" : cell?.res;
+        if (farmBldg) {
+          const slot = farmWorkers(farmBldg).indexOf(u);
+          if (slot < 0 || slot >= FARM_MAX_WORKERS) {
+            u.targetTile = null; u.task = "idle"; u.gatherTick = 0;
+            continue;
+          }
+          if (farmBldg.depleted || (farmBldg.cropAmount ?? FARM_CAPACITY) <= 0 || (farmBldg.cropGrowth ?? 1) < 1) {
+            u.gatherTick = 0;
+            if (farmBldg.depleted || farmBldg.cropAmount === 0) {
+              if (u.carryAmt > 0) returnFarmHarvest(u);
+              if (u.team === "enemy") {
+                u.targetTile = null;
+                if (u.task !== "return") u.task = "idle";
+              }
+            }
+            continue;
+          }
+        }
+        const hasRes = Boolean(farmBldg || (cell && cell.resAmt > 0));
         if (!hasRes) {
-          if (u.team === "enemy" || farmBldg) {
+          if (u.team === "enemy") {
             const drop = u.carryAmt > 0 && findDropoff(u.team, u.x, u.y, u.aiIndex);
             u.targetTile = null;
             u.task = drop ? "return" : "idle";
@@ -1488,13 +1547,23 @@ window.DOTEConsole = {
             u.carryAmt += amount;
             if (farmBldg) {
               farmBldg.cropAmount = (farmBldg.cropAmount ?? FARM_CAPACITY) - amount;
-              if (farmBldg.cropAmount <= 0) { if (u.team === "player" && (farmBldg.autoReseed ?? true) && state.resources.wood >= 30) { state.resources.wood -= 30; farmBldg.cropAmount = farmBldg.maxCrop || 300; farmBldg.depleted = false; } else { farmBldg.depleted = true; const drop = u.carryAmt > 0 && findDropoff(u.team, u.x, u.y, u.aiIndex); u.targetTile = null; u.task = drop ? "return" : "idle"; if (drop) u.path = pathToBuilding(u, drop, u.team); } } else { farmBldg.depleted = false; }
+              farmBldg.food = farmBldg.cropAmount;
+              if (farmBldg.cropAmount === 0) {
+                farmBldg.depleted = true;
+                if (state.selectedBuildingId === farmBldg.id) renderCommandDock();
+                returnFarmHarvest(u);
+                if (u.team === "enemy") {
+                  u.targetTile = null;
+                  if (u.task !== "return") u.task = "idle";
+                }
+              }
             }
             if (!farmBldg && cell) {
               cell.resAmt -= amount;
               if (cell.resAmt <= 0) { cell.res = null; cell.resAmt = 0; }
             }
-            if (u.carryAmt >= 15) {
+            if (u.task === "gather" && u.carryAmt >= 15 && farmBldg) returnFarmHarvest(u);
+            else if (u.task === "gather" && u.carryAmt >= 15) {
               const drop = findDropoff(u.team, u.x, u.y, u.aiIndex);
               if (drop) { u.task = "return"; u.path = pathToBuilding(u, drop, u.team); }
             }
@@ -1519,7 +1588,8 @@ window.DOTEConsole = {
           }
           if (["food", "wood", "gold", "stone"].includes(u.carryType)) window.DOTEAI.budget(state, u.aiIndex ?? 0)[u.carryType] += u.carryAmt;
           u.carryType = null;
-          u.targetTile = null;
+          if (!state.buildings.some(b => b.type === "farm" && b.team === u.team && u.targetTile &&
+            inFoot(b, u.targetTile.tx, u.targetTile.ty))) u.targetTile = null;
         }
         u.carryAmt = 0;
         if (u.targetTile) { u.task = "gather"; u.path = findPath(u.x, u.y, u.targetTile.tx, u.targetTile.ty); }
@@ -2029,7 +2099,7 @@ window.DOTEConsole = {
     setBoxSelectMode(false);
     ensureAudio();
     sfxClick();
-    renderCommandDock();
+    renderCommandDock(true);
     return true;
   }
 
@@ -2039,10 +2109,10 @@ window.DOTEConsole = {
   function updateHud() {
     document.getElementById("hud-faction").textContent = `${state.faction.name} (1v${state.aiCount})`;
     document.getElementById("hud-age").textContent = AGES[state.age - 1].name;
-    document.getElementById("res-food").textContent = state.resources.food;
-    document.getElementById("res-wood").textContent = state.resources.wood;
-    document.getElementById("res-gold").textContent = state.resources.gold;
-    document.getElementById("res-stone").textContent = state.resources.stone;
+    document.getElementById("res-food").textContent = Math.floor(state.resources.food);
+    document.getElementById("res-wood").textContent = Math.floor(state.resources.wood);
+    document.getElementById("res-gold").textContent = Math.floor(state.resources.gold);
+    document.getElementById("res-stone").textContent = Math.floor(state.resources.stone);
     document.getElementById("dote-herbal-badge").hidden = !state.herbalMedicine;
     const { pop, cap } = getPopStats("player");
     document.getElementById("res-pop").textContent = `${pop}/${cap}`; for (const n of [1, 2, 3]) { const alive = (state.controlGroups[n] || []).filter(id => state.units.some(u => u.id === id && u.hp > 0)); state.controlGroups[n] = alive; const b = document.getElementById(`btn-grp-${n}`); if (b) { const label = b.querySelector(".dote-btn-lbl"); (label || b).textContent = `Đạo ${n} (${alive.length})`; } }
@@ -2072,11 +2142,32 @@ window.DOTEConsole = {
       portrait.innerHTML = getIconSvg(icon, 24);
     }
   }
-  function renderCommandDock() { try { updateTacticBtns(); } catch (e) {}
+  const BUILDING_NOTES = {
+    town_center: "Đình Làng chiêu mộ dân và nghiên cứu lên đời. Dân có thể nộp tài nguyên tại đây.",
+    house: "Nhà Ngói tăng giới hạn dân số để bạn chiêu mộ thêm dân và quân.",
+    depot: "Kho Tài Nguyên nhận lương, gỗ, vàng và đá. Đặt gần nơi khai thác để dân đi lại ít hơn.",
+    farm: "Ruộng Lúa cung cấp lương thực. Dân được chiêu mộ tại đây sẽ tự nhận việc trên ruộng.",
+    barracks: "Doanh Trại huấn luyện bộ binh.",
+    archery_range: "Trường Bắn huấn luyện quân đánh xa.",
+    watch_tower: "Vọng Lâu tự bắn địch trong tầm và mở rộng tầm nhìn.",
+    blacksmith: "Lò Rèn nâng cấp công và giáp cho quân.",
+    stable: "Chuồng Ngựa huấn luyện kỵ binh và một số quân đặc trưng.",
+    siege_workshop: "Xưởng Công Thành chế tạo Pháo Thạch.",
+    imperial_citadel: "Hoàng Thành phòng thủ và chiêu mộ quân đặc trưng của phe.",
+    wall: "Tường Thành chặn đường tiến quân. Ghép các đoạn để bảo vệ căn cứ.",
+    gate: "Cổng Thành mở cho quân mình đi qua và chặn quân địch.",
+    market: "Chợ cho phép đổi tài nguyên.",
+    dock: "Bến Thuyền đóng tàu và nhận lương từ Thuyền Chài.",
+    temple: "Từ Đường chiêu mộ Y Sư và nghiên cứu Thảo Dược.",
+  };
+
+  function renderCommandDock(openBuilding = false) { try { updateTacticBtns(); } catch (e) {}
   updateDoteCancelBtn();
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     const wrap = document.getElementById("cmd-buttons");
     const title = document.getElementById("sel-title");
     wrap.innerHTML = "";
+    delete wrap.dataset.buildingName;
+    delete wrap.dataset.buildingIcon;
 
     const addBtn = (label, costTxt, enabled, active, onClick) => {
       const btn = document.createElement("button");
@@ -2093,8 +2184,18 @@ window.DOTEConsole = {
 
     if (selBldg && selBldg.team === "player") {
       const bName = BLDG_DEFS[selBldg.type].name;
-      const qLen = selBldg.trainQueue?.length || 0; const qPct = qLen > 0 ? Math.min(100, Math.max(0, Math.round((1 - selBldg.trainQueue[0].remaining / selBldg.trainQueue[0].total) * 100))) : 0; const qTxt = qLen > 0 ? ` · Huấn luyện: ${qLen} (${qPct}%)` : ""; const bProgTxt = (selBldg.progress ?? 1) < 1 ? ` · Đang xây ${Math.round((selBldg.progress ?? 0) * 100)}%` : "";
-    title.textContent = `${bName}${bProgTxt}${qTxt} (HP ${selBldg.hp}/${selBldg.maxHp}) · Công+${state.upgrades.attack * 2} Giáp+${state.upgrades.armor * 2}`;
+      wrap.dataset.buildingName = bName;
+      wrap.dataset.buildingIcon = portraitIcon(selBldg.type);
+      title.textContent = `${bName} · HP ${Math.ceil(selBldg.hp)}/${selBldg.maxHp}`;
+      const details = document.createElement("p");
+      details.className = "dote-building-details";
+      details.textContent = BUILDING_NOTES[selBldg.type] ?? "Công trình của phe bạn.";
+      wrap.append(details);
+      if (openBuilding) wrap.dispatchEvent(new Event("dote:show-building"));
+      if ((selBldg.progress ?? 1) < 1) {
+        details.textContent += " Công trình đang xây.";
+        return;
+      }
       const { pop, cap } = getPopStats("player");
 
       if (selBldg.type === "town_center") {
@@ -2160,9 +2261,28 @@ window.DOTEConsole = {
           });
         }
       }
-      if (selBldg.hp > 0 && selBldg.hp < selBldg.maxHp) addBtn("Sửa nhà", "", true, false, () => { window.DOTECommands?.repairSelectedOrNearest?.(selBldg.id); renderCommandDock(); });
-      if (selBldg.type === "farm" && (selBldg.depleted || (selBldg.cropAmount ?? 0) <= 0)) addBtn("Trồng lại", "30 Gỗ", true, false, () => { window.DOTECommands?.reseedFarm?.(selBldg.id); updateHud(); renderCommandDock(); });
-      if (selBldg.type === "farm") addBtn("Tự trồng lại", "Tự tái canh: " + ((selBldg.autoReseed ?? true) ? "Bật" : "Tắt"), true, selBldg.autoReseed ?? true, () => { window.DOTECommands?.toggleFarmAutoReseed?.(selBldg.id); renderCommandDock(); });
+      if (selBldg.hp > 0 && selBldg.hp < selBldg.maxHp) {
+        addBtn("Sửa nhà", "Tốn gỗ theo lượng máu hồi", state.resources.wood > 0, false, () => {
+          const workers = window.DOTECommands.repairSelectedOrNearest(selBldg.id);
+          showToast(workers ? `Sửa chữa ${bName}` : "Không có dân làng tới được công trình.");
+        });
+      }
+      if (selBldg.type === "farm") {
+        const workers = farmWorkers(selBldg).length;
+        const queued = selBldg.trainQueue?.length ?? 0;
+        const openSlots = workers + queued < FARM_MAX_WORKERS;
+        const pendingPopulation = state.buildings.reduce((sum, b) => sum + (b.team === "player" ? b.trainQueue?.length ?? 0 : 0), 0);
+        const cost = UNIT_DEFS.villager.cost;
+        details.textContent += ` ${workers}/${FARM_MAX_WORKERS} dân canh tác${queued ? ` · ${queued} chờ chiêu mộ` : ""}.`;
+        addBtn("Chiêu mộ Dân Làng", openSlots ? formatCost(cost) : "Đã đủ chỗ",
+          openSlots && pop + pendingPopulation < cap && canAfford(cost), false, () => trainFrom(selBldg, "villager"));
+        if (selBldg.depleted || selBldg.cropAmount === 0) {
+          const wood = farmReplantWoodCost(selBldg);
+          addBtn("Canh tác lại", `${wood} Gỗ`, state.resources.wood >= wood, false, () => {
+            if (window.DOTECommands.reseedFarm(selBldg.id)) showToast("Đã gieo lại lúa.");
+          });
+        } else if ((selBldg.cropGrowth ?? 1) < 1) details.textContent += " Lúa đang mọc.";
+      }
       if (window.DOTETactics && window.DOTETactics.canRally(selBldg.type)) {
         title.textContent += selBldg.rallyPoint ? " · Cờ tập kết đã đặt" : " · Chạm đất để đặt cờ tập kết";
         if (selBldg.rallyPoint) addBtn("Gỡ cờ tập kết", "", true, false, () => { selBldg.rallyPoint = null; renderCommandDock(); });
@@ -2242,20 +2362,10 @@ window.DOTEConsole = {
   const commandTimers = document.getElementById("dote-command-timers");
   const timerRows = Array.from(commandTimers.querySelectorAll("[data-timer]"));
   function refreshCommandTimers() {
-    const building = state.buildings.find(b => b.id === state.selectedBuildingId && b.team === "player");
     const abilityId = Number(document.getElementById("btn-faction-ability")?.dataset.unitId);
     const unit = abilityId ? state.units.find(u => u.id === abilityId) : null;
-    const progress = building?.progress ?? 1;
-    const buildTime = progress < 1 ? building.buildDuration ?? window.DOTEBuild?.getBuildDuration(building.type) ?? 10 : 0;
-    const builders = buildTime ? state.units.filter(u => u.hp > 0 && u.team === "player" && u.type === "villager" &&
-      u.task === "build" && u.buildTargetId === building.id && footDist(building, u.x, u.y) <= 1.4).length : 0;
-    const duration = buildTime / (1 + 0.55 * Math.max(0, builders - 1));
-    const head = building?.trainQueue?.[0], research = building?.type === "town_center" && state.ageResearch;
     const ability = unit && ABILITIES[unit.type];
     const timers = {
-      build: buildTime && ["Xây dựng", (1 - progress) * duration, duration, builders === 0],
-      train: head && [`Huấn luyện ${UNIT_DEFS[head.type]?.name ?? head.type}`, head.remaining, head.total],
-      age: research && [`Lên Đời ${research.target}`, research.remaining, research.total],
       ability: ability && unit.abilityCooldown > 0 && [`Hồi chiêu ${ability.name}`, unit.abilityCooldown, 35],
       effect: ability && unit.abilityTime > 0 && [`Đang dùng ${ability.name}`, unit.abilityTime, ability.duration],
     };
@@ -2353,6 +2463,10 @@ window.DOTEConsole = {
     const { pop, cap } = getPopStats("player");
     const queued = state.buildings.reduce((count, b) => count + (b.team === "player" ? b.trainQueue?.length ?? 0 : 0), 0);
     if (pop + queued >= cap) { showToast("Đầy dân số — hãy xây thêm Nhà Ngói!"); return; }
+    if (bldg.type === "farm" && (unitType !== "villager" ||
+      farmWorkers(bldg).length + (bldg.trainQueue?.length ?? 0) >= FARM_MAX_WORKERS)) {
+      showToast("Ruộng đã đủ 3 chỗ canh tác."); return;
+    }
     if (!canAfford(def.cost)) { showToast("Chưa đủ tài nguyên!"); return; }
     spend(def.cost);
     const trainSec = TRAIN_TIMES[unitType] || 7;
@@ -2530,15 +2644,67 @@ window.DOTEConsole = {
     return assigned;
   }
 
+  function orderRepair(building, villagers) {
+    let assigned = 0;
+    for (const unit of villagers) {
+      const needsPath = footDist(building, unit.x, unit.y) > 1.45;
+      const path = needsPath ? pathToBuilding(unit, building, unit.team) : [];
+      if (needsPath && !path.length) continue;
+      Object.assign(unit, { task: "repair", buildTargetId: building.id, targetTile: null, targetEntityId: null,
+        manualAtk: false, amDest: null, moveResume: null, moveDest: null, huntId: null, path });
+      assigned++;
+    }
+    return assigned;
+  }
+
+  function returnFarmHarvest(unit) {
+    const drop = findDropoff(unit.team, unit.x, unit.y, unit.aiIndex);
+    if (!drop) return false;
+    const path = pathToBuilding(unit, drop, unit.team);
+    if (!path.length && footDist(drop, unit.x, unit.y) > 1.6) return false;
+    unit.task = "return";
+    unit.path = path;
+    return true;
+  }
+
+  function farmWorkers(farm) {
+    return state.units.filter(u => u.type === "villager" && u.team === farm.team && u.hp > 0 && !u.garrisoned &&
+      (u.task === "gather" || u.task === "return") && u.targetTile &&
+      inFoot(farm, u.targetTile.tx, u.targetTile.ty) && (u.team !== "enemy" || (u.aiIndex ?? 0) === (farm.aiIndex ?? 0)));
+  }
+
+  function assignFarmWorker(farm, unit, tx = farm.tx, ty = farm.ty) {
+    const workers = farmWorkers(farm);
+    if (workers.includes(unit)) return true;
+    if (!canAssignFarmWorker(farm, workers.length + (farm.trainQueue?.length ?? 0))) return false;
+    const tiles = [];
+    for (let y = farm.ty; y < farm.ty + fh(farm); y++) for (let x = farm.tx; x < farm.tx + fw(farm); x++) {
+      if (!workers.some(w => w.targetTile.tx === x && w.targetTile.ty === y)) tiles.push({ tx: x, ty: y });
+    }
+    tiles.sort((a, b) => Math.hypot(a.tx - tx, a.ty - ty) - Math.hypot(b.tx - tx, b.ty - ty));
+    for (const targetTile of tiles) {
+      const close = Math.hypot(unit.x - targetTile.tx - 0.5, unit.y - targetTile.ty - 0.5) <= 1.5;
+      const path = close ? [] : findPath(unit.x, unit.y, targetTile.tx, targetTile.ty, unit.team, true);
+      if (!close && !path.length) continue;
+      Object.assign(unit, { task: "gather", targetTile, path, gatherTick: 0, targetEntityId: null,
+        buildTargetId: null, huntId: null, amDest: null });
+      return true;
+    }
+    return false;
+  }
+
   function selectTappedUnit(unit, previous, pointerType, time) {
-    const doubleTap = previous?.match === state && previous.id === unit.id &&
+    const repeatedTap = previous?.match === state && previous.id === unit.id &&
       previous.pointerType === pointerType && time - previous.time <= DOUBLE_TAP_MS;
-    if (doubleTap) {
-      const nearby = selectSameTypeNearby(state.units, unit);
-      state.selectedIds = nearby.map(candidate => candidate.id);
+    const count = repeatedTap ? previous.count + 1 : 1;
+    if (count === 3) {
+      const nearbyArmy = state.units.filter(candidate => candidate.team === "player" && candidate.hp > 0 &&
+        !candidate.garrisoned && candidate.type !== "villager" && candidate.type !== "fishing_boat" &&
+        Math.hypot(candidate.x - unit.x, candidate.y - unit.y) <= 10);
+      state.selectedIds = nearbyArmy.map(candidate => candidate.id);
     } else {
-      state.selectedIds = [unit.id];
-      lastUnitTap = { match: state, id: unit.id, pointerType, time };
+      state.selectedIds = count === 2 ? selectSameTypeNearby(state.units, unit).map(candidate => candidate.id) : [unit.id];
+      lastUnitTap = { match: state, id: unit.id, pointerType, time, count };
     }
     state.selectedBuildingId = null;
     cue("select");
@@ -2581,14 +2747,23 @@ window.DOTEConsole = {
       inFoot(b, tx, ty));
     const selVils = state.units.filter(u => u.team === "player" && u.type === "villager" &&
       u.hp > 0 && !u.garrisoned && state.selectedIds.includes(u.id));
-    if (!state.attackMove && tappedOwnBldg && (tappedOwnBldg.progress ?? 1) < 1 && selVils.length > 0) {
+    if (!state.buildMode && !state.attackMove && tappedOwnBldg && (tappedOwnBldg.progress ?? 1) < 1 && selVils.length > 0) {
       const assigned = resumeConstruction(tappedOwnBldg, selVils);
       if (assigned) {
         sfxClick();
         showToast(`Tiếp tục xây ${BLDG_DEFS[tappedOwnBldg.type].name}`);
       } else showToast("Dân làng không tìm được lối tới công trình.");
       return;
-    } if (!state.attackMove && tappedOwnBldg && (tappedOwnBldg.progress ?? 1) >= 1 && tappedOwnBldg.hp < tappedOwnBldg.maxHp && selVils.length > 0) { let assigned = 0; for (const u of selVils) { let path = []; if (footDist(tappedOwnBldg, u.x, u.y) > 1.45) { path = pathToBuilding(u, tappedOwnBldg, "player"); if (!path.length) continue; } u.task = "repair"; u.buildTargetId = tappedOwnBldg.id; u.targetTile = null; u.targetId = null; u.path = path; assigned++; } if (assigned) { sfxClick(); showToast(`Sửa chữa ${BLDG_DEFS[tappedOwnBldg.type].name}`); } else showToast("Dân làng không tìm được lối tới công trình."); return; }
+    }
+    if (!state.buildMode && !state.attackMove && tappedOwnBldg && tappedOwnBldg.hp < tappedOwnBldg.maxHp && selVils.length) {
+      const assigned = orderRepair(tappedOwnBldg, selVils);
+      showToast(assigned ? `Sửa chữa ${BLDG_DEFS[tappedOwnBldg.type].name}` : "Dân làng không tìm được lối tới công trình.");
+      if (assigned) {
+        if (state.resources.wood <= 0) showToast("Dân làng sẽ sửa khi có gỗ.");
+        sfxClick();
+      }
+      return;
+    }
 
     if (state.buildMode) {
       const def = BLDG_DEFS[state.buildMode];
@@ -2666,7 +2841,7 @@ window.DOTEConsole = {
 
     if (tappedOwnBldg && !(tappedOwnBldg.type === "farm" && selVils.length > 0)) {
       state.selectedBuildingId = tappedOwnBldg.id; state.selectedIds = [];
-      cue("select"); renderCommandDock(); return;
+      cue("select"); renderCommandDock(true); return;
     }
 
     const rallyB = state.buildings.find(b => b.id === state.selectedBuildingId && b.team === "player");
@@ -2689,7 +2864,12 @@ window.DOTEConsole = {
         return;
       }
       const isFarm = tappedOwnBldg && tappedOwnBldg.type === "farm";
-      if ((cell.res || isFarm) && selVils.length > 0) {
+      if (isFarm && selVils.length > 0) {
+        let assigned = 0;
+        for (const villager of selVils) if (assignFarmWorker(tappedOwnBldg, villager, tx, ty)) assigned++;
+        showToast(assigned ? `Đã giao ruộng cho ${assigned} dân làng` : "Ruộng đã đủ người hoặc không có lối vào.");
+        sfxClick();
+      } else if (cell.res && selVils.length > 0) {
         for (const v of selVils) { v.huntId = null; v.task = "gather"; v.targetTile = { tx, ty }; v.path = findPath(v.x, v.y, tx, ty); }
         sfxClick(); showToast("Nông dân đang đi khai thác...");
       } else if (!isTileBlocked(tx, ty)) {

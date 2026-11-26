@@ -606,3 +606,11 @@ body.dote-rails-collapsed .dote-cancel-btn {
   right: calc(env(safe-area-inset-right, 0px) + 12px);
 }
 
+
+.dote-building-details {
+  grid-column: 1 / -1;
+  margin: 0 0 0.35rem;
+  color: #e5d7c0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}

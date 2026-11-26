@@ -86,16 +86,21 @@ function farmAt(state: any, tx: number, ty: number): any {
 function classify(u: any, state: any): WorkStyle {
   if (u.task === "return" && u.carryAmt > 0) return "carry";
   if (u.task === "hunt" && u.huntBusy) return "harvest";
-  if (u.task === "build" && u.buildTargetId != null) {
+  if ((u.task === "build" || u.task === "repair") && u.buildTargetId != null) {
     if (u.path.length) return "idle";
     const foundation = state.buildings.find((b: any) => b.id === u.buildTargetId);
-    return foundation && foundation.team === u.team && foundation.hp > 0 && (foundation.progress ?? 1) < 1 &&
-      footDist(foundation, u.x, u.y) <= 1.4 ? "build" : "idle";
+    if (!foundation || foundation.team !== u.team || foundation.hp <= 0) return "idle";
+    const working = u.task === "build"
+      ? (foundation.progress ?? 1) < 1 && footDist(foundation, u.x, u.y) <= 1.4
+      : (foundation.progress ?? 1) >= 1 && foundation.hp < foundation.maxHp &&
+        (state.resources?.wood ?? 0) > 0 && footDist(foundation, u.x, u.y) <= 1.45;
+    return working ? "build" : "idle";
   }
   if (u.task === "gather" && u.targetTile && u.path.length === 0) {
     const { tx, ty } = u.targetTile;
     if (Math.hypot(tx + 0.5 - u.x, ty + 0.5 - u.y) <= 1.7) {
       const farm = farmAt(state, tx, ty);
+      if (farm && (farm.depleted || farm.cropAmount === 0 || (farm.cropGrowth ?? 1) < 1)) return "idle";
       const res = farm ? "food" : state.grid[ty]?.[tx]?.res;
       if (res === "wood") return "chop";
       if (res === "gold" || res === "stone") return "mine";
@@ -156,10 +161,6 @@ export function update(dt: number, state: any): void {
     if (u.workPhase === undefined) u.workPhase = 0;
     if (style === "idle") { u.workPhase = 0; continue; }
     u.workPhase += dt * RATE[style];
-    if (style === "harvest" && u.targetTile) {
-      const farm = farmAt(state, u.targetTile.tx, u.targetTile.ty);
-      if (farm) { farm.cropStage = Math.min(2, Math.floor(Math.min(0.999, (u.gatherTick || 0) / 0.78) * 3)); }
-    }
     if (u.workPhase >= TAU) {
       u.workPhase -= TAU;
       if (style !== "carry") strike(u, state, style);
@@ -293,7 +294,8 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, u: any, wx: number, w
 /** Terraced rice paddy (3 growth stages). Replaces the flat farm sprite. */
 export function drawFarm(ctx: CanvasRenderingContext2D, b: any, selected: boolean, isPlayer: boolean): void {
   const wx = isoX(b.tx, b.ty), wy = isoY(b.tx, b.ty);
-  const stage = b.cropStage === undefined ? 1 : b.cropStage;
+  const dry = b.depleted || b.cropAmount === 0;
+  const stage = Math.min(2, Math.floor((b.cropGrowth ?? 1) * 3));
   const pt = (u: number, v: number) => ({ x: wx + (u - v) * (TILE_W / 2), y: wy + (u + v) * (TILE_H / 2) });
   // 3 terraces
   for (let k = 0; k < 3; k++) {
@@ -306,6 +308,7 @@ export function drawFarm(ctx: CanvasRenderingContext2D, b: any, selected: boolea
     ctx.fillStyle = stage === 0 ? "#5E8F86" : "#6B7F4E"; ctx.fill();
     ctx.fillStyle = "rgba(186,230,253,0.35)";
     const s = pt(0.25, v0 + 0.08); ctx.fillRect(Math.round(s.x), Math.round(s.y), 4, 1);
+    if (dry) continue;
     // shoots
     const sway = Math.round(Math.sin(performance.now() * 0.003 + k) * 0.8);
     for (let n = 0; n < 5; n++) {

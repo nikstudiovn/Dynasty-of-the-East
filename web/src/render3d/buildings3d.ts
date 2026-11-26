@@ -1132,7 +1132,8 @@ export class Buildings3D {
       e.model?.setConstructionProgress(progress);
 
       if (e.parts.rice) {
-        e.parts.rice.scale.y = Math.max(0.035, smoothstep(0.22, 1, progress));
+        const growth = stage === -1 ? 1 : smoothstep(0, 1, b.cropGrowth ?? 1);
+        e.parts.rice.scale.y = Math.max(0.035, growth * smoothstep(0.22, 1, progress));
         e.parts.rice.visible = progress > 0.22;
       }
       const sel = state.selectedBuildingId === b.id;

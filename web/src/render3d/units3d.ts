@@ -1279,7 +1279,7 @@ export class Units3D {
         const tx = target.x !== undefined ? target.x : target.tx + (target.w ?? target.size ?? 1) / 2;
         const tz = target.y !== undefined && target.x !== undefined ? target.y : target.ty + (target.h ?? target.size ?? 1) / 2;
         want = Math.atan2(tx - u.x, tz - u.y);
-      } else if (u.type === "villager" && u.task === "build" && u.buildTargetId != null && byId.has(u.buildTargetId)) {
+      } else if (u.type === "villager" && (u.task === "build" || u.task === "repair") && u.buildTargetId != null && byId.has(u.buildTargetId)) {
         const foundation = byId.get(u.buildTargetId);
         const dx = THREE.MathUtils.clamp(u.x, foundation.tx + 0.03, foundation.tx + fw(foundation) - 0.03) - u.x;
         const dz = THREE.MathUtils.clamp(u.y, foundation.ty + 0.03, foundation.ty + fh(foundation) - 0.03) - u.y;
