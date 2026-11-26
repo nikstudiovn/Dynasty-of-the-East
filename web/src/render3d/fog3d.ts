@@ -45,7 +45,7 @@ export class Fog3D {
     g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
 
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uFog: { value: this.tex }, uTime: { value: 0 }, uN: { value: MAP_N } }, uTint: { value: new THREE.Color(0xffffff) },
+      uniforms: { uFog: { value: this.tex }, uTime: { value: 0 }, uN: { value: MAP_N } , uTint: { value: new THREE.Color(0xffffff) }, },
       transparent: true,
       depthWrite: false,
       fog: false,
