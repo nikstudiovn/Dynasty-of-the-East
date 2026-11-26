@@ -65,7 +65,7 @@ function trailMask(): THREE.CanvasTexture {
 
 interface Rig {
   model?: ModelVisual;
-  root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group;
+  root: THREE.Group; body: THREE.Group; armL: THREE.Group; armR: THREE.Group; head?: THREE.Group;
   gait?: number; stride?: number;
   villagePose?: Float32Array;
   elbowL?: THREE.Group; elbowR?: THREE.Group;
@@ -707,21 +707,7 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
     case "fire_ship": buildShip(r, type, team); break;
     case "healer": { buildHealerPBR(r, b, faction, team); break; } case "swordsman": { buildSwordsmanPBR(r, b, faction, team); break; } case "spearman": { buildSpearmanPBR(r, b, faction, team); break; } case "archer": { buildArcherPBR(r, b, faction, team); break; }
     case "chuko_nu": {
-      humanoid(r, b, cape, { armor: "lamellar", head: "bronze", accent: team });
-      b.add(mesh(cyl(0.028, 0.024, 0.18, 6), leather(), 0.05, 0.32, -0.09)); // bolt case
-      // repeating crossbow (nỏ hộp): stock, bolt magazine, transverse prod, string and cocking lever
-      const xb = new THREE.Group();
-      xb.add(mesh(box(0.03, 0.03, 0.26), woodM(), 0, 0, 0.1));
-      xb.add(mesh(box(0.035, 0.06, 0.13), woodM(PAL.woodDark), 0, 0.045, 0.12)); // magazine
-      xb.add(mesh(box(0.24, 0.014, 0.018), woodM(PAL.woodDark), 0, 0, 0.21));
-      for (const s of [-1, 1]) xb.add(mesh(box(0.016, 0.016, 0.02), bronze(), s * 0.12, 0, 0.21, false));
-      xb.add(mesh(box(0.24, 0.003, 0.003), cloth("#e8dfc8"), 0, 0.006, 0.18, false));
-      const lever = new THREE.Group(); lever.position.set(0, 0.075, 0.06); xb.add(lever);
-      lever.add(mesh(box(0.012, 0.012, 0.16), bronze(), 0, 0, 0.07, false));
-      r.tools.weapon = hand(r.armR, xb);
-      r.tools.lever = lever;
-      r.height = 0.62;
-      break;
+          humanoid(r, b, cape, { armor: "lamellar", head: "steel", accent: team }); const plates: THREE.Mesh[] = []; const pGeo = box(0.036, 0.04, 0.012); const pMat = steel(PAL.steelDark); for (let row = 0; row < 2; row++) for (let col = -1; col <= 1; col++) for (const z of [0.068, -0.068]) plates.push(mesh(pGeo, pMat, col * 0.042, 0.25 + row * 0.046, z, false)); addArmorPlates(b, plates); b.add(mesh(box(0.132, 0.068, 0.018), steel(PAL.steelDark), 0, 0.455, -0.075, false)); for (const s of [-1, 1]) b.add(mesh(box(0.018, 0.062, 0.095), steel(PAL.steelDark), s * 0.072, 0.455, -0.015, false)); b.add(mesh(cone(0.02, 0.045, 6), bronze(), 0, 0.56, 0, false)); b.add(mesh(cyl(0.028, 0.024, 0.18, 6), leather(), 0.055, 0.32, -0.09)); const xb = new THREE.Group(); const stock = taperedPart(0.024, 0.034, 0.26, 0.032, woodM(PAL.woodDark), 0); stock.rotation.x = Math.PI / 2; stock.position.set(0, 0, 0.1); xb.add(stock); xb.add(mesh(box(0.044, 0.068, 0.14), woodM("#3a2416"), 0, 0.052, 0.11)); xb.add(mesh(box(0.048, 0.012, 0.146), bronze(), 0, 0.088, 0.11, false)); xb.add(mesh(box(0.024, 0.016, 0.032), steel(), 0, 0.052, 0.185, false)); xb.add(mesh(box(0.25, 0.015, 0.02), steel(PAL.steelDark), 0, 0, 0.21)); for (const s of [-1, 1]) xb.add(mesh(box(0.018, 0.018, 0.022), bronze(), s * 0.125, 0, 0.21, false)); xb.add(mesh(box(0.24, 0.004, 0.004), cloth("#e8dfc8"), 0, 0.006, 0.18, false)); const lever = new THREE.Group(); lever.position.set(0, 0.085, 0.06); xb.add(lever); lever.add(mesh(box(0.012, 0.012, 0.16), bronze(), 0, 0, 0.07, false)); r.tools.weapon = hand(r.armR, xb); r.tools.lever = lever; r.height = 0.62; break;
     }
     case "cavalry":
     case "horse_archer": {
@@ -749,12 +735,7 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
         const tassel = mesh(cone(0.028, 0.06, 6), cloth(team), 0, 0.62, 0, false); tassel.rotation.x = Math.PI; lance.add(tassel);
         lance.rotation.x = 0.16;
         r.tools.weapon = hand(r.armR, lance);
-      } else {
-        const { bow, string } = bowGroup(0.13, team);
-        bow.rotation.y = Math.PI / 2; bow.rotation.x = Math.PI / 2;
-        r.tools.weapon = hand(r.armL, bow);
-        r.tools.string = string;
-        rider.add(mesh(cyl(0.024, 0.02, 0.16, 6), leather(), 0.07, 0.3, -0.08));
+      } else { rider.add(mesh(sphere(0.088, 8, 6), steel(PAL.steelDark), 0, 0.505, 0, false)); rider.add(mesh(cyl(0.098, 0.104, 0.036, 8), fur("#5a4430"), 0, 0.475, 0, false)); rider.add(mesh(box(0.176, 0.19, 0.128), leather("#5c5332"), 0, 0.275, 0)); const studs: THREE.Mesh[] = []; const sGeo = box(0.014, 0.014, 0.01); const sMat = bronze(); for (const y of [0.23, 0.30]) for (const x of [-0.05, 0, 0.05]) for (const z of [0.066, -0.066]) studs.push(mesh(sGeo, sMat, x, y, z, false)); addArmorPlates(rider, studs); rider.add(mesh(cyl(0.026, 0.02, 0.18, 6), leather("#4a3321"), 0.095, 0.23, -0.04)); for (let i = -1; i <= 1; i++) rider.add(mesh(cone(0.008, 0.035, 4), cloth(team), 0.095 + i * 0.008, 0.33, -0.04, false)); const { bow, string } = bowGroup(0.13, team); for (const s of [-1, 1]) { const tip = taperedPart(0.008, 0.016, 0.065, 0.012, ivory(), 0); tip.position.set(0, s * 0.13, -0.028); tip.rotation.x = s * 0.65; bow.add(tip); } bow.rotation.y = Math.PI / 2; bow.rotation.x = Math.PI / 2; r.tools.weapon = hand(r.armL, bow); r.tools.string = string;
       }
       mount.add(rider);
       if (steppe) pennant(rider, -0.07, 0.28, -0.08, team, 0.42);
@@ -768,7 +749,7 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       const torso = mesh(sphere(0.2, 14, 10), em, 0, 0.42, 0); torso.scale.set(1, 0.95, 1.45); e.add(torso);
       e.add(mesh(sphere(0.13, 12, 10), em, 0, 0.5, 0.3));
       // bronze brow plate with a team crest
-      const plate = mesh(box(0.15, 0.12, 0.03), bronze(), 0, 0.56, 0.41); plate.rotation.x = -0.35; e.add(plate);
+      const plate = mesh(box(0.16, 0.14, 0.025), cloth("#1a1a1d"), 0, 0.56, 0.415); plate.rotation.x = -0.35; e.add(plate); const pTrim = mesh(box(0.172, 0.152, 0.014), bronze(), 0, 0.56, 0.408, false); pTrim.rotation.x = -0.35; e.add(pTrim); e.add(mesh(sphere(0.024, 6, 4), bronze(), 0, 0.57, 0.432, false));
       e.add(mesh(cone(0.025, 0.05, 6), cloth(team), 0, 0.64, 0.4, false));
       for (const s of [-1, 1]) {
         // wide ears on pivots so they can flare during the charge
@@ -791,16 +772,8 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
         l.add(mesh(cyl(0.06, 0.065, 0.16, 8), em, 0, -0.08, 0));
         const knee = new THREE.Group(); knee.position.y = -0.16; l.add(knee);
         knee.add(mesh(cyl(0.062, 0.07, 0.14, 8), em, 0, -0.07, 0));
-        e.add(l); r.legs4.push(l); r.knees.push(knee);
-      }
-      // wooden howdah (bành) on a team caparison, with a spearman and Đại Việt-style banners
-      e.add(mesh(box(0.38, 0.02, 0.46), cloth(team), 0, 0.59, -0.02, false));
-      e.add(mesh(box(0.3, 0.03, 0.38), woodM(), 0, 0.615, -0.03));
-      for (const [x, zz] of [[-0.14, 0.14], [0.14, 0.14], [-0.14, -0.2], [0.14, -0.2]]) e.add(mesh(cyl(0.012, 0.012, 0.2, 5), woodM(PAL.woodDark), x, 0.72, zz));
-      for (const s of [-1, 1]) e.add(mesh(box(0.012, 0.06, 0.36), woodM(PAL.woodDark), s * 0.14, 0.68, -0.03, false));
-      e.add(mesh(cone(0.24, 0.1, 4), cloth(mute(team, 0.3)), 0, 0.86, -0.03));
-      const rider = new THREE.Group(); rider.position.set(0, 0.62, -0.05); rider.scale.setScalar(0.65);
-      humanoid(r, rider, cape, { armor: "scale", head: r.faction === "dai_viet" ? "auto" : "steel", legs: false, accent: team });
+      e.add(l); r.legs4.push(l); r.knees.push(knee); } .e.add(mesh(box(0.4, 0.024, 0.48), cloth(team), 0, 0.585, -0.02, false)); e.add(mesh(box(0.42, 0.012, 0.5), bronze(), 0, 0.578, -0.02, false)); for (const s of [-1, 1]) { e.add(mesh(box(0.016, 0.11, 0.36), cloth("#1e1a18"), s * 0.205, 0.52, -0.02, false)); e.add(mesh(box(0.02, 0.02, 0.37), bronze(), s * 0.208, 0.47, -0.02, false)); } e.add(mesh(box(0.3, 0.03, 0.38), woodM(PAL.woodDark), 0, 0.615, -0.03)); for (const [x, zz] of [[-0.14, 0.14], [0.14, 0.14], [-0.14, -0.2], [0.14, -0.2]]) { e.add(mesh(cyl(0.013, 0.013, 0.2, 5), woodM(PAL.woodDark), x, 0.72, zz)); e.add(mesh(cyl(0.016, 0.016, 0.024, 5), bronze(), x, 0.81, zz, false)); } for (const s of [-1, 1]) { e.add(mesh(box(0.014, 0.06, 0.36), woodM(PAL.woodDark), s * 0.14, 0.68, -0.03, false)); e.add(mesh(box(0.018, 0.016, 0.37), bronze(), s * 0.14, 0.715, -0.03, false)); } e.add(mesh(cone(0.24, 0.1, 4), cloth(mute(team, 0.3)), 0, 0.86, -0.03)); e.add(mesh(cone(0.024, 0.05, 6), bronze(), 0, 0.925, -0.03, false)); const rider = new THREE.Group(); rider.position.set(0, 0.62, -0.05); rider.scale.setScalar(0.65); humanoid(r, rider, cape, { armor: "scale", head: "steel", legs: false, accent: team }); vietLeafArmor(rider); rider.add(mesh(cyl(0.092, 0.1, 0.022, 8), bronze(), 0, 0.485, 0, false)); rider.add(mesh(cone(0.02, 0.055, 6), bronze(), 0, 0.57, 0, false));
+     
       const spear = new THREE.Group();
       spear.add(mesh(cyl(0.01, 0.01, 0.8, 5), woodM(), 0, 0.15, 0));
       spear.add(mesh(cone(0.02, 0.12, 4), steel(), 0, 0.6, 0));
@@ -814,7 +787,7 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       break;
     }
     case "catapult": {
-      const wm = woodM(), dm = woodM(PAL.woodDark), iron = steel(PAL.steelDark);
+      const wm = woodM(faction === "dai_viet" ? "#382315" : faction === "goryeo" ? "#282b32" : faction === "fuso" ? "#1c2230" : PAL.wood), dm = faction === "trung_nguyen" ? steel(PAL.steel) : faction === "fuso" ? cloth("#243356") : woodM(PAL.woodDark), iron = faction === "dai_viet" ? bronze() : faction === "fuso" ? steel(PAL.steel) : steel(PAL.steelDark);
       for (const s of [-1, 1]) b.add(mesh(box(0.05, 0.05, 0.5), wm, s * 0.14, 0.12, 0));
       for (const zz of [-0.2, 0.2]) b.add(mesh(box(0.33, 0.04, 0.05), wm, 0, 0.13, zz));
       // iron straps around the beams
@@ -826,9 +799,9 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
       }
       const axle = mesh(cyl(0.02, 0.02, 0.3, 6), iron, 0, 0.4, -0.02); axle.rotation.z = Math.PI / 2; b.add(axle);
       for (const s of [-1, 1]) for (const zz of [-0.17, 0.17]) {
-        const w = spokedWheel(0.08); w.position.set(s * 0.18, 0.08, zz); b.add(w); r.wheels.push(w);
+        const w = spokedWheel(0.08); w.position.set(s * 0.18, 0.08, zz); if (faction === "trung_nguyen" || faction === "goryeo") { const rim = mesh(cyl(0.082, 0.082, 0.016, 12), iron, 0, 0, 0, false); rim.rotation.z = Math.PI / 2; w.add(rim); } if (faction === "goryeo") for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; w.add(mesh(box(0.022, 0.014, 0.014), steel(PAL.steel), 0, Math.cos(a) * 0.072, Math.sin(a) * 0.072, false)); } b.add(w); r.wheels.push(w);
       }
-      const arm = new THREE.Group(); arm.position.set(0, 0.4, -0.02);
+      if (faction === "dai_viet") { b.add(mesh(box(0.28, 0.16, 0.024), cloth("#18191e"), 0, 0.22, 0.25, false)); b.add(mesh(box(0.3, 0.02, 0.028), bronze(), 0, 0.3, 0.25, false)); b.add(mesh(sphere(0.032, 6, 5), bronze(), 0, 0.22, 0.265, false)); } else if (faction === "trung_nguyen") { for (const s of [-1, 1]) { const a2 = mesh(box(0.035, 0.28, 0.035), dm, s * 0.12, 0.25, -0.12, false); a2.rotation.x = 0.45; b.add(a2); } } else if (faction === "bac_cuong") { b.add(mesh(box(0.28, 0.16, 0.024), leather(PAL.leather), 0, 0.22, 0.25, false)); for (const xx of [-0.1, 0, 0.1]) b.add(mesh(box(0.02, 0.02, 0.03), steel(PAL.steel), xx, 0.26, 0.255, false)); for (const s of [-1, 1]) b.add(mesh(box(0.06, 0.06, 0.04), cloth("#8b7355"), s * 0.12, 0.28, -0.02, false)); } else if (faction === "goryeo") { for (const s of [-1, 1]) b.add(mesh(box(0.024, 0.16, 0.38), cloth("#45576b"), s * 0.175, 0.22, 0, false)); } else if (faction === "fuso") { for (const s of [-1, 1]) { b.add(mesh(box(0.11, 0.2, 0.024), wm, s * 0.09, 0.23, 0.25, false)); b.add(mesh(box(0.12, 0.018, 0.028), iron, s * 0.09, 0.33, 0.25, false)); } } const arm = new THREE.Group(); arm.position.set(0, 0.4, -0.02);
       arm.add(mesh(box(0.04, 0.04, 0.5), wm, 0, 0, 0.12));
       arm.add(mesh(box(0.046, 0.046, 0.014), iron, 0, 0, 0.25, false));
       arm.add(mesh(cyl(0.06, 0.04, 0.05, 8), leather(), 0, 0.03, 0.36));
@@ -850,7 +823,7 @@ b.add(mesh(box(0.04, 0.04, 0.56), charWood, s * 0.16, 0.19, -0.08));
 }
 const axle = mesh(cyl(0.022, 0.022, 0.48, 8), iron, 0, 0.16, 0); axle.rotation.z = Math.PI / 2; b.add(axle);
 b.add(mesh(box(0.32, 0.035, 0.28), charWood, 0, 0.2, 0));
-b.add(mesh(box(0.34, 0.02, 0.04), slate, 0, 0.21, -0.34, false));
+b.add(mesh(box(0.34, 0.02, 0.04), slate, 0, 0.21, -0.34, false)); for (const s of [-1, 1]) b.add(mesh(box(0.024, 0.13, 0.32), slate, s * 0.18, 0.26, 0.01, false));
 const rack = new THREE.Group(); rack.position.set(0, 0.38, 0.02); rack.rotation.x = -0.36;
 rack.add(mesh(box(0.3, 0.22, 0.26), charWood, 0, 0, 0));
 rack.add(mesh(box(0.312, 0.232, 0.05), slate, 0, 0, 0.08, false));
@@ -878,7 +851,7 @@ b.add(mesh(box(0.034, 0.02, 0.114), charM, s * 0.132, 0.33, 0, false));
 }
 b.add(mesh(sphere(0.082, 10, 6), charM, 0, 0.49, 0));
 const shikoro = mesh(cyl(0.085, 0.115, 0.06, 10), indigo, 0, 0.455, -0.015, false); b.add(shikoro);
-b.add(mesh(box(0.175, 0.016, 0.035), silver, 0, 0.48, 0.068, false));
+b.add(mesh(box(0.175, 0.016, 0.035), silver, 0, 0.48, 0.068, false)); b.add(mesh(box(0.088, 0.052, 0.055), charM, 0, 0.445, 0.055, false)); const saya = mesh(box(0.018, 0.024, 0.34), charM, -0.115, 0.27, -0.02, false); saya.rotation.x = -0.35; b.add(saya);
 for (const s of [-1, 1]) {
 const horn = mesh(box(0.016, 0.11, 0.01), silver, s * 0.045, 0.57, 0.075, false); horn.rotation.z = s * -0.45; b.add(horn);
 }
