@@ -868,6 +868,7 @@ const updateBattleHud = initBattleHud();
 
   function recomputeFog() {
     miniDirty = true;
+  if (state.devFogReveal) { for (let y = 0; y < state.mapSize; y++) for (let x = 0; x < state.mapSize; x++) state.fog[y][x] = 2; return; }
     for (let y = 0; y < state.mapSize; y++) {
       for (let x = 0; x < state.mapSize; x++) {
         if (state.fog[y][x] === 2) state.fog[y][x] = 1;
@@ -901,7 +902,7 @@ const updateBattleHud = initBattleHud();
 
   /**
    * Retreat order for the UI branch: units run to tile coords (x, z) on formation slots, ignore every
-   * enemy on the way and go idle on arrival. Also reachable as window.DOTECommands.issue("retreat", ids, x, z).
+   * enemy on the way and go idle on arrival. Also reachable as window..issue("retreat", ids, x, z).
    */
   function issueRetreatCommand(unitIds, x, z) {
     if (!state || state.gameOver) return 0;
@@ -923,6 +924,108 @@ const updateBattleHud = initBattleHud();
       console.warn("[DOTE] unknown command", o.command); return 0;
     }, repairSelectedOrNearest(buildingId) { if (!state || state.gameOver) return 0; const b = buildingId != null ? state.buildings.find(x => x.id === buildingId && x.team === "player" && x.hp > 0 && (x.progress ?? 1) >= 1 && x.hp < x.maxHp) : state.buildings.find(x => x.team === "player" && x.hp > 0 && (x.progress ?? 1) >= 1 && x.hp < x.maxHp); if (!b) return 0; let vils = state.units.filter(u => state.selectedIds.includes(u.id) && u.team === "player" && u.type === "villager" && u.hp > 0); if (!vils.length) { const n = state.units.filter(u => u.team === "player" && u.type === "villager" && u.hp > 0).sort((a, c) => footDist(b, a.x, a.y) - footDist(b, c.x, c.y))[0]; if (n) vils = [n]; } let assigned = 0; for (const u of vils) { let path = []; if (footDist(b, u.x, u.y) > 1.45) { path = pathToBuilding(u, b, "player"); if (!path.length) continue; } u.task = "repair"; u.buildTargetId = b.id; u.targetTile = null; u.targetId = null; u.path = path; assigned++; } return assigned; }, reseedFarm(farmId) { if (!state || state.gameOver) return false; const f = state.buildings.find(x => x.id === farmId && x.team === "player" && x.type === "farm" && x.hp > 0); if (!f || state.resources.wood < 30) return false; state.resources.wood -= 30; f.cropAmount = f.maxCrop || 300; f.depleted = false; return true; }, toggleFarmAutoReseed(farmId) { if (!state || state.gameOver) return null; const f = state.buildings.find(x => x.id === farmId && x.team === "player" && x.type === "farm" && x.hp > 0); if (!f) return null; f.autoReseed = !(f.autoReseed ?? true); return f.autoReseed; },
   };
+window.DOTEConsole = {
+  isOnline() {
+    return typeof isOnlineMode === "function" ? isOnlineMode() : Boolean(state?.isOnline || state?.online || window.DOTEOnline?.isConnected);
+  },
+  exec(cmd, args = []) {
+    if (!state) return false;
+    const c = String(cmd || "").toLowerCase();
+    if (c === "res") {
+      const kind = String(args[0] || "all").toLowerCase();
+      const amt = Number(args[1] ?? 1000) || 1000;
+      const keys = ["food", "wood", "gold", "stone", "herb"];
+      if (kind === "all") {
+        for (const k of keys) state.resources[k] = (state.resources[k] || 0) + amt;
+      } else if (keys.includes(kind)) {
+        state.resources[kind] = (state.resources[kind] || 0) + amt;
+      } else {
+        return false;
+      }
+      if (typeof updateHud === "function") updateHud();
+      return true;
+    }
+    if (c === "age") {
+      const age = Math.max(1, Math.min(4, Math.floor(Number(args[0]) || 1)));
+      state.age = age;
+      if (typeof updateHud === "function") updateHud();
+      return true;
+    }
+    if (c === "pop") {
+      const val = Math.floor(Number(args[0]) || 0);
+      state.devPopCap = Math.max(0, val);
+      if (typeof updateHud === "function") updateHud();
+      return true;
+    }
+    if (c === "spawn") {
+      const allowed = ["villager", "swordsman", "spearman", "archer", "chuko_nu", "cavalry", "horse_archer", "war_elephant", "catapult", "healer", "hwacha", "samurai", "fishing_boat", "galley", "fire_ship"];
+      const type = String(args[0] || "").toLowerCase();
+      if (!allowed.includes(type)) return false;
+      const count = Math.max(1, Math.min(30, Math.floor(Number(args[1]) || 1)));
+      const team = String(args[2] || "player").toLowerCase() === "enemy" ? "enemy" : "player";
+      const cx = Math.max(2, Math.min((state.mapSize || 64) - 3, (cam.x / (TILE_W / 2) + cam.y / (TILE_H / 2)) / 2));
+      const cy = Math.max(2, Math.min((state.mapSize || 64) - 3, (cam.y / (TILE_H / 2) - cam.x / (TILE_W / 2)) / 2));
+      for (let i = 0; i < count; i++) {
+        const ang = (i / Math.max(1, count)) * Math.PI * 2;
+        const rad = 0.6 + (i % 4) * 0.55;
+        const ux = Math.max(1, Math.min((state.mapSize || 64) - 2, cx + Math.cos(ang) * rad));
+        const uy = Math.max(1, Math.min((state.mapSize || 64) - 2, cy + Math.sin(ang) * rad));
+        spawnUnit(team, type, ux, uy, team === "enemy" ? 1 : 0);
+      }
+      if (typeof updateHud === "function") updateHud();
+      return true;
+    }
+    if (c === "damage") {
+      const selBldg = state.buildings.find(b => b.id === state.selectedBuildingId && b.hp > 0);
+      let target = selBldg;
+      if (!target) {
+        const cx = (cam.x / (TILE_W / 2) + cam.y / (TILE_H / 2)) / 2;
+        const cy = (cam.y / (TILE_H / 2) - cam.x / (TILE_W / 2)) / 2;
+        const tcs = state.buildings.filter(b => b.type === "town_center" && b.hp > 0);
+        tcs.sort((a, b) => Math.hypot(a.tx - cx, a.ty - cy) - Math.hypot(b.tx - cx, b.ty - cy));
+        target = tcs[0];
+      }
+      if (!target) return false;
+      target.hp = Math.max(1, Math.floor(target.hp - (target.maxHp || target.hp) * 0.5));
+      if (typeof renderCommandDock === "function") renderCommandDock();
+      return true;
+    }
+    if (c === "deplete") {
+      const selBldg = state.buildings.find(b => b.id === state.selectedBuildingId && b.type === "farm");
+      let target = selBldg;
+      if (!target) {
+        const cx = (cam.x / (TILE_W / 2) + cam.y / (TILE_H / 2)) / 2;
+        const cy = (cam.y / (TILE_H / 2) - cam.x / (TILE_W / 2)) / 2;
+        const farms = state.buildings.filter(b => b.type === "farm" && b.team === "player" && !b.depleted);
+        farms.sort((a, b) => Math.hypot(a.tx - cx, a.ty - cy) - Math.hypot(b.tx - cx, b.ty - cy));
+        target = farms[0];
+      }
+      if (!target) return false;
+      target.cropAmount = 0;
+      target.depleted = true;
+      if (typeof renderCommandDock === "function") renderCommandDock();
+      return true;
+    }
+    if (c === "fog") {
+      state.devFogReveal = !state.devFogReveal;
+      if (state.devFogReveal && state.fog) {
+        for (let y = 0; y < state.mapSize; y++) {
+          for (let x = 0; x < state.mapSize; x++) state.fog[y][x] = 2;
+        }
+      } else if (typeof recomputeFog === "function") {
+        recomputeFog();
+      }
+      return true;
+    }
+    if (c === "speed") {
+      const spd = Number(args[0]);
+      if (![0.5, 1, 2, 4].includes(spd)) return false;
+      state.devSimSpeed = spd;
+      return true;
+    }
+    return false;
+  }
+};
 
   function addFloat(x, y, text, color = "#F5B841") {
     state.floats.push({ x, y, text, color, life: 1.05 });
@@ -930,6 +1033,7 @@ const updateBattleHud = initBattleHud();
 
   function getPopStats(team) {
     const pop = state.units.filter(u => u.team === team).length;
+  if (team === "player" && state.devPopCap > 0) return { pop, cap: state.devPopCap };
     const cap = Math.min(POPULATION_LIMIT, state.buildings.filter(b => b.team === team).reduce((s, b) => s + (BLDG_DEFS[b.type].pop || 0), 0));
     return { pop, cap };
   }
@@ -1149,6 +1253,7 @@ const updateBattleHud = initBattleHud();
   }
 
   function stepSimulation(dt) {
+  dt *= (state.devSimSpeed || 1);
     if (!state.running || state.gameOver) return; if (state.stats) state.stats.elapsedSec += dt;
     tickAgeResearch(dt);
     if (state.selectedBuildingId != null) {
