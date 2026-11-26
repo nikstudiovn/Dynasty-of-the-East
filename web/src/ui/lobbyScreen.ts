@@ -45,7 +45,7 @@ const QUICK_GUIDE_ITEMS: Array<{ title: string; desc: string }> = [
   },
   {
     title: "Chọn nhanh & Đạo 1–3",
-    desc: "Chạm đúp chọn quân cùng loại trong 6 ô; nhấn đúp giữ để kéo khung chọn.",
+    desc: "Chạm đúp vào một đơn vị để chọn quân cùng loại trong bán kính 7 ô. Dùng nút Kéo chọn để vẽ khung.",
   },
   {
     title: "Camera 3D cảm ứng",

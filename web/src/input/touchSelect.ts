@@ -1,6 +1,7 @@
 // Dynasty of the East – Touch & Mouse Double-Tap / Box-Select Controller
 
-export const DOUBLE_TAP_RADIUS = 6;
+export const DOUBLE_TAP_RADIUS = 7;
+export const DOUBLE_TAP_MS = 350;
 
 export interface SelectableUnit {
   id?: string | number;
@@ -10,6 +11,7 @@ export interface SelectableUnit {
   y: number;
   hp?: number;
   alive?: boolean;
+  garrisoned?: boolean;
 }
 
 export interface BoxSelectRect {
@@ -30,7 +32,6 @@ export interface TouchSelectOptions<T extends SelectableUnit = SelectableUnit> {
   boxOverlayEl?: HTMLElement | null;
   onBoxSelectChange?: (rect: BoxSelectRect | null) => void;
   isBoxSelectToggleActive?: () => boolean;
-  onDoubleTapEmpty?: (worldX: number, worldY: number) => void;
   doubleTapMs?: number;
   tapMaxDistPx?: number;
   dragThresholdPx?: number;
@@ -43,7 +44,7 @@ export interface TouchSelectController {
 }
 
 function isUnitAlive(u: SelectableUnit): boolean {
-  return (u.hp === undefined || u.hp > 0) && u.alive !== false;
+  return (u.hp === undefined || u.hp > 0) && u.alive !== false && !u.garrisoned;
 }
 
 export function selectSameTypeNearby<T extends SelectableUnit>(
@@ -94,15 +95,14 @@ function isBtnBoxSelectActive(): boolean {
 export function createTouchSelectController<T extends SelectableUnit = SelectableUnit>(
   opts: TouchSelectOptions<T>,
 ): TouchSelectController {
-  const doubleTapMs = opts.doubleTapMs ?? 320;
+  const doubleTapMs = opts.doubleTapMs ?? DOUBLE_TAP_MS;
   const tapMaxDistPx = opts.tapMaxDistPx ?? 16;
   const dragThresholdPx = opts.dragThresholdPx ?? 8;
   const radius = opts.radius ?? DOUBLE_TAP_RADIUS;
 
   const activePointers = new Set<number>();
   let trackingPointerId: number | null = null;
-  let lastTap: { time: number; clientX: number; clientY: number } | null = null;
-  let isDoubleTapCandidate = false;
+  let lastTap: { time: number; unit: T; pointerType: string } | null = null;
   let isToggleBoxMode = false;
   let isDraggingBox = false;
   let startClientX = 0;
@@ -125,7 +125,6 @@ export function createTouchSelectController<T extends SelectableUnit = Selectabl
 
   const resetGesture = () => {
     trackingPointerId = null;
-    isDoubleTapCandidate = false;
     isToggleBoxMode = false;
     if (isDraggingBox) {
       isDraggingBox = false;
@@ -138,7 +137,7 @@ export function createTouchSelectController<T extends SelectableUnit = Selectabl
     let best: T | undefined;
     let bestDist2 = 1.2 * 1.2;
     for (const u of units) {
-      if (!isUnitAlive(u)) continue;
+      if (!isUnitAlive(u) || u.team !== opts.getPlayerTeam()) continue;
       const dx = u.x - worldX;
       const dy = u.y - worldY;
       const d2 = dx * dx + dy * dy;
@@ -171,27 +170,16 @@ export function createTouchSelectController<T extends SelectableUnit = Selectabl
 
     if (toggleActive) {
       isToggleBoxMode = true;
-      isDoubleTapCandidate = false;
       lastTap = null;
       return;
     }
 
     isToggleBoxMode = false;
-    const now = performance.now();
-    if (lastTap && now - lastTap.time <= doubleTapMs) {
-      const dx = e.clientX - lastTap.clientX;
-      const dy = e.clientY - lastTap.clientY;
-      if (dx * dx + dy * dy <= tapMaxDistPx * tapMaxDistPx) {
-        isDoubleTapCandidate = true;
-        return;
-      }
-    }
-    isDoubleTapCandidate = false;
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (e.pointerId !== trackingPointerId || activePointers.size !== 1) return;
-    if (!isDoubleTapCandidate && !isToggleBoxMode) return;
+    if (!isToggleBoxMode) return;
 
     const dx = e.clientX - startClientX;
     const dy = e.clientY - startClientY;
@@ -231,29 +219,18 @@ export function createTouchSelectController<T extends SelectableUnit = Selectabl
       return;
     }
 
-    if (isDoubleTapCandidate) {
-      const w = opts.screenToWorld(e.clientX, e.clientY);
-      if (w) {
-        const anchor = opts.findUnitAt?.(w.x, w.y) ?? findFallbackUnit(w.x, w.y);
-        if (anchor) {
-          const selected = selectSameTypeNearby(opts.getUnits(), anchor, radius);
-          opts.onSelectUnits(selected);
-        } else {
-          opts.onDoubleTapEmpty?.(w.x, w.y);
-        }
-      }
-      lastTap = null;
-      resetGesture();
-      return;
-    }
-
-    const dx = e.clientX - startClientX;
-    const dy = e.clientY - startClientY;
-    if (dx * dx + dy * dy <= tapMaxDistPx * tapMaxDistPx) {
-      lastTap = { time: performance.now(), clientX: e.clientX, clientY: e.clientY };
-    } else {
-      lastTap = null;
-    }
+    const distance = Math.hypot(e.clientX - startClientX, e.clientY - startClientY);
+    const world = !isToggleBoxMode && distance < Math.min(tapMaxDistPx, dragThresholdPx)
+      ? opts.screenToWorld(e.clientX, e.clientY) : null;
+    const anchor = world ? opts.findUnitAt?.(world.x, world.y) ?? findFallbackUnit(world.x, world.y) : null;
+    if (anchor && isUnitAlive(anchor) && anchor.team === opts.getPlayerTeam()) {
+      const now = performance.now();
+      const sameUnit = lastTap && (lastTap.unit === anchor || anchor.id != null && lastTap.unit.id === anchor.id);
+      if (sameUnit && lastTap && lastTap.pointerType === e.pointerType && now - lastTap.time <= doubleTapMs) {
+        opts.onSelectUnits(selectSameTypeNearby(opts.getUnits(), anchor, radius));
+        lastTap = null;
+      } else lastTap = { time: now, unit: anchor, pointerType: e.pointerType };
+    } else lastTap = null;
     resetGesture();
   };
 
