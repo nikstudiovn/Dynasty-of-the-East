@@ -612,30 +612,68 @@ function spokedWheel(radius: number): THREE.Group {
 
 function buildShip(r: Rig, type: string, team: string): void {
   const b = r.body;
+const f = r.faction;
   const fishing = type === "fishing_boat", fire = type === "fire_ship";
-  const width = fishing ? 0.44 : fire ? 0.56 : 0.70;
-  const length = fishing ? 0.85 : fire ? 1.2 : 1.3;
-  const hullM = pbr("mat_ship_wood", fire ? "#4f3526" : PAL.hull);
-  const trim = cloth(fishing ? mute(team, 0.4) : team);
+    const width = fishing ? 0.44 : fire ? 0.50 : (f === "goryeo" ? 0.74 : 0.70);
+  const length = fishing ? 0.85 : fire ? 1.28 : 1.3;
+  const hullHex = fire ? (f === "goryeo" ? "#2e343b" : f === "fuso" ? "#1e2738" : "#4f3526") : f === "goryeo" ? "#2f3338" : f === "fuso" ? (fishing ? "#5a4634" : "#182235") : f === "bac_cuong" ? (fishing ? "#8c6742" : "#5e432c") : f === "dai_viet" && !fishing ? "#3b281c" : PAL.hull;
+  const hullM = pbr("mat_ship_wood", hullHex);
+    const trimHex = f === "goryeo" ? "#6c8294" : f === "fuso" ? "#29467a" : f === "dai_viet" && !fishing ? PAL.bronze : fishing ? mute(team, 0.4) : team;
+  const trim = f === "dai_viet" && !fishing ? bronze() : cloth(trimHex);
   // hull sits on the waterline (body y = 0 is WATER_LEVEL): keel slightly submerged, gunwale at ~0.16
   const hull = mesh(cyl(0.5, 0.39, 0.17, 8), hullM, 0, 0.07, 0);
   hull.scale.set(width, 1, length);
   b.add(hull);
   const prow = mesh(cone(width * 0.3, length * 0.22, 6), hullM, 0, 0.11, length * 0.52); prow.rotation.x = Math.PI / 2; b.add(prow);
   b.add(mesh(box(width * 0.6, 0.08, length * 0.16), hullM, 0, 0.2, -length * 0.38)); // raised stern
-  b.add(mesh(box(width * 0.78, 0.022, length * 0.74), trim, 0, 0.162, 0, false)); // team gunwale band
+  b.add(mesh(box(width * 0.78, 0.022, length * 0.74), trim, 0, 0.162, 0, false));
+  if (fire) { const ram = taperedPart(0.01, width * 0.22, length * 0.26, 0.7, f === "fuso" ? steel("#cfd8e3") : steel(), 0.11); ram.rotation.x = Math.PI / 2; ram.position.z = length * 0.56; b.add(ram); }
+  if (f === "fuso" && fishing) { const fBow = mesh(cone(width * 0.2, length * 0.18, 6), trim, 0, 0.17, length * 0.54); fBow.rotation.x = Math.PI / 2 - 0.35; b.add(fBow); }
+  if (f === "trung_nguyen" && !fishing && !fire) b.add(mesh(box(width * 0.62, 0.11, length * 0.22), hullM, 0, 0.27, -length * 0.36));
+  if (f === "bac_cuong" && !fishing && !fire) addArmorPlates(b, [-0.28, 0, 0.28].map((z) => mesh(box(width * 0.82, 0.03, 0.04), steel(), 0, 0.14, length * z)));
+  if (f === "goryeo" && !fishing) {
+    addArmorPlates(b, [-1, 1].flatMap((s) => [-0.24, 0, 0.24].map((z) => mesh(box(0.03, 0.12, length * 0.2), pbr("mat_goryeo_plate", "#6c8294"), s * width * 0.4, 0.17, length * z))));
+    if (!fire) { const shell = mesh(cyl(width * 0.42, width * 0.44, length * 0.68, 8), steel("#4a5562"), 0, 0.24, 0); shell.rotation.x = Math.PI / 2; shell.scale.set(1, 1, 0.45); b.add(shell); }
+    const dragon = new THREE.Group(); dragon.position.set(0, 0.2, length * 0.5);
+    const neck = taperedPart(0.04, 0.07, 0.16, 0.8, steel("#4a5562"), 0); neck.rotation.x = 0.5; dragon.add(neck);
+    dragon.add(mesh(box(0.09, 0.08, 0.11), steel("#4a5562"), 0, 0.06, 0.07));
+    dragon.add(mesh(box(0.095, 0.02, 0.02), bronze(), 0, 0.08, 0.08, false)); b.add(dragon);
+  }
+  if (f === "fuso" && !fishing && !fire) addArmorPlates(b, [-1, 1].flatMap((s) => [-0.25, -0.08, 0.09, 0.26].map((z) => mesh(box(0.022, 0.14, 0.12), woodM("#3a2c22"), s * width * 0.39, 0.22, length * z))));
+  if ((f === "dai_viet" || f === "trung_nguyen" || f === "bac_cuong") && !fishing && !fire) {
+    const shSides = f === "trung_nguyen" ? 6 : 10;
+    const shMat = f === "dai_viet" ? bronze() : f === "trung_nguyen" ? trim : woodM("#7a5a38");
+    addArmorPlates(b, [-1, 1].flatMap((s) => [-0.22, 0, 0.22].map((z) => { const sh = mesh(cyl(0.052, 0.052, 0.018, shSides), shMat, s * width * 0.4, 0.2, length * z); sh.rotation.z = Math.PI / 2; return sh; })));
+  }// team gunwale band
   b.add(mesh(box(width * 0.66, 0.02, length * 0.66), woodM("#8a6a48"), 0, 0.15, 0)); // deck
   // mast pivots at the deck so it can be lowered aft when passing under a bridge
   const mast = new THREE.Group(); mast.position.set(0, 0.16, 0.04); b.add(mast);
   const mastH = fishing ? 0.5 : 0.62;
   mast.add(mesh(cyl(0.018, 0.024, mastH, 6), woodM(PAL.woodDark), 0, mastH / 2, 0));
   const yard = mesh(cyl(0.01, 0.01, width * 0.95, 5), woodM(PAL.woodDark), 0, mastH - 0.04, 0.02, false); yard.rotation.z = Math.PI / 2; mast.add(yard);
-  const sailH = fishing ? 0.3 : 0.4;
+    const sailH = fishing ? (f === "bac_cuong" ? 0.22 : 0.3) : 0.4;
   const sailPivot = new THREE.Group(); sailPivot.position.set(0, mastH - 0.04, 0.03); mast.add(sailPivot);
-  const sailColor = fishing ? PAL.sail : fire ? "#6b5a4a" : mute(team, 0.25);
+    const sailColor = f === "dai_viet" ? (fishing ? "#7a5436" : "#8a5c38") : f === "goryeo" ? (fishing ? "#b8c2cc" : "#707c88") : f === "fuso" ? (fire ? "#223a66" : "#264375") : fishing ? PAL.sail : fire ? "#6b5a4a" : mute(team, 0.25);
   const sail = mesh(geo(`sail-${width}-${sailH}`, () => new THREE.PlaneGeometry(width * 0.85, sailH, 2, 4).translate(0, -sailH / 2, 0)), pbr("mat_sail", sailColor, { side: THREE.DoubleSide }), 0, 0, 0);
   sail.rotation.x = -0.06;
   sailPivot.add(sail);
+  if (f === "dai_viet") for (const ry of [0.28, 0.52, 0.76]) { const rib = mesh(box(width * 0.86, 0.01, 0.01), woodM(PAL.bamboo), 0, -sailH * ry, 0.004, false); rib.rotation.z = 0.14; sail.add(rib); }
+  if (f === "trung_nguyen") {
+    for (const ry of [0.25, 0.5, 0.75]) sail.add(mesh(box(width * 0.86, 0.01, 0.01), woodM(PAL.bamboo), 0, -sailH * ry, 0.004, false));
+    if (!fishing && !fire) {
+      const m2 = new THREE.Group(); m2.position.set(0, 0.18, -length * 0.25); b.add(m2);
+      m2.add(mesh(cyl(0.014, 0.018, 0.44, 6), woodM(PAL.woodDark), 0, 0.22, 0));
+      const s2 = mesh(box(width * 0.6, 0.26, 0.008), pbr("mat_sail", sailColor), 0, 0.28, 0.01);
+      for (const ry of [-0.07, 0.0, 0.07]) s2.add(mesh(box(width * 0.62, 0.008, 0.012), woodM(PAL.bamboo), 0, ry, 0.002, false));
+      m2.add(s2);
+    }
+  }
+  if (f === "fuso") {
+    if (fishing) sail.add(mesh(box(width * 0.84, sailH * 0.24, 0.004), cloth("#f2f4f7"), 0, -sailH * 0.5, 0.003, false));
+    else if (!fire) for (const ry of [0.28, 0.54, 0.78]) sail.add(mesh(box(width * 0.84, sailH * 0.12, 0.004), cloth("#cdd6e0"), 0, -sailH * ry, 0.003, false));
+    else { const mon = mesh(cyl(0.055, 0.055, 0.006, 12), cloth("#e4ebf2"), 0, -sailH * 0.45, 0.005, false); mon.rotation.x = Math.PI / 2; sail.add(mon); }
+  }
+  if (f === "bac_cuong" && !fishing && !fire) { const tail = mesh(cone(0.025, 0.18, 6), cloth("#d8cfc2"), 0, mastH + 0.04, -0.06, false); tail.rotation.x = -1.1; mast.add(tail); }
   if (!fishing) sailPivot.add(mesh(box(width * 0.2, sailH * 0.3, 0.004), cloth(team), 0, -sailH * 0.45, 0.004, false)); // team emblem
   flag(mast, 0, mastH - 0.02, 0, team, 0.16);
   r.tools.mast = mast; r.tools.sail = sailPivot;
@@ -655,6 +693,11 @@ function buildShip(r: Rig, type: string, team: string): void {
     for (let k = 0; k < 4; k++) { const f = mesh(box(0.06, 0.016, 0.022), steel("#9fb3bd"), Math.cos(k * 1.7) * 0.025, k * 0.008, Math.sin(k * 1.7) * 0.025, false); f.rotation.y = k * 1.1; fish.add(f); }
     fish.visible = false;
     r.tools.fish = fish;
+    if (f === "dai_viet") { const roll = mesh(cyl(0.035, 0.035, 0.16, 8), mat("#8d7f60", { surface: "lattice", rough: 0.9 }), width * 0.16, 0.19, -length * 0.22); roll.rotation.z = Math.PI / 2; b.add(roll); b.add(mesh(cyl(0.055, 0.045, 0.07, 8), woodM(PAL.bamboo), -width * 0.16, 0.19, -length * 0.18)); }
+    else if (f === "trung_nguyen") { const canopy = mesh(cyl(width * 0.34, width * 0.34, length * 0.34, 8), woodM(PAL.bamboo), 0, 0.24, -length * 0.18); canopy.rotation.x = Math.PI / 2; canopy.scale.set(1, 1, 0.55); b.add(canopy); }
+    else if (f === "bac_cuong") { b.add(mesh(cyl(0.055, 0.05, 0.11, 8), woodM("#9b7348"), -width * 0.16, 0.21, -length * 0.18)); b.add(mesh(cyl(0.058, 0.058, 0.015, 8), steel(), -width * 0.16, 0.23, -length * 0.18)); }
+    else if (f === "goryeo") b.add(mesh(cyl(0.058, 0.045, 0.075, 8), woodM("#7a7060"), width * 0.16, 0.19, -length * 0.18));
+    else if (f === "fuso") b.add(mesh(box(0.11, 0.08, 0.12), woodM("#8f6e49"), -width * 0.15, 0.2, -length * 0.18));
   } else if (!fire) {
     // galley: oar banks, raised fighting deck with team shields along the rails and a bow-mounted repeating crossbow
     for (const side of [-1, 1]) for (let i = 0; i < 4; i++) {
@@ -679,7 +722,8 @@ function buildShip(r: Rig, type: string, team: string): void {
     const flame = mesh(cone(0.075, 0.2, 7), mat("#ffb05a", { emissive: "#ff6a1a", emissiveIntensity: 1.8 }), 0, 0.13, 0, false);
     const core = mesh(cone(0.04, 0.12, 6), mat("#fff1b8", { emissive: "#ffc46a", emissiveIntensity: 2.2 }), 0, 0.1, 0, false);
     basket.add(flame, core);
-    r.tools.flame = flame; r.tools.flameCore = core; r.tools.brazier = basket;
+    r.tools.flame = flame; r.tools.flameCore = core; r.tools.brazier =
+    for (const sx of [-1, 1]) { b.add(mesh(cyl(0.055, 0.05, 0.11, 8), woodM("#5c3a21"), sx * width * 0.24, 0.21, -length * 0.12)); b.add(mesh(cyl(0.058, 0.058, 0.014, 8), steel(), sx * width * 0.24, 0.23, -length * 0.12)); } basket;
   }
 }
 function pbrInfantryBody(r: Rig, b: THREE.Group, team: string, opts: { robe?: boolean; tunicColor?: string; pantsColor?: string; beltColor?: string } = {}) { const tunic = opts.tunicColor || mute(team); const pants = opts.pantsColor || PAL.pants; const belt = opts.beltColor || PAL.leatherDark; const legL = new THREE.Group(); legL.position.set(-0.048, 0.21, 0); b.add(legL); r.legL = legL; legL.add(taperedPart(0.036, 0.028, 0.14, 0.036, cloth(pants), -0.07)); legL.add(taperedPart(0.028, 0.022, 0.09, 0.03, leather(PAL.leatherDark), -0.165)); const legR = new THREE.Group(); legR.position.set(0.048, 0.21, 0); b.add(legR); r.legR = legR; legR.add(taperedPart(0.036, 0.028, 0.14, 0.036, cloth(pants), -0.07)); legR.add(taperedPart(0.028, 0.022, 0.09, 0.03, leather(PAL.leatherDark), -0.165)); if (opts.robe) { b.add(taperedPart(0.088, 0.118, 0.23, 0.076, cloth(tunic), 0.21)); b.add(taperedPart(0.086, 0.082, 0.14, 0.072, cloth(tunic), 0.36)); } else { b.add(taperedPart(0.092, 0.076, 0.19, 0.076, cloth(tunic), 0.32)); b.add(taperedPart(0.076, 0.098, 0.11, 0.072, cloth(shade(tunic, -0.15)), 0.19)); } b.add(mesh(cyl(0.082, 0.084, 0.032, 10), leather(belt), 0, 0.25, 0)); const armL = new THREE.Group(); armL.position.set(-0.105, 0.4, 0); b.add(armL); r.armL = armL; armL.add(taperedPart(0.03, 0.024, 0.11, 0.03, cloth(tunic), -0.055)); const elbowL = new THREE.Group(); elbowL.position.set(0, -0.11, 0); armL.add(elbowL); r.elbowL = elbowL; elbowL.add(taperedPart(0.023, 0.018, 0.1, 0.023, skinM(), -0.05)); const armR = new THREE.Group(); armR.position.set(0.105, 0.4, 0); b.add(armR); r.armR = armR; armR.add(taperedPart(0.03, 0.024, 0.11, 0.03, cloth(tunic), -0.055)); const elbowR = new THREE.Group(); elbowR.position.set(0, -0.11, 0); armR.add(elbowR); r.elbowR = elbowR; elbowR.add(taperedPart(0.023, 0.018, 0.1, 0.023, skinM(), -0.05)); const head = new THREE.Group(); head.position.set(0, 0.44, 0); b.add(head); r.head = head; head.add(mesh(cyl(0.024, 0.028, 0.04, 8), skinM(), 0, 0.01, 0)); head.add(mesh(sphere(0.062, 10, 8), skinM(), 0, 0.075, 0)); r.arm = armR; }
@@ -772,7 +816,7 @@ function buildUnit(type: string, team: string, faction: Faction): Rig {
         l.add(mesh(cyl(0.06, 0.065, 0.16, 8), em, 0, -0.08, 0));
         const knee = new THREE.Group(); knee.position.y = -0.16; l.add(knee);
         knee.add(mesh(cyl(0.062, 0.07, 0.14, 8), em, 0, -0.07, 0));
-      e.add(l); r.legs4.push(l); r.knees.push(knee); } .e.add(mesh(box(0.4, 0.024, 0.48), cloth(team), 0, 0.585, -0.02, false)); e.add(mesh(box(0.42, 0.012, 0.5), bronze(), 0, 0.578, -0.02, false)); for (const s of [-1, 1]) { e.add(mesh(box(0.016, 0.11, 0.36), cloth("#1e1a18"), s * 0.205, 0.52, -0.02, false)); e.add(mesh(box(0.02, 0.02, 0.37), bronze(), s * 0.208, 0.47, -0.02, false)); } e.add(mesh(box(0.3, 0.03, 0.38), woodM(PAL.woodDark), 0, 0.615, -0.03)); for (const [x, zz] of [[-0.14, 0.14], [0.14, 0.14], [-0.14, -0.2], [0.14, -0.2]]) { e.add(mesh(cyl(0.013, 0.013, 0.2, 5), woodM(PAL.woodDark), x, 0.72, zz)); e.add(mesh(cyl(0.016, 0.016, 0.024, 5), bronze(), x, 0.81, zz, false)); } for (const s of [-1, 1]) { e.add(mesh(box(0.014, 0.06, 0.36), woodM(PAL.woodDark), s * 0.14, 0.68, -0.03, false)); e.add(mesh(box(0.018, 0.016, 0.37), bronze(), s * 0.14, 0.715, -0.03, false)); } e.add(mesh(cone(0.24, 0.1, 4), cloth(mute(team, 0.3)), 0, 0.86, -0.03)); e.add(mesh(cone(0.024, 0.05, 6), bronze(), 0, 0.925, -0.03, false)); const rider = new THREE.Group(); rider.position.set(0, 0.62, -0.05); rider.scale.setScalar(0.65); humanoid(r, rider, cape, { armor: "scale", head: "steel", legs: false, accent: team }); vietLeafArmor(rider); rider.add(mesh(cyl(0.092, 0.1, 0.022, 8), bronze(), 0, 0.485, 0, false)); rider.add(mesh(cone(0.02, 0.055, 6), bronze(), 0, 0.57, 0, false));
+      e.add(l); r.legs4.push(l); r.knees.push(knee); } .e.add(mesh(box(0.4, 0.024, 0.48), cloth(team), 0, 0.585, -0.02, false)); e.add(mesh(box(0.42, 0.012, 0.5), bronze(), 0, 0.578, -0.02, false)); for (const s of [-1, 1]) { e.add(mesh(box(0.016, 0.11, 0.36), cloth("#1e1a18"), s * 0.205, 0.52, -0.02, false)); e.add(mesh(box(0.02, 0.02, 0.37), bronze(), s * 0.208, 0.47, -0.02, false)); } e.add(mesh(box(0.3, 0.03, 0.38), woodM(PAL.woodDark), 0, 0.615, -0.03)); for (const [x, zz] of [[-0.14, 0.14], [0.14, 0.14], [-0.14, -0.2], [0.14, -0.2]]) { e.add(mesh(cyl(0.013, 0.013, 0.2, 5), woodM(PAL.woodDark), x, 0.72, zz)); e.add(mesh(cyl(0.016, 0.016, 0.024, 5), bronze(), x, 0.81, zz, false)); } for (const s of [-1, 1]) { e.add(mesh(box(0.014, 0.06, 0.36), woodM(PAL.woodDark), s * 0.14, 0.68, -0.03, false)); e.add(mesh(box(0.018, 0.016, 0.37), bronze(), s * 0.14, 0.715, -0.03, false)); } e.add(mesh(cone(0.24, 0.1, 4), cloth(mute(team, 0.3)), 0, 0.86, -0.03)); e.add(mesh(cone(0.024, 0.05, 6), bronze(), 0, 0.925, -0.03, false)); const rider = new THREE.Group(); rider.position.set(0, 0.62, -0.05); rider.scale.setScalar(0.65); humanoid(r, rider, cape, { armor: "scale", head: "steel", legs: false, accent: team }); vietLeafArmor(rider); rider.add(mesh(cyl(0.092, 0.1, 0.022, 8), bronze(), 0, 0.485, 0, false)); rider.add(mesh(cone(0.02, 0.055, 6), bronze(), 0, 0.57, 0, false))
      
       const spear = new THREE.Group();
       spear.add(mesh(cyl(0.01, 0.01, 0.8, 5), woodM(), 0, 0.15, 0));
