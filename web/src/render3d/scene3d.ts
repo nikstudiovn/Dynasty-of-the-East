@@ -349,7 +349,7 @@ updateLanterns(positions: ReadonlyArray<{ x: number; y?: number; z: number }>, b
         this.renderer.shadowMap.needsUpdate = true;
         this.shadowElapsed %= 1 / 30;
       } */
-    }
+  }
     this.sky.position.set(this.camera.position.x, 0, this.camera.position.z);
     this.weather.update(dt, this.scene, this.sun, this.hemi, this.target.x, this.target.z);
     this.sky.material.uniforms.uHorizon.value.copy(this.weather.horizon);
