@@ -1,7 +1,8 @@
 // Dynasty of the East 3D — smooth 3-state fog of war: a terrain-hugging veil driven by a mapSize×mapSize (48/64/96) DataTexture
 // sampled with LinearFilter for soft edges.
 import * as THREE from "three";
-import { MAP_N, terrainHeight, bridgeDeckAt } from "./common";
+import { MAP_N, WATER_LEVEL, terrainHeight, bridgeDeckAt } from "./common";
+
 
 const ALPHA = [0.98, 0.38, 0]; // unexplored / explored / visible
 /** Veil quads per side: 2 per tile (1.5 on 96×96) keeps the veil smooth and cheap on mobile GPUs. */
@@ -9,6 +10,8 @@ const segFor = () => (MAP_N >= 96 ? Math.round(MAP_N * 1.5) : MAP_N * 2);
 
 export class Fog3D {
   readonly mesh: THREE.Mesh;
+  readonly riverMist: THREE.Mesh;
+  private readonly mistMat: THREE.ShaderMaterial;
   private readonly data = new Uint8Array(MAP_N * MAP_N * 4);
   private readonly cur = new Float32Array(MAP_N * MAP_N * 2); // [ink, alpha] animated
   private readonly tex: THREE.DataTexture;
@@ -42,38 +45,31 @@ export class Fog3D {
     g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
 
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uFog: { value: this.tex }, uTime: { value: 0 }, uN: { value: MAP_N } },
+      uniforms: { uFog: { value: this.tex }, uTime: { value: 0 }, uN: { value: MAP_N } , uTint: { value: new THREE.Color(0xffffff) }, },
       transparent: true,
       depthWrite: false,
       fog: false,
-      vertexShader: `
-        varying vec2 vUv;
-        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      vertexShader: `uniform sampler2D uFog; varying vec2 vUv; void main() { vUv = uv; vec3 pos = position; float ink = texture2D(uFog, uv).r; pos.y += smoothstep(0.3, 0.75, ink) * 0.55; gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0); }`,
       fragmentShader: `
-        uniform sampler2D uFog; uniform float uTime; uniform float uN; varying vec2 vUv;
+        uniform sampler2D uFog; uniform float uTime; uniform float uN; varying vec2 vUv; uniform vec3 uTint;
         float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-          return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
+      float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * n2(p); p = p * 2.03 + vec2(17.1, 31.7); a *= 0.5; } return v; }     return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
         void main() {
           vec2 p = vUv * uN;
-          vec2 drift = vec2(uTime * 0.052, uTime * 0.026);
-          float cloud = 0.72 * n2(p * 0.54 + drift) + 0.28 * n2(p * 1.85 - drift * 1.4);
-          vec2 bleed = vec2(cloud - 0.5, n2(p * 0.59 - drift.yx + 9.7) - 0.5);
-          vec4 center = texture2D(uFog, vUv);
-          vec4 brush = texture2D(uFog, vUv + bleed * 0.91 / uN);
-          vec2 tint = mix(center.rg, brush.rg, 0.69);
+          vec2 drift = vec2(uTime * 0.052, uTime * 0.026); float cloud = fbm(p * 0.45 + drift); vec2 bleed = vec2(cloud - 0.5, fbm(p * 0.55 - drift.yx + 9.7) - 0.5) * (0.85 / uN); float s = 1.0 / uN; vec2 cUv = vUv + bleed; vec2 tint = texture2D(uFog, cUv).rg * 0.4 + (texture2D(uFog, cUv + vec2(s, 0.0)).rg + texture2D(uFog, cUv - vec2(s, 0.0)).rg + texture2D(uFog, cUv + vec2(0.0, s)).rg + texture2D(uFog, cUv - vec2(0.0, s)).rg) * 0.15;
           float paper = n2(p * 7.4 + cloud * 3.0);
           float a = tint.y * mix(0.93, 1.06, cloud);
           vec3 ink = mix(vec3(0.012, 0.017, 0.018), vec3(0.078, 0.098, 0.094), cloud * (0.81 + paper * 0.19));
           vec3 wash = mix(vec3(0.095, 0.101, 0.092), vec3(0.21, 0.225, 0.193), cloud);
-          gl_FragColor = vec4(mix(wash, ink, tint.x), clamp(a, 0.0, 1.0));
+          gl_FragColor = vec4(mix(wash, ink, tint.x) * uTint, clamp(a, 0.0, 1.0));
           #include <colorspace_fragment>
         }`
     });
     this.mesh = new THREE.Mesh(g, this.mat);
     this.mesh.renderOrder = 8;
     this.mesh.userData.occludesBloom = true;
-    this.mesh.frustumCulled = false;
+    this.mesh.frustumCulled = false; const mg = new THREE.PlaneGeometry(MAP_N, MAP_N, 1, 1); mg.rotateX(-Math.PI / 2); this.mistMat = new THREE.ShaderMaterial({ uniforms: { uTime: { value: 0 }, uOpacity: { value: 0 }, uColor: { value: new THREE.Color(0xdde6ee) }, uN: { value: MAP_N } }, transparent: true, depthWrite: false, vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`, fragmentShader: `uniform float uTime; uniform float uOpacity; uniform vec3 uColor; uniform float uN; varying vec2 vUv; float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); } float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); } float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * n2(p); p = p * 2.02 + vec2(13.7, 29.3); a *= 0.5; } return v; } void main() { vec2 p = vUv * (uN * 0.18); float m = fbm(p + vec2(uTime * 0.035, uTime * 0.018)) * 0.65 + fbm(p * 1.9 - vec2(uTime * 0.025, -uTime * 0.015)) * 0.35; float edge = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x) * smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.92, vUv.y); float a = smoothstep(0.28, 0.78, m) * uOpacity * edge; gl_FragColor = vec4(uColor, a); #include <colorspace_fragment> }` }); this.riverMist = new THREE.Mesh(mg, this.mistMat); this.riverMist.position.set(MAP_N / 2, WATER_LEVEL + 0.14, MAP_N / 2); this.riverMist.renderOrder = 6; this.riverMist.frustumCulled = false; this.riverMist.visible = false;
   }
 
   /** Frees the veil geometry, material and DataTexture (called when the map size / type changes). */
@@ -81,9 +77,9 @@ export class Fog3D {
     this.mesh.parent?.remove(this.mesh);
     this.mesh.geometry.dispose();
     this.mat.dispose();
-    this.tex.dispose();
+    this.tex.dispose(); this.riverMist.parent?.remove(this.riverMist); this.riverMist.geometry.dispose(); this.mistMat.dispose();
   }
-
+  setTint(hexOrColor: number | THREE.Color): void { if (hexOrColor instanceof THREE.Color) this.mat.uniforms.uTint.value.copy(hexOrColor); else this.mat.uniforms.uTint.value.setHex(hexOrColor); } setRiverMist(opacity: number, hexOrColor?: number | THREE.Color): void { this.mistMat.uniforms.uOpacity.value = Math.max(0, Math.min(1, opacity)); this.riverMist.visible = opacity > 0.005; if (hexOrColor !== undefined) { if (hexOrColor instanceof THREE.Color) this.mistMat.uniforms.uColor.value.copy(hexOrColor); else this.mistMat.uniforms.uColor.value.setHex(hexOrColor); } }
   /** Lift the veil so it hugs the sculpted hills (re-run when a new map is loaded). */
   private conform(grid: any[][]): void {
     const p = this.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
@@ -102,7 +98,7 @@ export class Fog3D {
   /** Track state.fog every frame (recomputeFog() mutates it) and ease alpha toward the target. */
   update(state: any, t: number, dt: number): void {
     if (state.grid !== this.heightsFor) { this.heightsFor = state.grid; this.conform(state.grid); this.first = true; }
-    this.mat.uniforms.uTime.value = t;
+    this.mat.uniforms.uTime.value = t; this.mistMat.uniforms.uTime.value = t;
     this.pendingDt += dt;
     if (!this.first && this.pendingDt < 0.042) return;
     const fog = state.fog;

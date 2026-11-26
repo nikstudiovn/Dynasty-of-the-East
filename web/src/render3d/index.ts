@@ -99,7 +99,7 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
   }
   onFloatingTextChange(on => { if (!on) floating.clear(); });
   fx.setQuality(s3.quality);
-  s3.scene.add(world.group, terrain.group, buildings.group, units.group, fx.group, fog.mesh);
+  s3.scene.add(world.group, terrain.group, buildings.group, units.group, fx.group, fog.mesh, fog.riverMist);
 
   // The size-dependent subsystems (terrain, world ridges, fog DataTexture) are rebuilt whenever the map size,
   // type or seed changes; the old geometries / textures are disposed first so memory never leaks on iPhone.
@@ -109,12 +109,12 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
     const key = n + "|" + (state.mapType || "river_valley") + "|" + (state.mapSeed || 0);
     if (key === mapKey) return;
     mapKey = key;
-    s3.scene.remove(terrain.group, world.group, fog.mesh);
+    s3.scene.remove(terrain.group, world.group, fog.mesh, fog.riverMist); 
     terrain.dispose(); world.dispose(); fog.dispose();
     setMapSize(n);
     s3.applyMapSize(n);
     terrain = new Terrain3D(); world = new World3D(); fog = new Fog3D();
-    s3.scene.add(world.group, terrain.group, fog.mesh);
+    s3.scene.add(world.group, terrain.group, fog.mesh, fog.riverMist);
   }
 
   const octx = overlayCanvas.getContext("2d") as CanvasRenderingContext2D;
@@ -265,6 +265,14 @@ export function createRenderer3D(canvas: HTMLCanvasElement, overlayCanvas: HTMLC
       }
       cam.zoom = clamp(cam.zoom, MIN_ZOOM, MAX_ZOOM);
       s3.update(cam, d);
+fog.setTint(s3.weather.fogTint);
+fog.setRiverMist(s3.weather.riverMistOpacity, s3.scene.fog instanceof THREE.FogExp2 ? s3.scene.fog.color : 0x9aa8b4);
+     if (s3.weather.lanternBoost > 0.15 && state) {
+const lanternPos: Array<{ x: number; y: number; z: number }> = [];
+for (const b of state.buildings ?? []) { if (b.hp > 0 && (b.type === "town_center" || b.type === "shrine" || b.type === "tower" || b.type === "temple")) lanternPos.push({ x: b.x, y: standHeight(b.x, b.y, state.grid) + 2.2, z: b.y }); }
+for (const u of state.units ?? []) { if (u.hp > 0 && u.type === "fire_ship") lanternPos.push({ x: u.x, y: 0.9, z: u.y }); }
+s3.updateLanterns(lanternPos, s3.weather.lanternBoost);
+} else { s3.updateLanterns([], 0); } 
       if (state && state.grid && state.fog) {
         terrain.update(state, E, time, s3, fx);
         buildings.update(state, E, time, d, s3);
